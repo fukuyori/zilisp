@@ -31,6 +31,10 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | 子プロセス | `std.process.Child` | `lib/std/process.zig` 19行目 | 使い方は Phase 12（`zig` の呼び出し）で確認する |
 | 動的ライブラリ | `std.DynLib`（`lib/std/dynamic_library.zig`） | `lib/std/dynamic_library.zig` 14行目 | 使い方は Phase 39 で確認する |
 | 終了 | `std.process.exit(status: u8)`、`std.process.fatal(fmt, args)` | `lib/std/process.zig` 698・865行目 | |
+| 大きな境界にそろえた確保 | `std.heap.page_allocator.alignedAlloc(u8, .fromByteUnits(4 MiB), n)` は **Windows で失敗することがある**（2026-11-02 に Phase 06 で確認） | `lib/std/heap/PageAllocator.zig` 45〜108行目 | 最初の確保がたまたまそろえば成功するが、そろわない場合はプレースホルダーとして予約した領域を `NtAllocateVirtualMemory(COMMIT)` で確定しようとして失敗し、`OutOfMemory` を返す。Zilisp は Windows では予約（RESERVE）した範囲の中のそろった部分だけを確定する方式で回避する（`src/support/os_memory.zig`）。Windows 以外は `page_allocator` を使う |
+| ディレクトリの走査・ファイル | `std.Io.Dir.cwd()`、`openDir(io, path, .{ .iterate = true })`、`walk(gpa)`（順序は不定）、`readFileAlloc(io, path, gpa, .limited(n))`、`writeFile(io, .{ .sub_path, .data })`、`createDirPath(io, path)` | `lib/std/Io/Dir.zig` | Phase 02 の道具で使用 |
+| 子プロセス | `std.process.run(gpa, io, .{ .argv = ... })` → `.term`（`.exited => code`）、`.stdout`、`.stderr` | `lib/std/process.zig` 470〜507行目 | Phase 02 の言語試験の実行器で使用 |
+| 書き出し先を確保する Writer | `std.Io.Writer.Allocating.init(gpa)`、`.writer`、`.written()`、`.toOwnedSlice()` | `lib/std/Io/Writer.zig` 2644行目 | |
 
 ## 2. 言語機能
 

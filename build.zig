@@ -35,12 +35,18 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_unit_tests.step);
 
     // ベンチマークは常に ReleaseFast でビルドする（速度最優先。基本設計 §17）
+    const zilisp_lib_fast = b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
     const bench_exe = b.addExecutable(.{
         .name = "zilisp-bench",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/bench/main.zig"),
             .target = target,
             .optimize = .ReleaseFast,
+            .imports = &.{.{ .name = "zilisp", .module = zilisp_lib_fast }},
         }),
     });
     const run_bench = b.addRunArtifact(bench_exe);
@@ -100,10 +106,15 @@ pub fn build(b: *std.Build) void {
     reader_check_step.dependOn(&run_reader_check.step);
 
     // 道具の単体テストも test に含める
+    const zilisp_lib_host = b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = b.graph.host,
+    });
     for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tests/bench/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path(path),
             .target = b.graph.host,
+            .imports = &.{.{ .name = "zilisp", .module = zilisp_lib_host }},
         }) });
         test_step.dependOn(&b.addRunArtifact(t).step);
     }

@@ -5,6 +5,7 @@ const std = @import("std");
 const value_mod = @import("../values/value.zig");
 const object = @import("../values/object.zig");
 const heap_mod = @import("heap.zig");
+const roots_mod = @import("roots.zig");
 const cl_symbols = @import("cl_symbols.zig");
 
 pub const Value = value_mod.Value;
@@ -31,6 +32,10 @@ pub const Found = struct { symbol: Value, status: SymbolStatus };
 pub const Runtime = struct {
     gpa: std.mem.Allocator,
     heap: heap_mod.Heap,
+    /// 明示的なルート（§3.5）
+    roots: roots_mod.Roots,
+    /// FFI handle（§3.6）
+    handles: roots_mod.Roots,
     packages: std.ArrayList(*PackageData) = .empty,
     /// NIL の名前・属性リストなどを持つシンボルの実体（値としての NIL は即値 Value.nil）
     nil_symbol: *Symbol,
@@ -49,6 +54,8 @@ pub const Runtime = struct {
         rt.* = .{
             .gpa = gpa,
             .heap = heap_mod.Heap.init(gpa),
+            .roots = roots_mod.Roots.init(gpa),
+            .handles = roots_mod.Roots.init(gpa),
             .nil_symbol = undefined,
             .t = Value.nil,
             .cl = undefined,
@@ -74,6 +81,8 @@ pub const Runtime = struct {
             rt.gpa.destroy(p);
         }
         rt.packages.deinit(rt.gpa);
+        rt.roots.deinit();
+        rt.handles.deinit();
         rt.heap.deinit();
     }
 

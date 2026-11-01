@@ -139,4 +139,6 @@ test {
     _ = @import("runtime/runtime.zig");
     _ = @import("runtime/cl_symbols.zig");
     _ = @import("printer/printer.zig");
+    _ = @import("support/os_memory.zig");
+    _ = @import("runtime/roots.zig");
 }

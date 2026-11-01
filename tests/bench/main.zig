@@ -18,18 +18,19 @@ const Benchmark = struct {
 };
 
 const nil_repr = @import("nil_repr.zig");
+const alloc = @import("alloc.zig");
 
 const benchmarks = [_]Benchmark{
     .{ .name = "baseline/empty-loop", .run = emptyLoop, .iterations = 100_000_000 },
     .{ .name = "prototype/tagged-fixnum-add", .run = taggedFixnumAdd, .iterations = 100_000_000 },
-} ++ nilReprBenchmarks();
+} ++ group(nil_repr.benchmarks, 200_000_000) ++ group(alloc.benchmarks, 10_000_000);
 
-fn nilReprBenchmarks() [nil_repr.benchmarks.len]Benchmark {
-    var list: [nil_repr.benchmarks.len]Benchmark = undefined;
-    for (nil_repr.benchmarks, 0..) |b, i| {
-        list[i] = .{ .name = b[0], .run = b[1], .iterations = 200_000_000 };
+fn group(comptime list: anytype, comptime iterations: u64) [list.len]Benchmark {
+    var out: [list.len]Benchmark = undefined;
+    for (list, 0..) |b, i| {
+        out[i] = .{ .name = b[0], .run = b[1], .iterations = iterations };
     }
-    return list;
+    return out;
 }
 
 test {

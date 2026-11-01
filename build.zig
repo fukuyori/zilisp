@@ -79,6 +79,26 @@ pub fn build(b: *std.Build) void {
     const extract_step = b.step("extract-samples", "Extract Lisp code blocks from the curriculum Markdown");
     extract_step.dependOn(&run_extract.step);
 
+    // 教材のブロックを Reader で読み、SBCL の結果と比べる：zig build reader-check -- .work/samples
+    const reader_mod = b.createModule(.{
+        .root_source_file = b.path("src/reader/reader.zig"),
+        .target = b.graph.host,
+    });
+    const reader_check_exe = b.addExecutable(.{
+        .name = "zilisp-reader-check",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/reader_check/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+            .imports = &.{.{ .name = "reader", .module = reader_mod }},
+        }),
+    });
+    const run_reader_check = b.addRunArtifact(reader_check_exe);
+    run_reader_check.addPassthruArgs();
+    run_reader_check.has_side_effects = true;
+    const reader_check_step = b.step("reader-check", "Read curriculum blocks with the Zilisp reader and compare with SBCL");
+    reader_check_step.dependOn(&run_reader_check.step);
+
     // 道具の単体テストも test に含める
     for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{

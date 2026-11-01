@@ -10,6 +10,30 @@ clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文�
 since = "Phase 03"
 
 [[items]]
+id = "reader-character-unicode-names"
+description = "#\\ の後の Unicode の文字名（#\\GREEK_SMALL_LETTER_LAMDA など）"
+sbcl = "読める"
+zilisp = "標準・準標準の名前（Space、Newline、Tab、Page、Return、Linefeed、Backspace、Rubout、Nul）と U+XXXX だけを読む。それ以外の名前は reader-error"
+clhs = "13.1.7 Character Names（標準以外の名前は処理系定義）"
+since = "Phase 04"
+
+[[items]]
+id = "reader-backquote-representation"
+description = "backquote を読んだ結果の表現"
+sbcl = "(SB-INT:QUASIQUOTE ...) と、コンマを表す構造体"
+zilisp = "(ZILISP-SYSTEM:QUASIQUOTE ...)、(ZILISP-SYSTEM:UNQUOTE x)、UNQUOTE-SPLICING、UNQUOTE-NSPLICING"
+clhs = "2.4.6 Backquote（読んだ結果の具体的な形は処理系依存）"
+since = "Phase 04"
+
+[[items]]
+id = "features"
+description = "*features* の内容"
+sbcl = ":ANSI-CL、:SBCL、:WIN32 など"
+zilisp = ":ZILISP、:COMMON-LISP、:64-BIT、:IEEE-FLOATING-POINT、エンディアン、CPU（:X86-64 / :ARM64）、OS（:WINDOWS と :WIN32、:UNIX と :LINUX / :DARWIN）。完全な ANSI 準拠を表明しないため :ANSI-CL は入れない（src/reader/features.zig）"
+clhs = "1.5.2.1 Use of Implementation-Defined Language Features、*features*"
+since = "Phase 04"
+
+[[items]]
 id = "reader-double-colon-keyword"
 description = "::name の読み取り"
 sbcl = "キーワード :NAME として読む"

@@ -16,3 +16,7 @@
   （`*read-base*`・`*read-default-float-format*`・指数の記号）、シンボル（エスケープ、パッケージ修飾、
   大文字への変換）、位置情報（行・列）。値を作る処理は Builder として差し替え可能（Value との接続は Phase 05）。
   SBCL との処理系依存の違いを `tests/differential/impl-dependent.toml` に記録
+- Phase 04：Reader のマクロ文字。quote、文字列、リスト（ドット対）、`#'`、`#(`（`#n(` を含む）、`#\`（標準・準標準の名前、`U+XXXX`）、
+  `#:`、`#b #o #x #nR`、backquote（`zl-sys:quasiquote` など）、`#+` / `#-`（`*read-suppress*`、`*features*`）。
+  `#P #S #C #A #. #= ##` は後の Phase まで明示的な reader-error。
+  教材のブロックを Zilisp の Reader で読み SBCL と比べる道具（`zig build reader-check`）

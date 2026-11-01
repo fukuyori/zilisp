@@ -1,0 +1,18 @@
+# SBCL と Zilisp で結果が異なるが、CLHS で処理系依存・未定義とされているため差分試験から除外する項目
+# （詳細設計 §13.1）。根拠となる CLHS の節を必ず書く。
+
+[[items]]
+id = "reader-upcase-non-ascii"
+description = "readtable-case が :upcase のとき、ASCII 以外の文字（é、λ など）を大文字に変換するか"
+sbcl = "変換する（é → É、λ → Λ）"
+zilisp = "変換しない（Phase 03 時点。src/reader/syntax.zig の upcase）"
+clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）、23.1.2 Effect of Readtable Case on the Lisp Reader"
+since = "Phase 03"
+
+[[items]]
+id = "reader-double-colon-keyword"
+description = "::name の読み取り"
+sbcl = "キーワード :NAME として読む"
+zilisp = "SBCL と同じくキーワードとして読む"
+clhs = "2.3.5 Valid Patterns for Tokens（::name は規定されていない）"
+since = "Phase 03"

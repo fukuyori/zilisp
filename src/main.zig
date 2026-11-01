@@ -112,4 +112,5 @@ test "run unsupported returns usage" {
 test {
     _ = version;
     _ = args_mod;
+    _ = @import("reader/reader.zig");
 }

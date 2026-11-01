@@ -1,0 +1,28 @@
+(A B C)
+NIL
+NIL
+(A . B)
+(A B . C)
+(A B)
+(A B)
+((A) (B (C)))
+(A .B)
+(1 . 2)
+(QUOTE A)
+(QUOTE (A B))
+(QUOTE (QUOTE A))
+(FUNCTION CAR)
+(FUNCTION (LAMBDA (X) X))
+#(1 2 3)
+#()
+#(A B B)
+#()
+(#\a #\b)
+(#\))
+(DEFUN FACT (N) (IF (<= N 1) 1 (* N (FACT (- N 1)))))
+YES
+AFTER-SKIP
+AFTER-PACKAGE
+(X B C)
+OR-OK
+AND-OK

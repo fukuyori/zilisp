@@ -3,13 +3,14 @@
 //! Reader は Lisp の値の表現から独立させる（基本設計 §4.1）。値を作る処理は、型 `Builder` として
 //! コンパイル時に受け取る。Phase 05 で、本物の Value を作る Builder を用意する。
 //!
-//! Builder に必要な宣言（文字列の引数は呼び出しの間だけ有効。必要なら Builder が複製する）:
+//! Builder に必要な宣言（文字列の引数は呼び出しの間だけ有効。必要なら Builder が複製する）。
+//! diag を受け取る関数は、失敗するときに diag に位置とメッセージを書いて error.ReaderError を返す:
 //!   pub const Datum: type
 //!   pub const List: type                       リストやベクタを組み立てる途中の状態
-//!   fn integer(b, loc, negative: bool, digits: []const u8, radix: u8) Error!Datum
-//!   fn ratio(b, loc, negative: bool, numerator: []const u8, denominator: []const u8, radix: u8) Error!Datum
+//!   fn integer(b, diag: *Diagnostic, loc, negative: bool, digits: []const u8, radix: u8) Error!Datum
+//!   fn ratio(b, diag: *Diagnostic, loc, negative: bool, numerator: []const u8, denominator: []const u8, radix: u8) Error!Datum
 //!   fn float(b, loc, value: number.Float) Error!Datum
-//!   fn symbol(b, loc, package: PackageRef, name: []const u8) Error!Datum
+//!   fn symbol(b, diag: *Diagnostic, loc, package: PackageRef, name: []const u8) Error!Datum
 //!   fn nil(b, loc) Error!Datum
 //!   fn string(b, loc, utf8: []const u8) Error!Datum
 //!   fn character(b, loc, cp: u21) Error!Datum
@@ -178,7 +179,7 @@ pub fn Reader(comptime Builder: type) type {
         }
 
         fn sym(self: *Self, loc: SourceLoc, pkg: []const u8, name: []const u8) Error!Datum {
-            return self.builder.symbol(loc, .{ .named = .{ .name = pkg, .external = true } }, name);
+            return self.builder.symbol(&self.diagnostic, loc, .{ .named = .{ .name = pkg, .external = true } }, name);
         }
 
         /// (pkg:name x) を作る
@@ -437,8 +438,8 @@ pub fn Reader(comptime Builder: type) type {
             };
             const n = parsed orelse return self.fail(start, "基数を指定した数として読めません");
             return switch (n) {
-                .integer => |i| self.builder.integer(start, i.negative, i.digits, i.radix),
-                .ratio => |r| self.builder.ratio(start, r.negative, r.numerator, r.denominator, r.radix),
+                .integer => |i| self.builder.integer(&self.diagnostic, start, i.negative, i.digits, i.radix),
+                .ratio => |r| self.builder.ratio(&self.diagnostic, start, r.negative, r.numerator, r.denominator, r.radix),
                 .float => self.fail(start, "基数を指定した数として読めません"),
             };
         }
@@ -601,8 +602,8 @@ pub fn Reader(comptime Builder: type) type {
                     error.FloatOverflow => return self.fail(loc, "浮動小数の範囲を超えています"),
                 };
                 if (parsed) |n| return .{ .datum = switch (n) {
-                    .integer => |i| try self.builder.integer(loc, i.negative, i.digits, i.radix),
-                    .ratio => |r| try self.builder.ratio(loc, r.negative, r.numerator, r.denominator, r.radix),
+                    .integer => |i| try self.builder.integer(&self.diagnostic, loc, i.negative, i.digits, i.radix),
+                    .ratio => |r| try self.builder.ratio(&self.diagnostic, loc, r.negative, r.numerator, r.denominator, r.radix),
                     .float => |f| try self.builder.float(loc, f),
                 } };
             }
@@ -633,7 +634,7 @@ pub fn Reader(comptime Builder: type) type {
                 }
             }
             try self.encode(tok[name_start..], &self.scratch);
-            return .{ .datum = try self.builder.symbol(loc, pkg, self.scratch.items) };
+            return .{ .datum = try self.builder.symbol(&self.diagnostic, loc, pkg, self.scratch.items) };
         }
 
         fn appendUtf8(self: *Self, out: *std.ArrayList(u8), cp: u21) Error!void {
@@ -662,11 +663,11 @@ const TestBuilder = struct {
     fn note(b: *TestBuilder, loc: SourceLoc) Error!void {
         try b.locs.append(b.arena, loc);
     }
-    pub fn integer(b: *TestBuilder, loc: SourceLoc, negative: bool, digits: []const u8, radix: u8) Error!Datum {
+    pub fn integer(b: *TestBuilder, _: *Diagnostic, loc: SourceLoc, negative: bool, digits: []const u8, radix: u8) Error!Datum {
         try b.note(loc);
         return std.fmt.allocPrint(b.arena, "int:{s}{s}@{d}", .{ if (negative) "-" else "", digits, radix });
     }
-    pub fn ratio(b: *TestBuilder, loc: SourceLoc, negative: bool, num: []const u8, den: []const u8, radix: u8) Error!Datum {
+    pub fn ratio(b: *TestBuilder, _: *Diagnostic, loc: SourceLoc, negative: bool, num: []const u8, den: []const u8, radix: u8) Error!Datum {
         try b.note(loc);
         return std.fmt.allocPrint(b.arena, "ratio:{s}{s}/{s}@{d}", .{ if (negative) "-" else "", num, den, radix });
     }
@@ -677,7 +678,7 @@ const TestBuilder = struct {
             .double => |v| std.fmt.allocPrint(b.arena, "df:{d}", .{v}),
         };
     }
-    pub fn symbol(b: *TestBuilder, loc: SourceLoc, pkg: PackageRef, name: []const u8) Error!Datum {
+    pub fn symbol(b: *TestBuilder, _: *Diagnostic, loc: SourceLoc, pkg: PackageRef, name: []const u8) Error!Datum {
         try b.note(loc);
         return switch (pkg) {
             .current => std.fmt.allocPrint(b.arena, "sym:{s}", .{name}),

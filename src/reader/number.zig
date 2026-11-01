@@ -177,7 +177,49 @@ fn parseFloat(negative: bool, body: []const u8, default_float: FloatFormat, buf:
     }
 }
 
+/// 潜在的な数か（CLHS 2.3.1.1「Potential Numbers as Tokens」）。印字でシンボルを |…| で囲むかの判定に使う。
+/// 規則（SBCL 2.6.7 の印字で確認）：
+///   1. 数字・符号（+ -）・比の記号（/）・小数点（.）・拡張文字（^ _）・英字（数の記号）だけからなる
+///   2. 数字を少なくとも1つ含む（*read-base* が 10 より大きければ、その基数の数字になる英字も数字とみなす）
+///   3. 先頭は数字・符号・小数点・拡張文字のどれか
+///   4. 末尾は符号でない
+///   5. 英字が2つ続かない（例：1AB は潜在的な数ではない）
+pub fn isPotentialNumber(text: []const u8, read_base: u8) bool {
+    if (text.len == 0) return false;
+    var has_digit = false;
+    var prev_letter = false;
+    for (text, 0..) |c, i| {
+        const is_dec = c >= '0' and c <= '9';
+        const is_letter = std.ascii.isAlphabetic(c);
+        const letter_digit = is_letter and (digitValue(c) orelse 99) < read_base;
+        const is_digit = is_dec or letter_digit;
+        const ok = is_digit or is_letter or c == '+' or c == '-' or c == '/' or c == '.' or c == '^' or c == '_';
+        if (!ok) return false;
+        if (is_digit) has_digit = true;
+        if (i == 0 and !(is_digit or c == '+' or c == '-' or c == '.' or c == '^' or c == '_')) return false;
+        const counts_as_letter = is_letter and !letter_digit;
+        if (counts_as_letter and prev_letter) return false;
+        prev_letter = counts_as_letter;
+    }
+    const last = text[text.len - 1];
+    if (last == '+' or last == '-') return false;
+    return has_digit;
+}
+
 const testing = std.testing;
+
+test "potential numbers (SBCL 2.6.7)" {
+    const yes = [_][]const u8{ "1A", "1A2", "1^", "^1", "_1", "1_", "1.", "1.5X", "+1A", "1-2", "1+2", "--1", "1/", ".1A", "1E5E", "12.", "1E" };
+    const no = [_][]const u8{ "1AB", "A1", "-", "/1", "1EE5", "1+", "+.", "FOO", "^", "" };
+    for (yes) |t| testing.expect(isPotentialNumber(t, 10)) catch |e| {
+        std.debug.print("expected potential: {s}\n", .{t});
+        return e;
+    };
+    for (no) |t| testing.expect(!isPotentialNumber(t, 10)) catch |e| {
+        std.debug.print("expected not potential: {s}\n", .{t});
+        return e;
+    };
+}
 
 fn p(text: []const u8, base: u8) Error!?Number {
     var buf: [128]u8 = undefined;

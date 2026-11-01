@@ -15,10 +15,10 @@ const reader = @import("reader");
 const NullBuilder = struct {
     pub const Datum = void;
     pub const List = void;
-    pub fn integer(_: *NullBuilder, _: reader.SourceLoc, _: bool, _: []const u8, _: u8) reader.Error!void {}
-    pub fn ratio(_: *NullBuilder, _: reader.SourceLoc, _: bool, _: []const u8, _: []const u8, _: u8) reader.Error!void {}
+    pub fn integer(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: bool, _: []const u8, _: u8) reader.Error!void {}
+    pub fn ratio(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: bool, _: []const u8, _: []const u8, _: u8) reader.Error!void {}
     pub fn float(_: *NullBuilder, _: reader.SourceLoc, _: reader.number.Float) reader.Error!void {}
-    pub fn symbol(_: *NullBuilder, _: reader.SourceLoc, _: reader.PackageRef, _: []const u8) reader.Error!void {}
+    pub fn symbol(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: reader.PackageRef, _: []const u8) reader.Error!void {}
     pub fn nil(_: *NullBuilder, _: reader.SourceLoc) reader.Error!void {}
     pub fn string(_: *NullBuilder, _: reader.SourceLoc, _: []const u8) reader.Error!void {}
     pub fn character(_: *NullBuilder, _: reader.SourceLoc, _: u21) reader.Error!void {}

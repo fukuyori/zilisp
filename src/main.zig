@@ -4,6 +4,13 @@ const std = @import("std");
 const Io = std.Io;
 const version = @import("version.zig");
 const args_mod = @import("cli/args.zig");
+const read_command = @import("cli/read_command.zig");
+
+/// コマンドの実行に必要な環境
+pub const Context = struct {
+    gpa: std.mem.Allocator,
+    io: Io,
+};
 
 /// 終了コード（基本設計 §12.1、詳細設計 §9.4）
 pub const ExitCode = enum(u8) {
@@ -27,7 +34,8 @@ pub fn main(init: std.process.Init) !u8 {
     var stderr_file_writer: Io.File.Writer = .init(.stderr(), io, &stderr_buffer);
     const stderr = &stderr_file_writer.interface;
 
-    const code = run(args_mod.parse(args), stdout, stderr) catch |err| {
+    const ctx: Context = .{ .gpa = init.gpa, .io = io };
+    const code = run(ctx, args_mod.parse(args), stdout, stderr) catch |err| {
         stderr.print("zilisp: 出力に失敗しました: {t}\n", .{err}) catch {};
         stderr.flush() catch {};
         return @backingInt(ExitCode.failure);
@@ -37,8 +45,18 @@ pub fn main(init: std.process.Init) !u8 {
     return @backingInt(code);
 }
 
-pub fn run(command: args_mod.Command, stdout: *Io.Writer, stderr: *Io.Writer) Io.Writer.Error!ExitCode {
+pub fn run(ctx: Context, command: args_mod.Command, stdout: *Io.Writer, stderr: *Io.Writer) Io.Writer.Error!ExitCode {
     switch (command) {
+        .read => |path| {
+            return switch (try read_command.run(ctx.gpa, ctx.io, path, stdout, stderr)) {
+                .ok => .success,
+                .failed => .failure,
+            };
+        },
+        .missing_argument => |opt| {
+            try stderr.print("zilisp: {s} には引数が必要です。--help で使い方を表示します。\n", .{opt});
+            return .usage;
+        },
         .version => {
             try printVersion(stdout);
             return .success;
@@ -69,6 +87,7 @@ pub fn printHelp(w: *Io.Writer) Io.Writer.Error!void {
         \\使い方:
         \\  zilisp --version, -v    バージョンを表示する
         \\  zilisp --help, -h       このヘルプを表示する
+        \\  zilisp --read FILE      FILE のデータを読み、1つずつ印字する（Reader と印字の確認用）
         \\
         \\未実装（今後の Phase で実装予定）:
         \\  zilisp                  REPL
@@ -81,12 +100,14 @@ pub fn printHelp(w: *Io.Writer) Io.Writer.Error!void {
     , .{ version.name, version.version });
 }
 
+const test_ctx: Context = .{ .gpa = std.testing.allocator, .io = std.testing.io };
+
 test "run version" {
     var out_buf: [256]u8 = undefined;
     var out: Io.Writer = .fixed(&out_buf);
     var err_buf: [256]u8 = undefined;
     var err: Io.Writer = .fixed(&err_buf);
-    const code = try run(.version, &out, &err);
+    const code = try run(test_ctx, .version, &out, &err);
     try std.testing.expectEqual(ExitCode.success, code);
     try std.testing.expect(std.mem.startsWith(u8, out.buffered(), "zilisp " ++ version.version));
 }
@@ -96,7 +117,7 @@ test "run help" {
     var out: Io.Writer = .fixed(&out_buf);
     var err_buf: [256]u8 = undefined;
     var err: Io.Writer = .fixed(&err_buf);
-    try std.testing.expectEqual(ExitCode.success, try run(.help, &out, &err));
+    try std.testing.expectEqual(ExitCode.success, try run(test_ctx, .help, &out, &err));
     try std.testing.expect(std.mem.indexOf(u8, out.buffered(), "--version") != null);
 }
 
@@ -105,12 +126,17 @@ test "run unsupported returns usage" {
     var out: Io.Writer = .fixed(&out_buf);
     var err_buf: [512]u8 = undefined;
     var err: Io.Writer = .fixed(&err_buf);
-    try std.testing.expectEqual(ExitCode.usage, try run(.{ .unsupported = "x.lisp" }, &out, &err));
-    try std.testing.expectEqual(ExitCode.usage, try run(.none, &out, &err));
+    try std.testing.expectEqual(ExitCode.usage, try run(test_ctx, .{ .unsupported = "x.lisp" }, &out, &err));
+    try std.testing.expectEqual(ExitCode.usage, try run(test_ctx, .none, &out, &err));
 }
 
 test {
     _ = version;
     _ = args_mod;
     _ = @import("reader/reader.zig");
+    _ = @import("values/value.zig");
+    _ = @import("runtime/heap.zig");
+    _ = @import("runtime/runtime.zig");
+    _ = @import("runtime/cl_symbols.zig");
+    _ = @import("printer/printer.zig");
 }

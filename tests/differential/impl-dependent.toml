@@ -34,6 +34,38 @@ clhs = "1.5.2.1 Use of Implementation-Defined Language Features、*features*"
 since = "Phase 04"
 
 [[items]]
+id = "printer-non-ascii-symbol-escape"
+description = "ASCII 以外の小文字を含むシンボル名の印字（é など）"
+sbcl = "|é| のように囲む（SBCL の Reader は é を大文字に変換するため）"
+zilisp = "囲まない（Zilisp の Reader は ASCII だけを大文字に変換するので、é のまま読み戻せる）"
+clhs = "22.1.3.3.1 Package Prefixes for Symbols、13.1.4.3 Characters With Case"
+since = "Phase 05"
+
+[[items]]
+id = "printer-character-names"
+description = "名前のない文字（制御文字、Unicode の文字）の印字"
+sbcl = "#\\Soh、#\\Esc、#\\GREEK_SMALL_LETTER_LAMDA のような名前"
+zilisp = "制御文字は #\\U+1 のような形、それ以外の文字は #\\λ のように文字そのもの（Zilisp の Reader で読み戻せる形）"
+clhs = "22.1.3.2 Printing Characters、13.1.7 Character Names"
+since = "Phase 05"
+
+[[items]]
+id = "printer-denormal-float-digits"
+description = "非正規化数の single-float の桁数（例：1.0e-45 として読んだ値）"
+sbcl = "1.4012985e-45"
+zilisp = "1.0e-45（読み戻せる最短の桁数）"
+clhs = "22.1.3.1.3 Printing Floats（読み戻せればよく、桁数は規定されていない）"
+since = "Phase 05"
+
+[[items]]
+id = "fixnum-range"
+description = "most-positive-fixnum / most-negative-fixnum"
+sbcl = "2^62-1 / -2^62（x86-64）"
+zilisp = "2^61-1 / -2^61（詳細設計 §2.1。値の下位2ビットをタグに使うため）"
+clhs = "most-positive-fixnum（処理系依存。少なくとも 2^15-1）"
+since = "Phase 05"
+
+[[items]]
 id = "reader-double-colon-keyword"
 description = "::name の読み取り"
 sbcl = "キーワード :NAME として読む"

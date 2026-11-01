@@ -9,6 +9,10 @@ pub const Command = union(enum) {
     none,
     version,
     help,
+    /// --read FILE：ファイルのデータを読み、1つずつ印字する（Reader と印字の確認用）
+    read: []const u8,
+    /// 引数の不足
+    missing_argument: []const u8,
     /// 未実装のコマンド・オプション
     unsupported: []const u8,
 };
@@ -18,6 +22,10 @@ pub fn parse(args: []const [:0]const u8) Command {
     const first = args[1];
     if (eql(first, "--version") or eql(first, "-v")) return .version;
     if (eql(first, "--help") or eql(first, "-h")) return .help;
+    if (eql(first, "--read")) {
+        if (args.len < 3) return .{ .missing_argument = first };
+        return .{ .read = args[2] };
+    }
     return .{ .unsupported = first };
 }
 
@@ -34,6 +42,11 @@ test "version and help" {
     try std.testing.expectEqual(Command.version, parse(&.{ "zilisp", "-v" }));
     try std.testing.expectEqual(Command.help, parse(&.{ "zilisp", "--help" }));
     try std.testing.expectEqual(Command.help, parse(&.{ "zilisp", "-h" }));
+}
+
+test "read" {
+    try std.testing.expectEqualStrings("a.lisp", parse(&.{ "zilisp", "--read", "a.lisp" }).read);
+    try std.testing.expectEqualStrings("--read", parse(&.{ "zilisp", "--read" }).missing_argument);
 }
 
 test "unsupported" {

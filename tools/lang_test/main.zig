@@ -3,6 +3,8 @@
 //! tests/language/ の下の各 `NAME.lisp` を `zilisp NAME.lisp` で実行し、
 //! 標準出力を `NAME.expected` と比べる。終了コードは 0 を期待する。
 //! 0 以外を期待する場合は、`NAME.exit` に期待する終了コードを書く。
+//! ファイル名の前に渡す引数は、`NAME.args` に空白区切りで書く（例：--read）。
+//! ディレクトリに `default.args` があれば、`NAME.args` がないファイルにはそれを使う。
 //!
 //! 比較の前に、改行コードを LF にそろえ、末尾の空白・改行を取り除く。
 //! 方式が混ざる経路の試験（詳細設計 §13.1）や、VM とネイティブの両方での実行は、
@@ -72,7 +74,19 @@ pub fn main(init: std.process.Init) !u8 {
             expected_exit = std.fmt.parseInt(u8, std.mem.trim(u8, s, " \t\r\n"), 10) catch 255;
         } else |_| {}
 
-        const r = try std.process.run(gpa, io, .{ .argv = &.{ exe, full } });
+        var argv: std.ArrayList([]const u8) = .empty;
+        try argv.append(arena, exe);
+        const args_path = try std.fmt.allocPrint(arena, "{s}.args", .{stem});
+        const default_args_path = try std.fs.path.join(arena, &.{ std.fs.path.dirname(rel) orelse ".", "default.args" });
+        const args_text: ?[]u8 = dir.readFileAlloc(io, args_path, arena, .limited(4096)) catch
+            (dir.readFileAlloc(io, default_args_path, arena, .limited(4096)) catch null);
+        if (args_text) |t| {
+            var it = std.mem.tokenizeAny(u8, t, " \t\r\n");
+            while (it.next()) |a| try argv.append(arena, a);
+        }
+        try argv.append(arena, full);
+
+        const r = try std.process.run(gpa, io, .{ .argv = argv.items });
         defer gpa.free(r.stdout);
         defer gpa.free(r.stderr);
 

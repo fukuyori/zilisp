@@ -100,7 +100,7 @@ pub fn build(b: *std.Build) void {
     reader_check_step.dependOn(&run_reader_check.step);
 
     // 道具の単体テストも test に含める
-    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig" }) |path| {
+    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tests/bench/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path(path),
             .target = b.graph.host,

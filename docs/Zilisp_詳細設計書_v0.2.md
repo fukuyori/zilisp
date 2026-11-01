@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記6） | 2026-11-01 | Phase 01 の照合結果（`docs/zig-std-usage.md`）を受けて、Value を `enum(u64)` で定義（§2.1）、戻り値の規約を案 A に変更（主値だけをレジスタで返し、個数は `th.mv_count`、非局所脱出・エラーは特別な即値 `Value.unwind` と `th.fault`。§2.2・§6.1〜§6.4・§6.6・§7A.2）、汎用の入口を `callconv(.c)` に（§6.2） |
 | 0.2（追記5） | 2026-11-01 | agy（Antigravity）によるレビューの指摘15件を反映（本文では「agy #番号」）。closure を作り直さず code にネイティブの入口を設定（§2.4・§6.2・§7A.6）、cleanup の前の動的環境の巻き戻し（§6.4）、派生したポインタの規則（§3.4）、動的環境を深さで戻す方式に統一（§6.4）、`call-next-method` の引数と `:after` の扱い（§10.3）、トップレベルフォームの再帰的な処理（§4.1・§16.1）、`setf` 関数と高速入口をシンボルの欄に（§6.2・§8.1）、Phase 12〜34 は `.zfasl` を介さない（§5.1・§15.2）、自己再帰のループ化と `musttail` の型の制約（§6.2・§7A.3）、まとめてコンパイル・プロセス数の上限・キャッシュの掃除（§7A.6）、CL 関数の直接呼び出し（§5.2）、`equalp` のハッシュ（§2.6）、`defconstant`（§8.1・§16.1）、`unintern`・シャドウイング（§8.2）、`&environment`・`define-symbol-macro` の時期（§5.2） |
 | 0.2（追記4） | 2026-11-01 | Codex によるレビューの指摘（24件。#25 は CLHS で確認のうえ不採用、#5 は一部のみ採用）を反映。`eql` のハッシュ（§2.6）、GC の資源回収と確保量（§3.1・§3.2）、保守的走査の「生存の契約」（§3.4）、FFI の貸し出し（§3.6）、単一スレッドの制約（§6.1）、共有ライブラリとの ABI（§6.2）、多値の退避（§6.3）、`unwind-protect` と入れ子の脱出（§6.4）、未束縛の特殊変数（§6.5・§7.4）、引数の個数の符号化（§7.3）、バイトコードの検証（§7.4・§14.1）、末尾呼び出しの条件（§7A.3）、バックグラウンドのジョブ・`compile`・キャッシュ（§7A.6）、Reader の `#+`・`#.`（§8.5・§12）、クラスの再定義の標準手順（§10.2）、標準メソッド結合（§10.3）、キャッシュの失効（§10.4）、混在経路の試験と GC の再判断（§13）、`.zfasl` のロード順序（§14.1）、起動時の状態復元の範囲（§15.3） |
 | 0.2（追記3） | 2026-11-01 | SICL・Janet・Carp の調査結果を反映。クラスの番号（stamp）によるディスパッチとキャッシュの失効（§10.2、§10.4）、rack によるインスタンスの表現（§2.4、§10.2）、判別用コードの生成（§10.4）、Zig の識別子とソース位置の対応づけ（§7A.5）、起動時間の対策（§11.3、§15.3）、参考資料（§20） |
@@ -102,6 +103,14 @@
 
 - `Value` は **8バイト（64ビット）の1語**とし、**下位3ビットに型タグ**を置く。ヒープのオブジェクトは8バイト境界（cons は16バイト境界）に配置するので、ポインタの下位3ビットは常に 0 であり、タグに使える。
 - `Value` のビット操作は `src/values/` の中だけで行う。他の層はメソッド（`isCons()`、`asFixnum()`、`Value.fromFixnum()` など）経由でのみ扱う。
+- **Zig での定義は `enum(u64)`（非網羅の enum）とする**（2026-11-01 確定）。Zig 0.17.0 の既定の呼び出し規約では、`enum(u64)` の値はレジスタで返されるが、8バイトの `extern struct` はメモリ経由で返される（`docs/zig-std-usage.md` §3 で、x86_64-windows・x86_64-linux・aarch64-macos のアセンブリを確認）。
+
+```zig
+pub const Value = enum(u64) {
+    _,
+    // 特別な即値は定数として定義する（例：pub const nil: Value = …;）
+};
+```
 - fixnum の範囲は 62 ビット（`most-positive-fixnum` = 2^61−1、`most-negative-fixnum` = −2^61）とする。
 
 ### 2.2 タグの割り当て（確定）
@@ -124,6 +133,7 @@
 |---|---|
 | `nil` | なし（固定の1語） |
 | `unbound` | なし。Lisp 側には決して出さない |
+| `unwind` | なし。**関数の戻り値として、非局所脱出・エラーが進行中であることを表す**（§6.2）。Lisp 側には決して出さない |
 | `character` | bit 8〜28 にコードポイント（21ビット） |
 | `single_float` | bit 32〜63 に f32 のビット列 |
 | `forward_marker` 等 | 内部用（予約） |
@@ -443,8 +453,9 @@ VM とネイティブコードは、この章の構造を共有する。
 
 ```zig
 pub const Thread = struct {
-    mv: [MV_LIMIT]Value,         // 多値レジスタ（MV_LIMIT = 1024）
-    mv_count: u32,
+    mv: [MV_LIMIT]Value,         // 多値レジスタ（MV_LIMIT = 1024）。mv[0] は使わない（主値は戻り値）
+    mv_count: u32,               // 直前に返った値の個数（§6.2）
+    fault: Fault,                // 戻り値が Value.unwind のときの理由（§6.6）
     bindings: []Binding,         // 動的束縛（shallow binding）
     control: []ControlEntry,     // block / tagbody / catch / unwind-protect
     handlers: []HandlerCluster,
@@ -466,20 +477,32 @@ pub const Thread = struct {
 すべての関数オブジェクト（`closure`、`native_function`、`generic_function`）は、先頭に**入口アドレス**を持つ。
 
 ```zig
-pub const Ret = extern struct {
-    primary: Value,   // 主値（値が0個のときは NIL）
-    count: usize,     // 値の個数
-};
-pub const Entry = *const fn (th: *Thread, self: Value, args: [*]const Value, nargs: u32) Error!Ret;
+// 汎用の入口（すべての関数オブジェクトで同じ型）
+pub const Entry = *const fn (th: *Thread, self: Value, args: [*]const Value, nargs: u32) callconv(.c) Value;
+// 高速入口（引数の個数が固定。同じコンパイル単位の中で使う。例：2引数）
+//   fn (th: *Thread, a: Value, b: Value) Value
 ```
 
-- 戻り値は**主値と値の個数の組**である（R4。Clasp も `return_type { ret0; nvals; }` で主値と個数をレジスタで返している：`include/clasp/core/lispCallingConvention.h` 36〜46行目）。2番目以降の値だけを `th.mv[1..]` に書く。単値の関数はメモリに何も書かず、`count = 1` を返す。
-- `Error!Ret` がレジスタで返されるかどうか（Zig 0.17.0 の呼び出し規約での扱い）は **要検証**。メモリ経由になる場合は、エラーの有無を `count` の特別な値で表す方式と比べて決める。
-- **別にコンパイルした共有ライブラリとの境界**（レビュー #11）：`Error!Ret` のような Zig 固有の型は、別々にビルドしたコードの間で配置や返し方が一致する保証がない。そこで、処理系の本体と、バックグラウンドで作る共有ライブラリ（§7A.6）の間の境界では、次を守る。
-  1. 境界の関数は `callconv(.c)` 相当の固定の呼び出し規約にし、引数と戻り値は `extern struct` と基本型だけにする。エラーは戻り値の中のフラグで表す（境界の内側で `Error!Ret` に変換する）。
-  2. `Value`・`Thread` の配置、ランタイムの関数表の並び、定数表の形式に**ABI の版番号**を付ける。共有ライブラリの初期化の入口は、最初に版番号を照合し、一致しなければ読み込みを拒否する（VM のまま実行する）。
-  3. 境界を通る費用（`Error!Ret` との変換）は、OS ごとに計測する。
-- 同じ実行ファイルの中で一緒にコンパイルするコード（`zilisp build` の生成コードとランタイム）の間では、`Error!Ret` をそのまま使ってよい。
+**戻り値の規約（案 A。2026-11-01 確定。Phase 12 で計測して確認する）**
+
+- **戻り値は主値の `Value`（`enum(u64)`）だけ**とし、レジスタで返す。値が0個のときの主値は NIL とする。
+- **値の個数は `th.mv_count` に書く。** 2番目以降の値は `th.mv[1..]` に書く。
+  - 個数を正しく保つため、**関数は戻るたびに `th.mv_count` を書く**（単値を返す場合は 1 を書く）。ただし、戻り値が末尾位置の関数呼び出しの戻り値そのものである場合は、呼び出し先が書いた個数をそのまま使えるので書かない。
+  - 呼び出し側は、多値が必要な場所（`multiple-value-bind` など。§5.5 の `multiple` モード）でだけ `th.mv_count` と `th.mv` を読む。単値の場所では戻り値だけを使う。
+- **非局所脱出とエラーは、特別な即値 `Value.unwind`（§2.2）を返して表す。** 理由は `th.fault`（§6.6）に置く。呼び出し側は、呼び出しのたびに戻り値が `Value.unwind` かを比べ（レジスタと定数の比較1回）、そうであれば自分も `Value.unwind` を返す（§6.4）。
+- **この規約にした理由**：Zig 0.17.0 では、`Error!Ret`、エラーを含む型、16バイトの構造体は、x86_64-windows・x86_64-linux・aarch64-macos のどれでもメモリ経由で返される。`callconv(.c)` の16バイトの構造体は Linux・macOS ではレジスタで返るが、開発の一次ターゲットの Windows ではメモリ経由になる。`enum(u64)` の値だけが、3つのターゲットすべてでレジスタで返る（`docs/zig-std-usage.md` §3）。
+- 参考：Clasp は主値と個数をレジスタで返している（`include/clasp/core/lispCallingConvention.h` 36〜46行目）。Zilisp の規約は、個数を `Thread` の欄に書く分だけ、戻るたびにメモリへの書き込みが1回増える。この費用は Phase 12 で計測する。
+
+**呼び出し規約の種類**
+
+- **汎用の入口は `callconv(.c)` とする。** VM の closure、ネイティブコード、別にコンパイルした共有ライブラリ（§7A.6）の関数が、同じ型の入口を持てるようにするためである。C の呼び出し規約では、`u64` の戻り値は3つのターゲットすべてでレジスタ（`rax` / `x0`）で返る。
+- **高速入口は Zig の既定の呼び出し規約**とし、同じコンパイル単位の中（同じファイル内の直接呼び出し、インライン展開）でだけ使う。
+- 汎用の入口を `callconv(.c)` にする費用（Windows x64 の呼び出しで確保する32バイトの領域など）は、Phase 12 で既定の呼び出し規約と比べて計測する。
+
+**別にコンパイルした共有ライブラリとの境界**（レビュー #11）
+1. 境界を通る関数は、上記の `callconv(.c)` の汎用の入口と、初期化の入口だけにする。引数と戻り値は、`Value`（`u64`）・ポインタ・整数だけである。
+2. `Value`・`Thread` の配置、ランタイムの関数表の並び、定数表の形式に**ABI の版番号**を付ける。共有ライブラリの初期化の入口は、最初に版番号を照合し、一致しなければ読み込みを拒否する（VM のまま実行する）。
+3. 共有ライブラリの中の高速入口は、その共有ライブラリの中でだけ使う。
 - **VM の closure** の入口は、VM の実行ループを開始するトランポリンである。トランポリンは、呼ばれるたびに closure の code にネイティブの入口があるかを調べ、あればそちらを呼ぶ（§7A.6、agy #1）。VM の中から VM の closure を呼ぶ場合は、トランポリンを経由せず、同じ実行ループの中でフレームを積む（このときも code のネイティブの入口を調べる）。
 - **受け取った引数の扱い**（agy #9）：汎用の入口は、関数の最初で `args[0..nargs]` をローカル変数（必要なら `&rest` のリスト）に写し、その後は `args` を参照しない。`args` が指す領域（呼び出し元の領域や、末尾呼び出し用の引数領域：§7A.3）が後の呼び出しで上書きされても安全にするためである。
 - **ネイティブコード**は、関数ごとに Zig の関数として生成し、その入口アドレスを関数オブジェクトに置く。引数の個数が固定の関数には、引数を配列にせずレジスタで受け取る**高速入口**も生成する（同じファイル内の直接呼び出しと、インラインキャッシュから使う）。
@@ -489,7 +512,7 @@ pub const Entry = *const fn (th: *Thread, self: Value, args: [*]const Value, nar
 
 ### 6.3 多値
 
-- 主値と個数は戻り値、2番目以降の値は `th.mv[1..]` に置く（§6.2）。
+- 主値は戻り値、個数は `th.mv_count`、2番目以降の値は `th.mv[1..]` に置く（§6.2）。
 - `th.mv` は、次に多値を返す関数の呼び出しで上書きされる。**値を返した後に別の関数を呼ぶ処理**（`multiple-value-prog1`、`unwind-protect` の cleanup、`handler` の呼び出しなど）は、全値をスタックまたは `Transfer`（§6.4）に退避し、終わった後で復元する。
 - `multiple-value-prog1`：最初のフォームの全値を退避し、残りのフォームを評価した後で復元する。
 - `multiple-value-call`：各引数フォームの全値を順に連結して、関数に渡す。
@@ -523,8 +546,8 @@ pub const Transfer = struct {
 
 **方式（VM とネイティブで共通）**
 
-- 非局所脱出（`return-from`・`go`・`throw` で、脱出先が別のフレームにある場合）は、脱出先のエントリを決め、運ぶ全値をコピーした `Transfer` を `th.unwinds` に積み、**Zig のエラー `error.LispUnwind` を返して** Zig の関数を順に抜ける。
-- ネイティブコードの `block`・`tagbody`・`catch` は、エントリを積んだうえで、本体の呼び出しが `error.LispUnwind` を返したときに「`th.unwinds` の先頭の脱出先が自分か」を調べる。自分であれば `Transfer` を取り除いて値を受け取り、処理を続ける。自分でなければエラーをそのまま返す。
+- 非局所脱出（`return-from`・`go`・`throw` で、脱出先が別のフレームにある場合）は、脱出先のエントリを決め、運ぶ全値をコピーした `Transfer` を `th.unwinds` に積み、`th.fault = .unwind` として、**特別な値 `Value.unwind` を返して**関数を順に抜ける（§6.2）。
+- ネイティブコードの `block`・`tagbody`・`catch` は、エントリを積んだうえで、本体の呼び出しが `Value.unwind` を返したときに「`th.fault` が `.unwind` で、`th.unwinds` の先頭の脱出先が自分か」を調べる。自分であれば `Transfer` を取り除いて値を受け取り、処理を続ける。自分でなければ `Value.unwind` をそのまま返す。
 
 **`unwind-protect`**（レビュー #2・#3）
 
@@ -533,7 +556,7 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 | 抜け方 | 手順 |
 |---|---|
 | 正常に終わった | 保護されたフォームの**全値**を退避する → cleanup を実行する → 全値を復元して返す |
-| 別のフレームへの非局所脱出（`error.LispUnwind`） | cleanup を実行する（`th.unwinds` の先頭の `Transfer` はそのまま残す）→ `error.LispUnwind` を返し直して脱出を続ける |
+| 別のフレームへの非局所脱出（`Value.unwind` が返った） | cleanup を実行する（`th.unwinds` の先頭の `Transfer` と `th.fault` は退避して残す）→ `Value.unwind` を返し直して脱出を続ける |
 | 同じ関数の中のジャンプ（`return-from`・`go`）で、cleanup の範囲を横切る | ジャンプの前に、横切るすべての cleanup を内側から順に実行し、横切る動的束縛を解除する（下記） |
 
 - **cleanup を実行する時点の動的環境**（agy #2。CLHS 5.2「Transfer of Control to an Exit Point」）：cleanup は、その `unwind-protect` に入った時点の動的環境で実行する。このため、どの抜け方の場合も、cleanup を実行する**直前に**、保護されたフォームの内側で作られた動的束縛・handler・restart・catch タグを、その `unwind_protect` エントリに記録した深さ（`binding_depth`・`handler_depth`・`restart_depth`）まで戻す。`unwind-protect` より外側（脱出先との間）の束縛などは、cleanup の実行中も有効のまま残す。脱出が複数の `unwind-protect` を通る場合は、内側から順に「深さを戻す → cleanup を実行する」を繰り返す。
@@ -548,7 +571,7 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 
 - ネイティブでは通常の分岐、VM ではジャンプにする。エラーを返す費用はかからない。
 - ただし、ジャンプが `unwind-protect`・動的束縛・`handler-bind`・`restart-bind` の範囲を**横切る**場合は、コンパイラがその場所に、横切る cleanup の呼び出し、束縛の解除（`UNBIND_TO`）、handler・restart のスタックの深さの復元を生成する。これらの範囲を横切らないジャンプだけが、単純な分岐になる。
-- VM の実行ループは、`native_frame` 境界を越える脱出を受け取った場合に `error.LispUnwind` を返して抜ける。この仕組みで、VM → ネイティブ → VM のように入れ子になった呼び出しの間でも、脱出と cleanup が正しく行われる。
+- VM の実行ループは、`native_frame` 境界を越える脱出を受け取った場合に `Value.unwind` を返して抜ける。この仕組みで、VM → ネイティブ → VM のように入れ子になった呼び出しの間でも、脱出と cleanup が正しく行われる。
 - 脱出先が見つからない場合（block の動的エクステントが終わっている場合など）は `control-error` を通知する。
 
 **動的環境を戻す方式の統一**（agy #4）
@@ -560,7 +583,7 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 - この方式なら、Zig のエラーで伝える方式と、`setjmp`/`longjmp` に相当する方式（下記の比較）のどちらを採用しても、解除の手順は変わらない。
 - Zig の `defer` / `errdefer` は、Lisp の動的環境とは関係のない、ランタイム内部の資源（一時的に確保した Zig のメモリなど）の後始末にだけ使う。`setjmp`/`longjmp` に相当する方式を採用する場合は、それらの資源も制御スタックに登録して解放する。
 
-**エラーを返す方式を選んだ理由**：`setjmp`/`longjmp` を使わずに、Zig の関数の後始末（`errdefer`）を確実に実行できる。通常の実行では、エラーの検査は分岐1つで済む。※分岐の費用は小さいと推測されますが、計測して確認します。
+**戻り値で伝える方式を選んだ理由**：`setjmp`/`longjmp` を使わずに、すべての関数を通常の戻りで抜けるため、Zig のランタイムの後始末が確実に実行される。通常の実行では、検査は戻り値（レジスタ）と定数の比較1回と分岐1つで済む。※分岐の費用は小さいと推測されますが、計測して確認します。
 
 **他の処理系の方式と、計測による確認（R3）**
 
@@ -568,11 +591,11 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 |---|---|---|
 | ECL | `setjmp`/`longjmp`（バイトコードと C の両方） | `src/h/stacks.h` 282〜296行目 `ecl_frs_push`、`src/c/stacks.d` 759〜771行目 `ecl_unwind` |
 | Clasp | 通常は `setjmp`/`longjmp`。協調しない C++ のフレームがあるときだけ C++ の例外。C++ の例外は「setjmp/longjmp の数千倍遅い」と記録されている | `src/lisp/kernel/cleavir/unwind-notes.md` 10〜16、46、88行目 |
-| Zilisp | Zig のエラーで1段ずつ返す（例外表を使わない。呼び出しのたびに分岐が1つ入る） | 本節 |
+| Zilisp | 特別な戻り値 `Value.unwind` で1段ずつ返す（例外表を使わない。呼び出しのたびに比較と分岐が1つ入る） | 本節 |
 
 Zilisp の方式は、脱出しない通常の呼び出しにも分岐1つの費用がかかり、脱出するときは途中のフレーム数に比例した費用がかかる。`setjmp`/`longjmp` は、脱出先を作る時点（block・catch・unwind-protect に入るとき）に費用がかかる。**Phase 12 で、次の2つを同じベンチマークで比較し、速い方を採用する。**
 
-1. Zig のエラーで伝える方式（本節の方式）
+1. 特別な戻り値で伝える方式（本節の方式）
 2. `setjmp`/`longjmp` に相当する方式（脱出先でレジスタとスタック位置を保存し、直接戻る。Zig の後始末を飛ばすため、ランタイム側の `errdefer` に頼る処理を制御スタックに登録する必要がある）
 
 ### 6.5 動的束縛
@@ -583,18 +606,25 @@ Zilisp の方式は、脱出しない通常の呼び出しにも分岐1つの費
 - `progv` で値の数がシンボルの数より少ない場合、残りのシンボルは束縛されるが値を持たない（未束縛になる）。束縛を解除すると旧値に戻る（CLHS `progv`）。
 - スレッドを導入するときは、シンボルに TLS の添字を持たせる方式に拡張する。
 
-### 6.6 Zig のエラー集合
+### 6.6 `Value.unwind` の理由と、Zig のエラー集合
 
 ```zig
-pub const Error = error{
-    LispUnwind,   // 非局所脱出の途中（異常ではない）
-    OutOfMemory,  // 確保の失敗。可能であれば storage-condition に変換する
-    VmInternal,   // 処理系の内部故障（バグ）。Lisp の condition にはしない
+// 戻り値が Value.unwind のときの理由（th.fault）
+pub const Fault = enum(u8) {
+    none,
+    unwind,         // 非局所脱出の途中（異常ではない。th.unwinds の先頭が脱出先）
+    out_of_memory,  // 確保の失敗。可能であれば storage-condition に変換する
+    internal,       // 処理系の内部故障（バグ）。Lisp の condition にはしない
 };
+
+// ランタイムの内部（Zig の関数どうし）でだけ使うエラー集合
+pub const Error = error{ LispUnwind, OutOfMemory, VmInternal };
 ```
 
-- Zig のプリミティブで CL のエラーが起きた場合は、`return th.signalError(class, initargs)` を呼ぶ。handler を巻き戻さずに実行し（§9）、最終的に必ずエラーを返す。
-- `VmInternal` は、診断情報を出力して処理系を停止する。
+- 関数の入口（§6.2 の汎用の入口・高速入口）を通る値の受け渡しでは、Zig のエラーは使わず、`Value.unwind` と `th.fault` で表す。
+- ランタイムの内部で、速さが問題にならない処理（ロード、コンパイラ、FFI の準備など）は、Zig のエラー集合 `Error!T` を使ってよい。入口の境界で `Value.unwind` と `th.fault` に変換する（`fault` の値はエラーの種類に対応させる）。
+- Zig のプリミティブで CL のエラーが起きた場合は、`return th.signalError(class, initargs)` を呼ぶ。handler を巻き戻さずに実行し（§9）、最終的に必ず `Value.unwind` を返す。
+- `th.fault = .internal` は、診断情報を出力して処理系を停止する。
 
 ### 6.7 スタックの大きさ
 
@@ -676,20 +706,23 @@ pub const VmFrame = struct {
 ```zig
 // (defun add1 (x) (1+ x)) から生成するコードのイメージ（設計例）
 // 汎用の入口（§6.2 の Entry）と、単値を返す高速入口
-fn lisp_add1(th: *Thread, self: Value, args: [*]const Value, nargs: u32) Error!Ret {
-    if (nargs != 1) return th.argCountError(self, nargs, 1, 1);
-    return Ret.one(try add1_fast(th, args[0]));     // count = 1
+fn lisp_add1(th: *Thread, self: Value, args: [*]const Value, nargs: u32) callconv(.c) Value {
+    if (nargs != 1) return th.argCountError(self, nargs, 1, 1);   // Value.unwind を返す
+    const r = add1_fast(th, args[0]);
+    if (r == Value.unwind) return r;
+    th.mv_count = 1;
+    return r;
 }
-fn add1_fast(th: *Thread, x: Value) Error!Value {
+fn add1_fast(th: *Thread, x: Value) Value {
     if (x.isFixnum()) {
         const r = @addWithOverflow(x.raw(), Value.fixnumOne().raw());
         if (r[1] == 0) return Value.fromRaw(r[0]);
     }
-    return rt.genericAdd(th, x, Value.fromFixnum(1));  // bignum・浮動小数・型エラー
+    return rt.genericAdd(th, x, Value.fromFixnum(1));  // bignum・浮動小数・型エラー（エラーなら Value.unwind）
 }
 ```
 
-高速入口（`add1_fast`）は、単値を返すことが分かっている関数にだけ生成し、`Error!Value` を返す。汎用の入口は常に `Error!Ret` を返す（レビュー #24）。
+高速入口（`add1_fast`）は、単値を返すことが分かっている関数にだけ生成し、`th.mv_count` を書かない（汎用の入口がまとめて書く）。どちらの入口も、エラーは `Value.unwind` で表す（§6.2、レビュー #24）。
 
 ### 7A.3 速度のための変換
 

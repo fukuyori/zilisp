@@ -1,0 +1,16 @@
+.{
+    .name = .zilisp,
+    // src/version.zig の version と一致させる（docs/version-update-checklist.md）
+    .version = "0.0.1",
+    // Zig が生成した識別子。パッケージの同一性を表すので変更しない。
+    .fingerprint = 0xedb879257924792a, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "tests",
+        "LICENSE",
+    },
+}

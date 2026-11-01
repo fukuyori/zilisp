@@ -1,0 +1,9013 @@
+# 教材サンプルの互換性マニフェスト（基本設計 §21）
+# scripts/curriculum-inventory.ps1 が生成した初期版。category と status は手作業で更新する。
+source_repo = "https://github.com/fukuyori/CommonLispBasicMaster"
+source_commit = "639544c8133fdc51ffe4c2184aad785345128419"
+reference_implementation = "SBCL"
+
+[[cases]]
+id = "chapters/03-Level 1.md#L227"
+source = "chapters/03-Level 1.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/03-Level 1.md#L392"
+source = "chapters/03-Level 1.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/03-Level 1.md#L404"
+source = "chapters/03-Level 1.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L18"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L62"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L71"
+source = "chapters/04-Level 2.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L78"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L85"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L115"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L159"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L182"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L222"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L266"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L280"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L294"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L304"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L322"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L365"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L435"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L444"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L471"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L500"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L507"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L515"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L527"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L537"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L561"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/04-Level 2.md#L577"
+source = "chapters/04-Level 2.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L30"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L48"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L67"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L85"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L135"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L142"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L160"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L178"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L192"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L209"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L228"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L245"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L262"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L273"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L294"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L308"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L318"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L330"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L347"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L357"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L384"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L399"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L413"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L426"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L439"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L475"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L494"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L502"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L535"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L552"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L564"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L588"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L602"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L633"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L652"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L683"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L693"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L708"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L721"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L736"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L766"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L780"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L791"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L800"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L821"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L830"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L839"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L860"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L871"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L882"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L893"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L908"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L916"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L925"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L941"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L962"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L972"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L994"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/05-Level 3.md#L1034"
+source = "chapters/05-Level 3.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L69"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L76"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L103"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L134"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L163"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L174"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L193"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L200"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L211"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L222"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L249"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L263"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L286"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L304"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L317"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L345"
+source = "chapters/06-Level 4.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L367"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L372"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L398"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L413"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L441"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L448"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L468"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L474"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L497"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L517"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L529"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L567"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L581"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L595"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L611"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L649"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L656"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L672"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L684"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L698"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L705"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L727"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L743"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L762"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/06-Level 4.md#L774"
+source = "chapters/06-Level 4.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L19"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L32"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L48"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L65"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L75"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L92"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L107"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L126"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L142"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L158"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L178"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L199"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L221"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L235"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L258"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L270"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L284"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L325"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L342"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L373"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L388"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L431"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L456"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L471"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L484"
+source = "chapters/08-Level 5.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L501"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L528"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L547"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L609"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L629"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L642"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L655"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L680"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L702"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/08-Level 5.md#L730"
+source = "chapters/08-Level 5.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L46"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L54"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L65"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L77"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L109"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L115"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L124"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L138"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L154"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L164"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L180"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L190"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L221"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L237"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L246"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L263"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L273"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L284"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L294"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L311"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L338"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L417"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L429"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L442"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L456"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L485"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L498"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L510"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L534"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L548"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L564"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L579"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L589"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L597"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L628"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L640"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L652"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L675"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L722"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L728"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L746"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L765"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L782"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L796"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L803"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L820"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L827"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/09-Level 6.md#L873"
+source = "chapters/09-Level 6.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L37"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L61"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L78"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L102"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L116"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L129"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L157"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L172"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L193"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L212"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L227"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L248"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L270"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L280"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L303"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L315"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L326"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L337"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L344"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L374"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L391"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L404"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L417"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L427"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L437"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L451"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L483"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L503"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L513"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L540"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L561"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L582"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L597"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L617"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L624"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L641"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L653"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L683"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/10-Level 7.md#L717"
+source = "chapters/10-Level 7.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L31"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L77"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L91"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L109"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L124"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L137"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L152"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L169"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L191"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L207"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L218"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L235"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L255"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L270"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L288"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L301"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L317"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L344"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L362"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L382"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L400"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L417"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L449"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L462"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L473"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L502"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L510"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L543"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L562"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L579"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L610"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L617"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L627"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L634"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L646"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L654"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L672"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L679"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L697"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L708"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L726"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L736"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/11-Level 8.md#L779"
+source = "chapters/11-Level 8.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L49"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L65"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L82"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L98"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L130"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L142"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L172"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L192"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L204"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L212"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L224"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L233"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L243"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L263"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L279"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L291"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L301"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L350"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L368"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L393"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L410"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L421"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L440"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L469"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L494"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L519"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L538"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L580"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L594"
+source = "chapters/13-Level 9.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L604"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L625"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L642"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L651"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L667"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L684"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L706"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L728"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L741"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L758"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L790"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L801"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L817"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L847"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L858"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L864"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L888"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L912"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L936"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L966"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L1033"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/13-Level 9.md#L1044"
+source = "chapters/13-Level 9.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L9"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L19"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L34"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L51"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L88"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L117"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L146"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L164"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L180"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L190"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L206"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L222"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L237"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L266"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L280"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L292"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L310"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L338"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L383"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L401"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L421"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L439"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L475"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L494"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L509"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L529"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L573"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L619"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L647"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L654"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L672"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L682"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L700"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L710"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L726"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L736"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L753"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L760"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L774"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L781"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/14-Level 10.md#L824"
+source = "chapters/14-Level 10.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L18"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L143"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L309"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L405"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L452"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L474"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L492"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L507"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L519"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L705"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L734"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L757"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L772"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L800"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L807"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L821"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L828"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L842"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L849"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L863"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L870"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L884"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L891"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L905"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/15-Level 11.md#L912"
+source = "chapters/15-Level 11.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L29"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L48"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L66"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L86"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L100"
+source = "chapters/16-Level 12.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L126"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L151"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L168"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L179"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L195"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L222"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L251"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L267"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L287"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L304"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L325"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L345"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L359"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L380"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L397"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L411"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L427"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L459"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L479"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L498"
+source = "chapters/16-Level 12.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L516"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L545"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L576"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L624"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L647"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L689"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L696"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L710"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L717"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L733"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L740"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L754"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L761"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L789"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L796"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L811"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/16-Level 12.md#L818"
+source = "chapters/16-Level 12.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L36"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L54"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L72"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L91"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L103"
+source = "chapters/18-Level 13.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L114"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L138"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L150"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L174"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L190"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L196"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L211"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L262"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L284"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L310"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L352"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L375"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L399"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L437"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L455"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L477"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L510"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L545"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L585"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L592"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L609"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L616"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L633"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L640"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L666"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L672"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L704"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/18-Level 13.md#L732"
+source = "chapters/18-Level 13.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L19"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L51"
+source = "chapters/19-Level 14.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L64"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:MY-PACKAGE"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L79"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["DEFPACKAGE:MY-APP", "IN-PACKAGE:MY-APP", "MY-APP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L111"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L133"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L148"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L168"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L190"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L221"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L244"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L258"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L276"
+source = "chapters/19-Level 14.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L336"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L356"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L407"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L421"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L435"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L473"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L490"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L500"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L525"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L546"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L560"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L572"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L635"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L648"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L691"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L701"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L721"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L735"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L763"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L778"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L792"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L810"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L835"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L853"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L862"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L883"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L904"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/19-Level 14.md#L925"
+source = "chapters/19-Level 14.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L30"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L42"
+source = "chapters/20-Level 15.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["#<PACKAGE \"COMMON-LISP-USER\">"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L61"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-UTILS", "IN-PACKAGE:MY-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L97"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-APP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L113"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:MY-APP", "IN-PACKAGE:CL-USER"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L138"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["DEFPACKAGE:MY-LIB", "IN-PACKAGE:MY-LIB", "IN-PACKAGE:CL-USER", "MY-LIB"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L169"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L180"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["MY-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L210"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-PROJECT.UTILS", "DEFPACKAGE:MY-PROJECT.CORE", "DEFPACKAGE:MY-PROJECT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L235"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:MY-PROJECT.UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L254"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:MY-PROJECT.CORE"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L263"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:MY-PROJECT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L290"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L323"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L333"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L344"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L368"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L386"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L398"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L414"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L431"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L439"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L456"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L486"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L520"
+source = "chapters/20-Level 15.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["QUICKLISP-QUICKSTART"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L530"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L543"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L585"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L613"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L630"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-APP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L649"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L664"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L676"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L690"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L700"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:STRING-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L711"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:STRING-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L747"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-APP.CONFIG", "IN-PACKAGE:MY-APP.CONFIG"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L791"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["MATH-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L798"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MATH-UTILS", "IN-PACKAGE:MATH-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L822"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:MY-CALC", "IN-PACKAGE:MY-CALC"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L850"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L870"
+source = "chapters/20-Level 15.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-PPCRE"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/20-Level 15.md#L890"
+source = "chapters/20-Level 15.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:SECURE-UTILS", "IN-PACKAGE:SECURE-UTILS"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L41"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L59"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L82"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L103"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L123"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L142"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L159"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L171"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L197"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L221"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L250"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L280"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L308"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L340"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L368"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L404"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L421"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L436"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L461"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L485"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L506"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L528"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L565"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L607"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L659"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L686"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L708"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L732"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/21-Level 16.md#L753"
+source = "chapters/21-Level 16.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L512"
+source = "chapters/23-Level 17.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L540"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L575"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L601"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L628"
+source = "chapters/23-Level 17.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L705"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L730"
+source = "chapters/23-Level 17.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L754"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L775"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L784"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L805"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L814"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L832"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L861"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/23-Level 17.md#L889"
+source = "chapters/23-Level 17.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L75"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L97"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L120"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L152"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L169"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L186"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L211"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L291"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L311"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L329"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L345"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L391"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L434"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L445"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L469"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L486"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L509"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L525"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L535"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L550"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L566"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L608"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L624"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L639"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L647"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L667"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L741"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L791"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L813"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L836"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L866"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L886"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L915"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L1002"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L1037"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L1057"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L1089"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/24-Level 18-A.md#L1112"
+source = "chapters/24-Level 18-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L77"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L89"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L102"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L120"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L142"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L162"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L181"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L215"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L233"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L383"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L399"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L422"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L460"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L488"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L506"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L537"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L630"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L665"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L750"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L784"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L850"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L874"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L885"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L955"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L985"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1008"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1049"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1123"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1148"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1173"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1202"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1249"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1279"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1315"
+source = "chapters/25-Level 18-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1391"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1411"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1443"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1475"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1541"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1558"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1633"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1653"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1682"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1738"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1773"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1791"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1838"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1857"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1907"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1918"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1929"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1941"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1953"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L1966"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2002"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2023"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2037"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2056"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2069"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2097"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2108"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2131"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/25-Level 18-B.md#L2148"
+source = "chapters/25-Level 18-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L83"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L99"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L112"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L121"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L134"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L149"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L166"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L179"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L207"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L226"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L259"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L273"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L296"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L303"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L310"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L335"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L345"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L363"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L382"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L407"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L427"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L444"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L451"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L458"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L478"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L495"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L516"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L535"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L564"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L578"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["YASON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L600"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L607"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L614"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L636"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L646"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L662"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L673"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-JSON"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L718"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["JONATHAN"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L749"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L837"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L854"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L892"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L936"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L958"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L982"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1000"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1009"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1023"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1036"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1070"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1081"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1102"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1113"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1136"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1157"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1205"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1219"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1297"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1303"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["HUNCHENTOOT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1315"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["HUNCHENTOOT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1329"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1348"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1369"
+source = "chapters/26-Level 18-C.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["HUNCHENTOOT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1407"
+source = "chapters/26-Level 18-C.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-CSV"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/26-Level 18-C.md#L1438"
+source = "chapters/26-Level 18-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L69"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L98"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L129"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L165"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L180"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L202"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L249"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L262"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L284"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L295"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L355"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L369"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L388"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L407"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L432"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L452"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L468"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L511"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L576"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L605"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L642"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L678"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L709"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L754"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L781"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["UIOP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L817"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L854"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L896"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L941"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L966"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1202"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1219"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1236"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1251"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1265"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1279"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1299"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1331"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1352"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1396"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1412"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1456"
+source = "chapters/27-Level 19.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1491"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1503"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1523"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1545"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1574"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1597"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1614"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/27-Level 19.md#L1636"
+source = "chapters/27-Level 19.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L173"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L290"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L320"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L363"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L456"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L494"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L511"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L560"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L585"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L613"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L665"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L716"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L724"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L774"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L848"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L903"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1200"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1233"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1253"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1306"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1332"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1389"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1418"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1498"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/29-Level 20-A.md#L1570"
+source = "chapters/29-Level 20-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L114"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L121"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L154"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L176"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L209"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L258"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L319"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L330"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L369"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L400"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L616"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L656"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L680"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L729"
+source = "chapters/30-Level 20-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L803"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L837"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L853"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L1218"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L1292"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L1359"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L1421"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/30-Level 20-B.md#L1501"
+source = "chapters/30-Level 20-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["LTK"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L86"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L100"
+source = "chapters/31-Level 21-A.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L122"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L142"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L165"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L175"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L199"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L223"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L236"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L306"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L345"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L396"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L436"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L504"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L542"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L607"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L659"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L702"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L718"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L775"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L867"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L927"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L935"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L948"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L960"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L996"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1043"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1063"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1136"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1171"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1203"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1294"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/31-Level 21-A.md#L1308"
+source = "chapters/31-Level 21-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L84"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L108"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L225"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L236"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L336"
+source = "chapters/32-Level 21-B.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L349"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L369"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L388"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L398"
+source = "chapters/32-Level 21-B.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L409"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L456"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L495"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L523"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L537"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L595"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L649"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L673"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L700"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L1394"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L1486"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L1562"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L1629"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/32-Level 21-B.md#L1645"
+source = "chapters/32-Level 21-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/33-Level 21-C.md#L663"
+source = "chapters/33-Level 21-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/33-Level 21-C.md#L671"
+source = "chapters/33-Level 21-C.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L155"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L172"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L182"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L217"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:HTTP-CLIENT", "IN-PACKAGE:HTTP-CLIENT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L231"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L248"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L263"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L300"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L343"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L397"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L425"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L453"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L500"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L535"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L552"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L597"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L637"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L649"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L695"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L736"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L756"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L782"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L917"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L955"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1016"
+source = "chapters/35-Level 22.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1028"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1082"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEFPACKAGE:WEATHER-APP", "IN-PACKAGE:WEATHER-APP", "DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1301"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1342"
+source = "chapters/35-Level 22.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1366"
+source = "chapters/35-Level 22.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1392"
+source = "chapters/35-Level 22.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1429"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1469"
+source = "chapters/35-Level 22.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["QURI"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/35-Level 22.md#L1510"
+source = "chapters/35-Level 22.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["DEX"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L224"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L257"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L299"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L320"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L358"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L387"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L412"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L439"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L460"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L477"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L489"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L512"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L570"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L594"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L615"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L632"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L693"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L715"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L735"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L822"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L837"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L889"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L916"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L938"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1010"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1016"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1038"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1092"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1124"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1138"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1176"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1203"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1241"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1314"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1364"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1379"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1446"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1483"
+source = "chapters/36-Level 23-A.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/36-Level 23-A.md#L1502"
+source = "chapters/36-Level 23-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L110"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L144"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L176"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L206"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L230"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L263"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L291"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L315"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L344"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L356"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L375"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L386"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L411"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L424"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L440"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L499"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L510"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L541"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L553"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L574"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L593"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L620"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L660"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L695"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L746"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L808"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L828"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L970"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L985"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L994"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1022"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1042"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1059"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1078"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1101"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/37-Level 23-B.md#L1172"
+source = "chapters/37-Level 23-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L82"
+source = "chapters/38-Level 24-A.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L110"
+source = "chapters/38-Level 24-A.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L157"
+source = "chapters/38-Level 24-A.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["TODO-APP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L179"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["IN-PACKAGE:TODO-APP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L203"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L238"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L260"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L297"
+source = "chapters/38-Level 24-A.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L326"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L392"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L434"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L477"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L499"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L520"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L544"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L560"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L970"
+source = "chapters/38-Level 24-A.md"
+candidate = "D"
+category = "?"
+read_status = "reader-error"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/38-Level 24-A.md#L980"
+source = "chapters/38-Level 24-A.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L106"
+source = "chapters/39-Level 24-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L138"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L170"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L210"
+source = "chapters/39-Level 24-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["IRONCLAD"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L232"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L254"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L327"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L360"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L416"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L452"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L516"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L532"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L649"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L685"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L757"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L786"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L847"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L893"
+source = "chapters/39-Level 24-B.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L969"
+source = "chapters/39-Level 24-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["HUNCHENTOOT"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/39-Level 24-B.md#L1002"
+source = "chapters/39-Level 24-B.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["QL"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L97"
+source = "chapters/42-Level 26.md"
+candidate = "U"
+category = "?"
+read_status = "package-ref"
+packages = ["QUICKLISP-QUICKSTART"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L118"
+source = "chapters/42-Level 26.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["ASDF"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L132"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["SSP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L140"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "curriculum-package"
+packages = ["SSP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L202"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+packages = ["DEFPACKAGE:SSP", "IN-PACKAGE:SSP"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L224"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L239"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L255"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L287"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L324"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L358"
+source = "chapters/42-Level 26.md"
+candidate = "C"
+category = "?"
+read_status = "package-ref"
+packages = ["CL-PPCRE"]
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L413"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L451"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L481"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L529"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L566"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L606"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L635"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L708"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L716"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L725"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L733"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L740"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L749"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L823"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"
+
+[[cases]]
+id = "chapters/42-Level 26.md#L839"
+source = "chapters/42-Level 26.md"
+candidate = "A"
+category = "?"
+read_status = "ok"
+status = "unreviewed"

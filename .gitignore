@@ -16,3 +16,6 @@ dist/
 *.swp
 Thumbs.db
 .DS_Store
+
+# Local work area (curriculum clone, temporary outputs)
+.work/

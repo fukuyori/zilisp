@@ -47,4 +47,44 @@ pub fn build(b: *std.Build) void {
     run_bench.addPassthruArgs();
     const bench_step = b.step("bench", "Run benchmarks (ReleaseFast)");
     bench_step.dependOn(&run_bench.step);
+
+    // 言語試験：tests/language/*.lisp を zilisp で実行し、*.expected と比べる
+    const lang_test_exe = b.addExecutable(.{
+        .name = "zilisp-lang-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/lang_test/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_lang_test = b.addRunArtifact(lang_test_exe);
+    run_lang_test.addArtifactArg(exe);
+    run_lang_test.addArg("tests/language");
+    run_lang_test.has_side_effects = true;
+    const lang_test_step = b.step("lang-test", "Run language tests (tests/language)");
+    lang_test_step.dependOn(&run_lang_test.step);
+
+    // 教材のコードブロックの抽出（詳細設計 §12）：zig build extract-samples -- <教材> <出力先>
+    const extract_exe = b.addExecutable(.{
+        .name = "zilisp-extract-samples",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/extract_samples/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_extract = b.addRunArtifact(extract_exe);
+    run_extract.addPassthruArgs();
+    run_extract.has_side_effects = true;
+    const extract_step = b.step("extract-samples", "Extract Lisp code blocks from the curriculum Markdown");
+    extract_step.dependOn(&run_extract.step);
+
+    // 道具の単体テストも test に含める
+    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig" }) |path| {
+        const t = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path(path),
+            .target = b.graph.host,
+        }) });
+        test_step.dependOn(&b.addRunArtifact(t).step);
+    }
 }

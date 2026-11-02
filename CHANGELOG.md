@@ -6,6 +6,13 @@
 
 ### Added
 - README in English and Japanese; the changelog is split into English (`CHANGELOG.md`) and Japanese (`CHANGELOG.ja.md`)
+- Phase 20: the numeric tower. Bignums (limbs stored inside the object; values that fit a fixnum are always fixnums), ratios
+  (always reduced), mixing with floats (exact comparisons, correctly rounded conversions), `floor`, `ceiling`, `truncate`, `round`
+  (two values), `mod`, `rem`, `gcd`, `lcm`, `numerator`, `denominator`, `rational`, `float`, `expt`, `sqrt`, `isqrt`, `exp`, `log`,
+  trigonometric functions, `logand`, `logior`, `logxor`, `lognot`, `ash`, `integer-length`, `logcount` and the type predicates. The
+  reader reads large integers and ratios. Complex numbers are not implemented (explicit errors). Tests: 192 cases compared with
+  SBCL 2.6.7 (also under GC stress), language tests `numbers.lisp` (and a gc-stress version) and `number-cases.lisp` (matches
+  natively too)
 - Phase 19: `tagbody` and `go` (a jump within the same function, otherwise a run-time exit; the entry stays after landing; VM
   instructions `TAGBODY_ENTER` and `GO_NL`; a labeled switch in the native backend), `psetq`, `dolist`, `dotimes`, `do`, `do*`, `loop`
   (our own implementation; the main clauses), `mapcar`, `mapc`, `mapcan`, `nconc`, `reduce`, `evenp`, `oddp`, `zerop`, `plusp`, `minusp`,

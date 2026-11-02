@@ -47,9 +47,11 @@ Implemented after 0.2.0 (in `main`, not yet released):
 - `mapcar`, `mapc`, `mapcan`, `nconc`, `reduce`, `reverse`, `nreverse`, `copy-list`, `last`, `max`, `min`,
   `evenp`, `oddp`, `mod`, `rem`, `string=`, `string-upcase`, `princ`, and a minimal `format`
   (`~A ~S ~D ~% ~& ~~` to `T` or `NIL`)
+- Bignums and ratios, exact comparisons with floats, `floor`/`ceiling`/`truncate`/`round`, `gcd`, `lcm`,
+  `expt`, `sqrt`, `isqrt`, `exp`, `log`, trigonometric functions and bit operations (`logand`, `ash`, ...)
 
 Not yet implemented (planned for later releases): most sequence functions (`find`, `remove-if`,
-`sort`, `subseq`, ...), the full `format`, bignums and ratios, streams and files, packages
+`sort`, `subseq`, ...), the full `format`, complex numbers, streams and files, packages
 (`defpackage`, `in-package`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
 
 Error messages are currently written in Japanese.

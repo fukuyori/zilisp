@@ -1,8 +1,6 @@
 //! Reader が読んだものから Lisp の値（Value）を作る Builder（詳細設計 §5、§8）。
 //!
-//! Phase 05 の制限（明示的なエラーにする。黙って別の値を返さない：基本設計 §3.1）
-//!   - fixnum の範囲（±2^61）を超える整数：bignum は Phase 20 で実装
-//!   - 比：有理数は Phase 20 で実装
+//! 整数は fixnum の範囲を超えれば bignum に、比は約分して ratio（分母が 1 なら整数）にする（Phase 20）。
 
 const std = @import("std");
 const reader = @import("reader.zig");
@@ -26,29 +24,78 @@ pub const ValueBuilder = struct {
     }
 
     pub fn integer(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, negative: bool, digits: []const u8, radix: u8) Error!Value {
-        _ = b;
+        _ = diag;
+        _ = loc;
         var acc: i64 = 0;
+        var small = true;
         for (digits) |c| {
-            const d: i64 = switch (c) {
-                '0'...'9' => c - '0',
-                'a'...'z' => c - 'a' + 10,
-                'A'...'Z' => c - 'A' + 10,
-                else => unreachable,
-            };
             const m = @mulWithOverflow(acc, @as(i64, radix));
-            if (m[1] != 0) return fail(diag, loc, "fixnum の範囲を超える整数は未実装です（bignum は Phase 20 で実装予定）");
-            const s = @addWithOverflow(m[0], d);
-            if (s[1] != 0) return fail(diag, loc, "fixnum の範囲を超える整数は未実装です（bignum は Phase 20 で実装予定）");
+            const s = @addWithOverflow(m[0], digitValue(c));
+            if (m[1] != 0 or s[1] != 0) {
+                small = false;
+                break;
+            }
             acc = s[0];
         }
-        const v = if (negative) -acc else acc;
-        if (!Value.fixnumFits(v)) return fail(diag, loc, "fixnum の範囲を超える整数は未実装です（bignum は Phase 20 で実装予定）");
-        return Value.fromFixnum(v);
+        if (small) {
+            const v = if (negative) -acc else acc;
+            if (Value.fixnumFits(v)) return Value.fromFixnum(v);
+        }
+        var m = try std.math.big.int.Managed.init(b.rt.gpa);
+        defer m.deinit();
+        m.setString(radix, digits) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => unreachable, // 数字は number.parse が確かめている
+        };
+        if (negative) m.negate();
+        return b.rt.makeInteger(m.toConst());
     }
 
+    fn digitValue(c: u8) i64 {
+        return switch (c) {
+            '0'...'9' => c - '0',
+            'a'...'z' => c - 'a' + 10,
+            'A'...'Z' => c - 'A' + 10,
+            else => unreachable,
+        };
+    }
+
+    /// 比：約分して、分母が 1 なら整数にする。分母が 0 なら division-by-zero（SBCL 2.6.7 は reader-error）
     pub fn ratio(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, negative: bool, num: []const u8, den: []const u8, radix: u8) Error!Value {
-        _ = .{ b, negative, num, den, radix };
-        return fail(diag, loc, "比は未実装です（有理数は Phase 20 で実装予定）");
+        const big = std.math.big.int;
+        const gpa = b.rt.gpa;
+        var n = try big.Managed.init(gpa);
+        defer n.deinit();
+        var d = try big.Managed.init(gpa);
+        defer d.deinit();
+        n.setString(radix, num) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => unreachable,
+        };
+        d.setString(radix, den) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => unreachable,
+        };
+        if (d.eqlZero()) return fail(diag, loc, "比の分母が 0 です");
+        if (negative) n.negate();
+        var g = try big.Managed.init(gpa);
+        defer g.deinit();
+        try g.gcd(&n, &d);
+        var q = try big.Managed.init(gpa);
+        defer q.deinit();
+        var r = try big.Managed.init(gpa);
+        defer r.deinit();
+        try q.divTrunc(&r, &n, &g);
+        try n.copy(q.toConst());
+        try q.divTrunc(&r, &d, &g);
+        try d.copy(q.toConst());
+        const nv = try b.rt.makeInteger(n.toConst());
+        if (d.toConst().orderAgainstScalar(1) == .eq) return nv;
+        // 分子の値（bignum なら確保したもの）は、分母の確保の間、この関数のスタックにあるので GC から守られる
+        const dv = try b.rt.makeInteger(d.toConst());
+        const v = try b.rt.makeRatioRaw(nv, dv);
+        std.mem.doNotOptimizeAway(nv);
+        return v;
     }
 
     pub fn float(b: *ValueBuilder, loc: SourceLoc, value: reader.number.Float) Error!Value {

@@ -36,7 +36,18 @@ fn mix(x: u64) u64 {
 }
 
 fn hashEql(v: Value) u64 {
-    if (v.isOther() and Runtime.kindOf(v) == .double_float) return mix(@bitCast(Runtime.doubleValue(v)));
+    if (v.isOther()) switch (Runtime.kindOf(v).?) {
+        .double_float => return mix(@bitCast(Runtime.doubleValue(v))),
+        // bignum・比は値からハッシュを計算する（eql で等しいものは同じ値。Phase 20）
+        .bignum => {
+            const b = Runtime.bignumPtr(v);
+            var h: u64 = @intFromBool(b.positive());
+            for (b.limbs()) |l| h = mix(h ^ l);
+            return h;
+        },
+        .ratio => return mix(hashEql(Runtime.ratioPtr(v).numerator) *% 31 +% hashEql(Runtime.ratioPtr(v).denominator)),
+        else => {},
+    };
     return mix(v.raw());
 }
 

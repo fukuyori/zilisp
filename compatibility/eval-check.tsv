@@ -269,7 +269,7 @@ seq	id	outcome	detail
 00277	chapters/11-Level 8.md#L510	match	
 00278	chapters/11-Level 8.md#L543	zilisp-error	未実装の関数：REMOVE-IF-NOT
 00279	chapters/11-Level 8.md#L562	match	
-00280	chapters/11-Level 8.md#L579	zilisp-error	未実装の関数：FLOAT
+00280	chapters/11-Level 8.md#L579	match	
 00281	chapters/11-Level 8.md#L610	match	
 00282	chapters/11-Level 8.md#L617	both-error	
 00283	chapters/11-Level 8.md#L627	match	
@@ -399,42 +399,42 @@ seq	id	outcome	detail
 00408	chapters/15-Level 11.md#L891	zilisp-error	未実装の関数：DIGIT-CHAR-P
 00409	chapters/15-Level 11.md#L905	both-error	
 00410	chapters/15-Level 11.md#L912	zilisp-error	未実装の関数：REMOVE-DUPLICATES
-00411	chapters/16-Level 12.md#L29	zilisp-error	未実装の関数：EXPT
+00411	chapters/16-Level 12.md#L29	match	
 00412	chapters/16-Level 12.md#L48	both-error	
-00413	chapters/16-Level 12.md#L66	zilisp-error	未実装の関数：FLOATP
+00413	chapters/16-Level 12.md#L66	match	
 00414	chapters/16-Level 12.md#L86	match	
-00416	chapters/16-Level 12.md#L126	zilisp-error	未実装の関数：FLOAT
-00417	chapters/16-Level 12.md#L151	zilisp-error	未実装の関数：REALP
-00418	chapters/16-Level 12.md#L168	zilisp-error	未実装：割り切れない整数の割り算
-00419	chapters/16-Level 12.md#L179	zilisp-error	未実装の関数：FLOOR
+00416	chapters/16-Level 12.md#L126	zilisp-error	未実装の関数：RATIONALIZE
+00417	chapters/16-Level 12.md#L151	zilisp-error	READER-ERROR
+00418	chapters/16-Level 12.md#L168	match	
+00419	chapters/16-Level 12.md#L179	match	
 00420	chapters/16-Level 12.md#L195	both-error	
-00421	chapters/16-Level 12.md#L222	zilisp-error	未実装の関数：FLOOR
-00422	chapters/16-Level 12.md#L251	zilisp-error	未実装の関数：FLOOR
+00421	chapters/16-Level 12.md#L222	match	
+00422	chapters/16-Level 12.md#L251	match	
 00423	chapters/16-Level 12.md#L267	match	
 00424	chapters/16-Level 12.md#L287	match	
 00425	chapters/16-Level 12.md#L304	zilisp-error	READER-ERROR
-00426	chapters/16-Level 12.md#L325	zilisp-error	未実装の関数：EXPT
-00427	chapters/16-Level 12.md#L345	zilisp-error	未実装の関数：LOG
-00428	chapters/16-Level 12.md#L359	zilisp-error	未実装の関数：SIN
+00426	chapters/16-Level 12.md#L325	zilisp-error	未実装：結果が複素数になる演算は未実装です
+00427	chapters/16-Level 12.md#L345	match	
+00428	chapters/16-Level 12.md#L359	match	
 00429	chapters/16-Level 12.md#L380	zilisp-error	未実装の関数：SINH
 00430	chapters/16-Level 12.md#L397	zilisp-error	未実装の関数：RANDOM
 00431	chapters/16-Level 12.md#L411	zilisp-error	未実装の変数：*RANDOM-STATE*
 00432	chapters/16-Level 12.md#L427	zilisp-error	未実装の関数：RANDOM
-00433	chapters/16-Level 12.md#L459	zilisp-error	未実装の関数：LOGAND
+00433	chapters/16-Level 12.md#L459	match	
 00434	chapters/16-Level 12.md#L479	zilisp-error	未実装の関数：LOGBITP
 00436	chapters/16-Level 12.md#L516	zilisp-error	未実装："~B"
-00437	chapters/16-Level 12.md#L545	zilisp-error	未実装の関数：FLOAT
+00437	chapters/16-Level 12.md#L545	match	
 00438	chapters/16-Level 12.md#L576	zilisp-error	未実装："FOR"
-00439	chapters/16-Level 12.md#L624	zilisp-error	未実装の関数：EXPT
-00440	chapters/16-Level 12.md#L647	zilisp-error	未実装の関数：EXPT
+00439	chapters/16-Level 12.md#L624	match	
+00440	chapters/16-Level 12.md#L647	match	
 00441	chapters/16-Level 12.md#L689	both-error	
 00442	chapters/16-Level 12.md#L696	match	
 00443	chapters/16-Level 12.md#L710	both-error	
-00444	chapters/16-Level 12.md#L717	zilisp-error	未実装の関数：EXPT
+00444	chapters/16-Level 12.md#L717	match	
 00445	chapters/16-Level 12.md#L733	both-error	
-00446	chapters/16-Level 12.md#L740	zilisp-error	未実装の関数：GCD
+00446	chapters/16-Level 12.md#L740	match	
 00447	chapters/16-Level 12.md#L754	both-error	
-00448	chapters/16-Level 12.md#L761	zilisp-error	未実装の関数：SQRT
+00448	chapters/16-Level 12.md#L761	zilisp-error	未実装の関数：COMPLEX
 00449	chapters/16-Level 12.md#L789	both-error	
 00450	chapters/16-Level 12.md#L796	zilisp-error	未実装の関数：DIGIT-CHAR-P
 00451	chapters/16-Level 12.md#L811	both-error	

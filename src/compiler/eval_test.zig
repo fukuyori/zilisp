@@ -1016,6 +1016,244 @@ test "tagbody, go, iteration macros, loop and helpers like SBCL 2.6.7 (Phase 19)
     try expectClean(&e, "nonlocal go loop");
 }
 
+/// Phase 20：数の階層（bignum・比・浮動小数の混在、割り算、累乗、ビット演算。SBCL 2.6.7 の結果）
+const number_cases = [_][2][]const u8{
+    .{ "(* 2305843009213693951 2)", "4611686018427387902" },
+    .{ "(+ 2305843009213693951 1)", "2305843009213693952" },
+    .{ "123456789012345678901234567890", "123456789012345678901234567890" },
+    .{ "-123456789012345678901234567890", "-123456789012345678901234567890" },
+    .{ "(+ 123456789012345678901234567890 987654321098765432109876543210)", "1111111110111111111011111111100" },
+    .{ "(- 123456789012345678901234567890 123456789012345678901234567891)", "-1" },
+    .{ "(* 123456789012345678901234567890 -987654321098765432109876543210)", "-121932631137021795226185032733622923332237463801111263526900" },
+    .{ "(expt 2 100)", "1267650600228229401496703205376" },
+    .{ "(expt 2 64)", "18446744073709551616" },
+    .{ "(expt -3 41)", "-36472996377170786403" },
+    .{ "(expt 10 30)", "1000000000000000000000000000000" },
+    .{ "(let ((f 1)) (dotimes (i 30 f) (setq f (* f (1+ i)))))", "265252859812191058636308480000000" },
+    .{ "(= (expt 2 100) (* (expt 2 50) (expt 2 50)))", "T" },
+    .{ "(< (expt 2 100) (expt 2 101))", "T" },
+    .{ "(> (- (expt 2 100)) (- (expt 2 101)))", "T" },
+    .{ "(eql (expt 2 100) (expt 2 100))", "T" },
+    .{ "(equal (list (expt 2 70)) (list (expt 2 70)))", "T" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash (expt 2 80) h) 'big) (gethash (expt 2 80) h))", "BIG" },
+    .{ "(evenp (expt 2 100))", "T" },
+    .{ "(oddp (1+ (expt 2 100)))", "T" },
+    .{ "(abs (- (expt 2 100)))", "1267650600228229401496703205376" },
+    .{ "(max (expt 2 80) 3 (expt 2 70))", "1208925819614629174706176" },
+    .{ "(min (- (expt 2 80)) 3)", "-1208925819614629174706176" },
+    .{ "(zerop (- (expt 2 80) (expt 2 80)))", "T" },
+    .{ "(plusp (expt 2 80))", "T" },
+    .{ "(minusp (- (expt 2 80)))", "T" },
+    .{ "1/2", "1/2" },
+    .{ "-3/6", "-1/2" },
+    .{ "4/2", "2" },
+    .{ "(/ 1 3)", "1/3" },
+    .{ "(/ 6 4)", "3/2" },
+    .{ "(/ -6 4)", "-3/2" },
+    .{ "(/ 6 -4)", "-3/2" },
+    .{ "(/ 4 2)", "2" },
+    .{ "(/ 1 2 3)", "1/6" },
+    .{ "(/ 2)", "1/2" },
+    .{ "(/ 1/2)", "2" },
+    .{ "(+ 1/2 1/3)", "5/6" },
+    .{ "(- 1/2 1/2)", "0" },
+    .{ "(* 2/3 3/4)", "1/2" },
+    .{ "(/ 2/3 4/5)", "5/6" },
+    .{ "(+ 1/2 1)", "3/2" },
+    .{ "(+ 1/2 0.5)", "1.0" },
+    .{ "(+ 1/3 0.5d0)", "0.8333333333333333d0" },
+    .{ "(* 1/3 3)", "1" },
+    .{ "(< 1/3 0.34)", "T" },
+    .{ "(= 1/2 0.5)", "T" },
+    .{ "(= 1/3 0.33333334)", "NIL" },
+    .{ "(< 1/3 1/2)", "T" },
+    .{ "(numerator 6/8)", "3" },
+    .{ "(denominator 6/8)", "4" },
+    .{ "(numerator 5)", "5" },
+    .{ "(denominator 5)", "1" },
+    .{ "(numerator -3/4)", "-3" },
+    .{ "(eql 1/2 2/4)", "T" },
+    .{ "(eql 1/2 0.5)", "NIL" },
+    .{ "(/ (expt 2 100) (expt 2 98))", "4" },
+    .{ "(/ (expt 2 100) 3)", "1267650600228229401496703205376/3" },
+    .{ "(float 1/3)", "0.33333334" },
+    .{ "(float 1/3 1d0)", "0.3333333333333333d0" },
+    .{ "(float 2/3 1.0)", "0.6666667" },
+    .{ "(float (expt 2 100))", "1.2676506e30" },
+    .{ "(float (expt 2 100) 1d0)", "1.2676506002282294d30" },
+    .{ "(float (/ (expt 10 30) 3) 1d0)", "3.333333333333333d29" },
+    .{ "(float 5)", "5.0" },
+    .{ "(float 1.5d0)", "1.5d0" },
+    .{ "(rational 0.5)", "1/2" },
+    .{ "(rational 0.1)", "13421773/134217728" },
+    .{ "(rational 1.5d0)", "3/2" },
+    .{ "(rational -0.75)", "-3/4" },
+    .{ "(rational 1d20)", "100000000000000000000" },
+    .{ "(multiple-value-list (floor 7 2))", "(3 1)" },
+    .{ "(multiple-value-list (floor -7 2))", "(-4 1)" },
+    .{ "(multiple-value-list (floor 7 -2))", "(-4 -1)" },
+    .{ "(multiple-value-list (ceiling 7 2))", "(4 -1)" },
+    .{ "(multiple-value-list (ceiling -7 2))", "(-3 -1)" },
+    .{ "(multiple-value-list (truncate 7 2))", "(3 1)" },
+    .{ "(multiple-value-list (truncate -7 2))", "(-3 -1)" },
+    .{ "(multiple-value-list (round 7 2))", "(4 -1)" },
+    .{ "(multiple-value-list (round 5 2))", "(2 1)" },
+    .{ "(multiple-value-list (round -5 2))", "(-2 -1)" },
+    .{ "(multiple-value-list (round 7 -2))", "(-4 -1)" },
+    .{ "(multiple-value-list (floor 7.5))", "(7 0.5)" },
+    .{ "(multiple-value-list (floor -7.5))", "(-8 0.5)" },
+    .{ "(multiple-value-list (round 2.5))", "(2 0.5)" },
+    .{ "(multiple-value-list (round 3.5))", "(4 -0.5)" },
+    .{ "(multiple-value-list (round -2.5))", "(-2 -0.5)" },
+    .{ "(multiple-value-list (truncate 7.5 2))", "(3 1.5)" },
+    .{ "(multiple-value-list (floor 7.5d0 2))", "(3 1.5d0)" },
+    .{ "(multiple-value-list (floor 7/2))", "(3 1/2)" },
+    .{ "(multiple-value-list (floor 7/2 1/3))", "(10 1/6)" },
+    .{ "(multiple-value-list (ceiling -7/2))", "(-3 -1/2)" },
+    .{ "(multiple-value-list (round 7/2))", "(4 -1/2)" },
+    .{ "(multiple-value-list (floor (expt 2 100) 3))", "(422550200076076467165567735125 1)" },
+    .{ "(multiple-value-list (floor (- (expt 2 100)) 3))", "(-422550200076076467165567735126 2)" },
+    .{ "(multiple-value-list (truncate (expt 10 25) (expt 10 12)))", "(10000000000000 0)" },
+    .{ "(multiple-value-list (floor 1e20))", "(100000002004087734272 0.0)" },
+    .{ "(floor 5)", "5" },
+    .{ "(mod 7 3)", "1" },
+    .{ "(mod -7 3)", "2" },
+    .{ "(rem -7 3)", "-1" },
+    .{ "(mod 7.5 2)", "1.5" },
+    .{ "(mod -1/2 1/3)", "1/6" },
+    .{ "(mod (expt 2 100) 7)", "2" },
+    .{ "(rem (- (expt 2 100)) 7)", "-2" },
+    .{ "(gcd 12 18)", "6" },
+    .{ "(gcd)", "0" },
+    .{ "(gcd -12 18 30)", "6" },
+    .{ "(gcd (expt 2 100) (expt 6 50))", "1125899906842624" },
+    .{ "(lcm 4 6)", "12" },
+    .{ "(lcm)", "1" },
+    .{ "(lcm 4 -6 10)", "60" },
+    .{ "(lcm 0 5)", "0" },
+    .{ "(expt 2 -2)", "1/4" },
+    .{ "(expt 2/3 3)", "8/27" },
+    .{ "(expt 2/3 -2)", "9/4" },
+    .{ "(expt 0 0)", "1" },
+    .{ "(expt 0.0 0)", "1.0" },
+    .{ "(expt 2.0 3)", "8.0" },
+    .{ "(expt 2 0.5)", "1.4142135" },
+    .{ "(expt 4 1/2)", "2.0" },
+    .{ "(expt 2d0 0.5)", "1.4142135623730951d0" },
+    .{ "(expt 1.5 2)", "2.25" },
+    .{ "(expt 10 -3)", "1/1000" },
+    .{ "(expt -2 3)", "-8" },
+    .{ "(expt 1 (expt 10 30))", "1" },
+    .{ "(expt -1 (1+ (expt 10 30)))", "-1" },
+    .{ "(sqrt 16)", "4.0" },
+    .{ "(sqrt 2)", "1.4142135" },
+    .{ "(sqrt 2d0)", "1.4142135623730951d0" },
+    .{ "(sqrt 1/4)", "0.5" },
+    .{ "(sqrt 0)", "0.0" },
+    .{ "(isqrt 17)", "4" },
+    .{ "(isqrt (expt 10 40))", "100000000000000000000" },
+    .{ "(isqrt 0)", "0" },
+    .{ "(exp 0)", "1.0" },
+    .{ "(exp 1)", "2.7182817" },
+    .{ "(log 1)", "0.0" },
+    .{ "(log 100 10)", "2.0" },
+    .{ "(log 8 2)", "3.0" },
+    .{ "(log 2.718281828d0)", "0.9999999998311266d0" },
+    .{ "(sin 0)", "0.0" },
+    .{ "(cos 0)", "1.0" },
+    .{ "(tan 0d0)", "0.0d0" },
+    .{ "(atan 1 1)", "0.7853982" },
+    .{ "(atan 1d0)", "0.7853981633974483d0" },
+    .{ "(asin 1)", "1.5707964" },
+    .{ "(acos 1d0)", "0.0d0" },
+    .{ "(logand 12 10)", "8" },
+    .{ "(logior 12 10)", "14" },
+    .{ "(logxor 12 10)", "6" },
+    .{ "(lognot 5)", "-6" },
+    .{ "(logand)", "-1" },
+    .{ "(logior)", "0" },
+    .{ "(logand -1 255)", "255" },
+    .{ "(logand (expt 2 100) (1- (expt 2 101)))", "1267650600228229401496703205376" },
+    .{ "(logior (expt 2 100) 1)", "1267650600228229401496703205377" },
+    .{ "(logxor (- (expt 2 100)) -1)", "1267650600228229401496703205375" },
+    .{ "(logand (- (expt 2 70)) (1- (expt 2 72)))", "3541774862152233910272" },
+    .{ "(ash 1 10)", "1024" },
+    .{ "(ash 1 100)", "1267650600228229401496703205376" },
+    .{ "(ash -1 100)", "-1267650600228229401496703205376" },
+    .{ "(ash 1024 -3)", "128" },
+    .{ "(ash -5 -1)", "-3" },
+    .{ "(ash (expt 2 100) -98)", "4" },
+    .{ "(ash (- (expt 2 100)) -99)", "-2" },
+    .{ "(ash (- 1 (expt 2 100)) -99)", "-2" },
+    .{ "(ash 5 -100)", "0" },
+    .{ "(ash -5 -100)", "-1" },
+    .{ "(integer-length 0)", "0" },
+    .{ "(integer-length 255)", "8" },
+    .{ "(integer-length -256)", "8" },
+    .{ "(integer-length (expt 2 100))", "101" },
+    .{ "(logcount 255)", "8" },
+    .{ "(logcount -1)", "0" },
+    .{ "(logcount (1- (expt 2 100)))", "100" },
+    .{ "(list (integerp 1) (integerp (expt 2 100)) (integerp 1/2) (integerp 1.0))", "(T T NIL NIL)" },
+    .{ "(list (rationalp 1/2) (rationalp 1) (rationalp 0.5))", "(T T NIL)" },
+    .{ "(list (floatp 1.0) (floatp 1d0) (floatp 1))", "(T T NIL)" },
+    .{ "(list (realp 1/2) (realp 'a) (complexp 1) (numberp (expt 2 100)) (numberp 1/2))", "(T NIL NIL T T)" },
+    .{ "(list (1+ 1/2) (1- 1/2) (- 1/2) (abs -1/2) (zerop 0/5) (plusp 1/2) (minusp -1/2))", "(3/2 -1/2 -1/2 1/2 T T T)" },
+    .{ "(list (max 1/2 1/3) (min 1/2 0.4))", "(1/2 0.4)" },
+    .{ "(format nil \"~D ~A ~S\" (expt 2 70) 1/2 -3/4)", "\"1180591620717411303424 1/2 -3/4\"" },
+    .{ "(reduce #'* '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25))", "15511210043330985984000000" },
+    .{ "(loop for i from 1 to 20 sum (/ 1 i))", "55835135/15519504" },
+    .{ "(+ 0.1 0.2)", "0.3" },
+    .{ "(+ 0.1d0 0.2d0)", "0.30000000000000004d0" },
+    .{ "(* 1.5 2)", "3.0" },
+    .{ "(float 1/10 1d0)", "0.1d0" },
+    .{ "(- (expt 2 62) (expt 2 62) )", "0" },
+    .{ "(* (expt 2 31) (expt 2 31))", "4611686018427387904" },
+    .{ "(truncate 1d300)", "1000000000000000052504760255204420248704468581108159154915854115511802457988908195786371375080447864043704443832883878176942523235360430575644792184786706982848387200926575803737830233794788090059368953234970799945081119038967640880074652742780142494579258788820056842838115669472196386865459400540160" },
+};
+
+test "numeric tower: bignums, ratios and floats like SBCL 2.6.7 (Phase 20)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (number_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (number_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // Zilisp の fixnum は 62 ビット（SBCL 2.6.7 は 63 ビット）。境界を越えると bignum になり、戻れば fixnum になる
+    try expectValue(&e, "(list most-positive-fixnum most-negative-fixnum)", "(2305843009213693951 -2305843009213693952)");
+    try expectValue(&e, "(list (1+ most-positive-fixnum) (1- most-negative-fixnum) (- most-negative-fixnum))", "(2305843009213693952 -2305843009213693953 2305843009213693952)");
+    try expectValue(&e, "(eq (1- (1+ most-positive-fixnum)) most-positive-fixnum)", "T");
+    try expectValue(&e, "(let ((x most-positive-fixnum)) (list (+ x x) (* x x) (- (- x) x 2)))", "(4611686018427387902 5316911983139663487003542222693990401 -4611686018427387904)");
+    // 読み・印字の往復、eql・equal・ハッシュ表
+    try expectValue(&e, "(list 123456789012345678901234567890 -3/6 #x10000000000000000 #b-101/11)", "(123456789012345678901234567890 -1/2 18446744073709551616 -5/3)");
+    try expectValue(&e, "(let ((h (make-hash-table :test 'equal))) (setf (gethash (list 1/3 (expt 3 50)) h) 'v) (gethash (list 1/3 (expt 3 50)) h))", "V");
+    try expectValue(&e, "(list (eql (expt 3 50) (expt 3 50)) (eq 1/2 1/2) (eql 1/2 1/2) (eql (expt 2 70) (float (expt 2 70))))", "(T NIL T NIL)");
+    // 大きな計算（GC stress でも値が壊れない）
+    e.rt.heap.stress = true;
+    try expectValue(&e, "(let ((f 1)) (dotimes (i 60 (length (format nil \"~D\" f))) (setq f (* f (1+ i)))))", "82");
+    try expectValue(&e, "(reduce #'+ (loop for i from 1 to 30 collect (/ 1 i)))", "9304682830147/2329089562800");
+    e.rt.heap.stress = false;
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(/ 1 0)", .division_by_zero);
+    try expectError(&e, "(/ 1/2 0)", .division_by_zero);
+    try expectError(&e, "(floor 1 0)", .division_by_zero);
+    try expectError(&e, "(mod 5 0)", .division_by_zero);
+    try expectError(&e, "(expt 0 -1)", .division_by_zero);
+    try expectError(&e, "(log 0)", .division_by_zero);
+    try expectError(&e, "(numerator 0.5)", .type_error);
+    try expectError(&e, "(evenp 1/2)", .type_error);
+    try expectError(&e, "(gcd 1.5)", .type_error);
+    try expectError(&e, "(isqrt -1)", .type_error);
+    try expectError(&e, "(ash 1 1.0)", .type_error);
+    try expectError(&e, "(float (expt 10 400))", .floating_point_overflow);
+    // 複素数は未実装（明示的なエラー）
+    try expectError(&e, "(sqrt -1)", .unimplemented);
+    try expectError(&e, "(log -1)", .unimplemented);
+    try expectError(&e, "(expt -8 1/3)", .unimplemented);
+    try expectError(&e, "(asin 2)", .unimplemented);
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -1040,7 +1278,8 @@ test "global variables and functions as values" {
     try expectValue(&e, "(setq fact (lambda (n) (if (<= n 1) 1 (* n (funcall fact (- n 1)))))) (funcall fact 10)", "3628800");
     try expectValue(&e, "(setq fib (lambda (n) (if (< n 2) n (+ (funcall fib (- n 1)) (funcall fib (- n 2)))))) (funcall fib 20)", "6765");
     // fixnum の範囲を超える結果は、bignum が未実装なのでエラー（20! は 2^61 を超える）
-    try expectError(&e, "(funcall fact 20)", .unimplemented);
+    // fixnum の範囲を超える結果は bignum（Phase 20。それ以前は未実装のエラーだった）
+    try expectValue(&e, "(funcall fact 20)", "2432902008176640000");
     try expectValue(&e, "(funcall fact 19)", "121645100408832000");
 }
 
@@ -1059,13 +1298,8 @@ test "errors" {
         .{ "(funcall (lambda (x) x) 1 2)", .program_error },
         .{ "(/ 1 0)", .division_by_zero },
         .{ "(/ 1.0 0)", .division_by_zero },
-        .{ "(/ 1 2)", .unimplemented },
         .{ "(+ 'a 1)", .type_error },
         .{ "(< 1 'a)", .type_error },
-        .{ "(* 2305843009213693951 2)", .unimplemented },
-        .{ "(+ 2305843009213693951 1)", .unimplemented },
-        .{ "(1+ 2305843009213693951)", .unimplemented },
-        .{ "(- -2305843009213693952)", .unimplemented },
         .{ "(* 1e30 1e30)", .floating_point_overflow },
         .{ "(+ 1d308 1d308)", .floating_point_overflow },
         .{ "(quote)", .program_error },

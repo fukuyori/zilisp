@@ -363,6 +363,40 @@ pub const Runtime = struct {
         return Value.fromPointer(d, .other);
     }
 
+    /// 整数を作る（fixnum の範囲に収まれば fixnum、そうでなければ bignum。Phase 20）
+    pub fn makeInteger(rt: *Runtime, c: std.math.big.int.Const) Error!Value {
+        if (c.toInt(i64)) |i| {
+            if (Value.fixnumFits(i)) return Value.fromFixnum(i);
+        } else |_| {}
+        // 上位の 0 の limb は持たない（Const は正規化されている）
+        const n = c.limbs.len;
+        const b = try rt.heap.create(object.Bignum, n * @sizeOf(usize));
+        b.header = .{ .kind = .bignum, .aux = @intFromBool(!c.positive), .len = @intCast(n) };
+        @memcpy(b.limbs(), c.limbs);
+        return Value.fromPointer(b, .other);
+    }
+
+    pub fn bignumPtr(v: Value) *object.Bignum {
+        return @ptrCast(@alignCast(v.pointer()));
+    }
+
+    /// bignum の値（limb は GC で動かないが、GC が起こり得る処理をまたいで持ち続けないこと：§3.4 の 2a）
+    pub fn bignumConst(v: Value) std.math.big.int.Const {
+        const b = bignumPtr(v);
+        return .{ .limbs = b.limbs(), .positive = b.positive() };
+    }
+
+    /// 比を作る（約分済み、分母は 2 以上であること）
+    pub fn makeRatioRaw(rt: *Runtime, num: Value, den: Value) Error!Value {
+        const r = try rt.heap.create(object.Ratio, 0);
+        r.* = .{ .header = .{ .kind = .ratio }, .numerator = num, .denominator = den };
+        return Value.fromPointer(r, .other);
+    }
+
+    pub fn ratioPtr(v: Value) *object.Ratio {
+        return @ptrCast(@alignCast(v.pointer()));
+    }
+
     pub fn doubleValue(v: Value) f64 {
         const d: *object.DoubleFloat = @ptrCast(@alignCast(v.pointer()));
         return d.value;

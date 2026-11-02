@@ -84,13 +84,19 @@ pub fn eq(th: *Thread, args: []const Value) Value {
     return th.rt.boolean(args[0] == args[1]);
 }
 
-/// eql：eq であるか、同じ型の数で値が同じ（浮動小数は表現が同じ。(eql 0.0 -0.0) は偽）
+/// eql：eq であるか、同じ型の数で値が同じ（浮動小数は表現が同じ。(eql 0.0 -0.0) は偽）。bignum・比は値で比べる（Phase 20）
 pub fn eql2(a: Value, b: Value) bool {
     if (a == b) return true;
-    if (a.isOther() and b.isOther() and Runtime.kindOf(a) == .double_float and Runtime.kindOf(b) == .double_float) {
-        return @as(u64, @bitCast(Runtime.doubleValue(a))) == @as(u64, @bitCast(Runtime.doubleValue(b)));
-    }
-    return false;
+    if (!(a.isOther() and b.isOther())) return false;
+    const ka = Runtime.kindOf(a);
+    if (ka != Runtime.kindOf(b)) return false;
+    return switch (ka.?) {
+        .double_float => @as(u64, @bitCast(Runtime.doubleValue(a))) == @as(u64, @bitCast(Runtime.doubleValue(b))),
+        .bignum => Runtime.bignumConst(a).eql(Runtime.bignumConst(b)),
+        .ratio => eql2(Runtime.ratioPtr(a).numerator, Runtime.ratioPtr(b).numerator) and
+            eql2(Runtime.ratioPtr(a).denominator, Runtime.ratioPtr(b).denominator),
+        else => false,
+    };
 }
 
 pub fn eql(th: *Thread, args: []const Value) Value {

@@ -22,6 +22,10 @@ pub const ObjKind = enum(u8) {
     value_cell,
     /// ハッシュ表（Phase 16。詳細設計 §2.6）
     hash_table,
+    /// fixnum の範囲を超える整数（Phase 20）
+    bignum,
+    /// 比（Phase 20）
+    ratio,
     _,
 };
 
@@ -100,6 +104,28 @@ pub const String = extern struct {
 pub const DoubleFloat = extern struct {
     header: ObjHeader,
     value: f64,
+};
+
+/// bignum（Phase 20。詳細設計 §2.4）。limb（usize）をヘッダの直後に下位から並べる（header.len が limb の数）。
+/// header.aux が 1 なら負。値は変わらない（演算はいつも新しい bignum を作る）。値が fixnum の範囲に収まる bignum は作らない
+pub const Bignum = extern struct {
+    header: ObjHeader,
+
+    pub fn limbs(b: *Bignum) []usize {
+        const base: [*]usize = @ptrCast(@alignCast(@as([*]u8, @ptrCast(b)) + @sizeOf(Bignum)));
+        return base[0..b.header.len];
+    }
+
+    pub fn positive(b: *const Bignum) bool {
+        return b.header.aux == 0;
+    }
+};
+
+/// 比（Phase 20）。分子と分母は整数（fixnum か bignum）。約分してあり、分母は 2 以上
+pub const Ratio = extern struct {
+    header: ObjHeader,
+    numerator: Value,
+    denominator: Value,
 };
 
 /// 単純ベクタ。要素はヘッダの直後に並べる（header.len が要素数）。

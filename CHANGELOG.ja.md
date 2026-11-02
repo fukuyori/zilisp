@@ -6,6 +6,12 @@
 
 ### Added
 - README（英語・日本語）を加え、変更履歴を英語（`CHANGELOG.md`）と日本語（`CHANGELOG.ja.md`）に分けた
+- Phase 20：数の階層。bignum（limb をオブジェクトの中に置く。fixnum に収まる値はいつも fixnum）、比（約分済み）、浮動小数との
+  混在（正確な比較、正しく丸める変換）、`floor`・`ceiling`・`truncate`・`round`（2つの値）、`mod`・`rem`・`gcd`・`lcm`・
+  `numerator`・`denominator`・`rational`・`float`、`expt`・`sqrt`・`isqrt`・`exp`・`log`・三角関数、`logand`・`logior`・`logxor`・
+  `lognot`・`ash`・`integer-length`・`logcount`、型の述語。Reader は大きな整数と比を読む。複素数は未実装（明示的なエラー）。
+  試験：SBCL 2.6.7 の結果と比べる192通り（GC stress でも実行）、言語試験 `numbers.lisp`（と gc-stress 版）・`number-cases.lisp`
+  （ネイティブでも一致）
 - Phase 19：`tagbody`・`go`（同じ関数の中はジャンプ、それ以外は実行時の脱出。着地してもエントリは残る。VM の命令
   `TAGBODY_ENTER`・`GO_NL`、ネイティブはラベル付き switch）、`psetq`・`dolist`・`dotimes`・`do`・`do*`、`loop`（独自実装。主な句）、
   `mapcar`・`mapc`・`mapcan`・`nconc`・`reduce`、`evenp`・`oddp`・`zerop`・`plusp`・`minusp`・`max`・`min`・`abs`・`mod`・`rem`、

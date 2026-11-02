@@ -35,6 +35,13 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
         .symbol => return if (escape) printSymbol(rt, w, v) else Runtime.writeStringUtf8(rt.symbolPtr(v).name, w),
         .string => return if (escape) printString(w, v) else Runtime.writeStringUtf8(v, w),
         .double_float => return printFloat(w, f64, Runtime.doubleValue(v)),
+        .bignum => return printBignum(rt, w, v),
+        .ratio => {
+            const r = Runtime.ratioPtr(v);
+            try write(rt, w, r.numerator, escape);
+            try w.writeByte('/');
+            return write(rt, w, r.denominator, escape);
+        },
         .simple_vector => {
             try w.writeAll("#(");
             for (Runtime.vectorPtr(v).items(), 0..) |x, i| {
@@ -124,6 +131,13 @@ fn printString(w: *Writer, v: Value) Error!void {
         try writeCp(w, cp);
     }
     try w.writeByte('"');
+}
+
+/// bignum を10進で書く（*print-base* は Phase 24）
+fn printBignum(rt: *Runtime, w: *Writer, v: Value) Error!void {
+    const text = Runtime.bignumConst(v).toStringAlloc(rt.gpa, 10, .lower) catch return error.WriteFailed;
+    defer rt.gpa.free(text);
+    try w.writeAll(text);
 }
 
 fn writeCp(w: *Writer, cp: u21) Error!void {
@@ -345,20 +359,24 @@ test "other objects print like SBCL 2.6.7" {
     const rt = try Runtime.create(testing.allocator);
     defer rt.destroy();
     const cases = [_][2][]const u8{
-        .{ "\"abc\"", "\"abc\"" },                         .{ "\"a\\\"b\"", "\"a\\\"b\"" },                     .{ "\"a\\\\b\"", "\"a\\\\b\"" },
+        .{ "\"abc\"", "\"abc\"" },                                                 .{ "\"a\\\"b\"", "\"a\\\"b\"" },                     .{ "\"a\\\\b\"", "\"a\\\\b\"" },
         .{ "\"日本\"", "\"日本\"" },
-        .{ "\"\"", "\"\"" },                               .{ "#\\a", "#\\a" },                                 .{ "#\\A", "#\\A" },
-        .{ "#\\Space", "#\\ " },                           .{ "#\\Newline", "#\\Newline" },                     .{ "#\\Tab", "#\\Tab" },
-        .{ "#\\Return", "#\\Return" },                     .{ "#\\Page", "#\\Page" },                           .{ "#\\Rubout", "#\\Rubout" },
-        .{ "#\\Backspace", "#\\Backspace" },               .{ "#\\Nul", "#\\Nul" },                             .{ "#\\(", "#\\(" },
-        .{ "#\\\"", "#\\\"" },                             .{ "(1 2 3)", "(1 2 3)" },                           .{ "(1 . 2)", "(1 . 2)" },
-        .{ "(1 2 . 3)", "(1 2 . 3)" },                     .{ "'a", "(QUOTE A)" },                              .{ "#'f", "(FUNCTION F)" },
-        .{ "((a) (b))", "((A) (B))" },                     .{ "#(1 2)", "#(1 2)" },                             .{ "#()", "#()" },
-        .{ "(nil)", "(NIL)" },                             .{ "0", "0" },                                       .{ "-5", "-5" },
-        .{ "2305843009213693951", "2305843009213693951" }, .{ "-2305843009213693952", "-2305843009213693952" },
+        .{ "\"\"", "\"\"" },                                                       .{ "#\\a", "#\\a" },                                 .{ "#\\A", "#\\A" },
+        .{ "#\\Space", "#\\ " },                                                   .{ "#\\Newline", "#\\Newline" },                     .{ "#\\Tab", "#\\Tab" },
+        .{ "#\\Return", "#\\Return" },                                             .{ "#\\Page", "#\\Page" },                           .{ "#\\Rubout", "#\\Rubout" },
+        .{ "#\\Backspace", "#\\Backspace" },                                       .{ "#\\Nul", "#\\Nul" },                             .{ "#\\(", "#\\(" },
+        .{ "#\\\"", "#\\\"" },                                                     .{ "(1 2 3)", "(1 2 3)" },                           .{ "(1 . 2)", "(1 . 2)" },
+        .{ "(1 2 . 3)", "(1 2 . 3)" },                                             .{ "'a", "(QUOTE A)" },                              .{ "#'f", "(FUNCTION F)" },
+        .{ "((a) (b))", "((A) (B))" },                                             .{ "#(1 2)", "#(1 2)" },                             .{ "#()", "#()" },
+        .{ "(nil)", "(NIL)" },                                                     .{ "0", "0" },                                       .{ "-5", "-5" },
+        .{ "2305843009213693951", "2305843009213693951" },                         .{ "-2305843009213693952", "-2305843009213693952" },
+        // bignum・比（Phase 20）
+        .{ "2305843009213693952", "2305843009213693952" },
+        .{ "-123456789012345678901234567890", "-123456789012345678901234567890" }, .{ "1/2", "1/2" },                                   .{ "-6/4", "-3/2" },
+        .{ "4/2", "2" },
         // 読み飛ばしの最中の #n= は値を返さず、続くオブジェクトが読み飛ばされる（SBCL 2.6.7）
-        .{ "#+nosuch #1=(a b) c", "C" },
-        .{ "(#+nosuch #1=(a b) c)", "(C)" },               .{ "#+nosuch #1=#2=(a) c", "C" },                    .{ "#+nosuch ## c", "C" },
+                                                                  .{ "#+nosuch #1=(a b) c", "C" },                     .{ "(#+nosuch #1=(a b) c)", "(C)" },
+        .{ "#+nosuch #1=#2=(a) c", "C" },                                          .{ "#+nosuch ## c", "C" },
     };
     for (cases) |c| try expectPrint(rt, c[0], c[1]);
 }
@@ -367,7 +385,7 @@ test "read errors from the value builder" {
     const rt = try Runtime.create(testing.allocator);
     defer rt.destroy();
     var diag: @import("../reader/reader.zig").Diagnostic = .{};
-    for ([_][]const u8{ "nosuchpkg:x", "cl:nosuchsym123", "2305843009213693952", "1/2", "||:x", "cl-user:" }) |t| {
+    for ([_][]const u8{ "nosuchpkg:x", "cl:nosuchsym123", "1/0", "||:x", "cl-user:" }) |t| {
         testing.expectError(error.ReaderError, vb.readAll(rt, testing.allocator, t, &diag)) catch |e| {
             std.debug.print("input: {s}\n", .{t});
             return e;

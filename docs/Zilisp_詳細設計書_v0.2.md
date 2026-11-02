@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記21） | 2026-11-02 | Phase 20：数の階層の実装（bignum・比、浮動小数との混在、整数の割り算、累乗・平方根・初等関数、ビット演算。§2.4）。複素数は後の Phase |
 | 0.2（追記20） | 2026-11-02 | Phase 19：tagbody・go の実装（§6.4）、反復のマクロ・loop・写像と畳み込み・format の最小版と、反復の教材で使う関数（§11.2） |
 | 0.2（追記19） | 2026-11-02 | §5.2 の `define-symbol-macro` などの時期の記述（Phase 30 に移したことに合わせる）と、§6.4 の `ControlEntry` のネイティブの再開の説明（Phase 18 の実装に合わせる）を直した。英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）を作成。以後、本書を変更するときは英語版も同じ変更で更新する。`docs/zig-std-usage.md` は英語版になり、日本語版は `docs/zig-std-usage.ja.md` |
 | 0.2（追記18） | 2026-11-02 | 0.2.0 のリリースの準備：インストーラーのスクリプト（§18.1・§18.2）、GitHub Actions による試験とリリース（§18.4）、Linux・macOS のスタックの先頭（§3.4） |
@@ -240,6 +241,17 @@ pub const ObjHeader = packed struct(u64) {
 - マクロ専用の ObjKind は設けない。マクロ関数は関数オブジェクトで表し、シンボルの関数セルに「マクロ」フラグを付けて区別する。
 - condition は condition-class の `instance` とする（§9）。
 - 要素型を特殊化した配列（`double_vector`、`fixnum_vector`）は、値をボックス化せずに並べる。数値計算の速度のために 1.0 から用意する。
+
+**Phase 20 の実装（数の階層）**
+- **bignum**：limb（usize）を、ヘッダの直後に下位から並べる（`object.Bignum`。header.len が limb の数、header.aux が 1 なら負）。値は変わらない（演算はいつも新しい bignum を作る）ので、別のバッファも finalize も要らない。**fixnum の範囲に収まる値は、必ず fixnum にする**（`Runtime.makeInteger`）。このため、整数が fixnum か bignum かは値だけで決まり、`eql` は bignum どうしを値で比べればよい。
+- **比**：分子と分母の Value を持つ（`object.Ratio`）。いつも約分し、分母は 2 以上（分母が 1 なら整数にする）。
+- 多倍長の演算は `std.math.big.int.Managed` を借りる。途中の値は Zig のヒープ（gpa）に置き、結果だけを Lisp のヒープに作る。fixnum どうしの加減乗算は i128 で計算し、収まらなければ bignum にする（VM・ネイティブの高速経路は、溢れたときにこの処理へ回す）。
+- **混在の規則**（CLHS 12.1.4）：整数と比どうしの演算は正確。浮動小数が混ざれば浮動小数（double-float が混ざれば double-float、そうでなければ single-float）。比較は正確（浮動小数を正確な有理数に直して比べる。fixnum は高速経路）。
+- **有理数から浮動小数への変換**：分子・分母が仮数のビット数に収まれば、浮動小数の割り算1回（丸めは1回で正しい）。そうでなければ、64 ビット以上の商を求め、余りがあれば最下位のビットを立ててから（sticky）丸めるので、丸めは1回で正しい。浮動小数から有理数への変換（`rational`）は正確。
+- **関数**：`floor`・`ceiling`・`truncate`・`round`（商と余りの2つの値。round は半分なら偶数）、`mod`・`rem`、`gcd`・`lcm`、`numerator`・`denominator`、`rational`・`float`、`expt`（正確な数の整数乗は正確。指数が比・浮動小数なら浮動小数）、`sqrt`・`isqrt`、`exp`・`log`・`sin`・`cos`・`tan`・`asin`・`acos`・`atan`、`logand`・`logior`・`logxor`・`lognot`・`ash`・`integer-length`・`logcount`（2の補数の意味）、型の述語（`integerp`・`rationalp`・`floatp`・`realp`・`complexp`）。Reader は fixnum を超える整数と比（`1/2`、`#x…`、`#b-101/11`）を読み、印字は10進で書く（`*print-base*` は Phase 24）。
+- **複素数は未実装**（2026-11-02 決定。後の Phase で実装する）：結果が複素数になる演算（負の数の `sqrt`・`log`、負の底の分数乗、範囲外の `asin`・`acos`）は明示的なエラー。`complexp` はいつも NIL。
+- **SBCL 2.6.7 との違い**：fixnum は 62 ビット（SBCL は 63 ビット。`most-positive-fixnum` が違う）。超越関数は Zig の実装（`@exp` など）を使うので、double-float で最後の 1 ビットが違うことがある（例：`(exp 1d0)` は SBCL が `2.718281828459045d0`、Zilisp が `2.7182818284590455d0`。どちらも誤差は 1 ulp 未満。※CLHS には超越関数の浮動小数の結果の精度の規定がないと推測されます。原文での確認はしていません）。`tests/differential/impl-dependent.toml` に記録した。
+- 試験：SBCL 2.6.7 の結果と比べる192通り（GC stress でも実行。ネイティブでも実行：`number-cases.lisp`）、fixnum の境界、読み・印字の往復、`eql`・ハッシュ表、エラーの種類。言語試験 `numbers.lisp`（と gc-stress 版）。
 
 ### 2.5 文字列
 

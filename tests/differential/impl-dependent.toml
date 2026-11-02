@@ -88,3 +88,27 @@ sbcl = "要素の型が T なら 0、文字なら #\\Nul"
 zilisp = "SBCL 2.6.7 と同じ（T なら 0、文字なら #\\Nul）"
 clhs = "make-array（初期値を指定しない場合、要素の値は未定義）"
 since = "Phase 16"
+
+[[items]]
+id = "fixnum-width"
+description = "fixnum の範囲（most-positive-fixnum・most-negative-fixnum）"
+sbcl = "63 ビット（4611686018427387903）"
+zilisp = "62 ビット（2305843009213693951。詳細設計 §2.2 のタグの割り当て）"
+clhs = "12.1.1 Numeric Operations、most-positive-fixnum（fixnum の範囲は処理系定義。少なくとも 16 ビット）"
+since = "Phase 20"
+
+[[items]]
+id = "transcendental-last-bit"
+description = "超越関数（exp・log・sin など）の double-float の結果の最後のビット"
+sbcl = "C の数学ライブラリの結果（例：(exp 1d0) → 2.718281828459045d0）"
+zilisp = "Zig の実装の結果（例：(exp 1d0) → 2.7182818284590455d0。誤差は 1 ulp 未満）"
+clhs = "※超越関数の浮動小数の結果の精度の規定はないと推測される（CLHS の原文では未確認）"
+since = "Phase 20"
+
+[[items]]
+id = "string-case-non-ascii"
+description = "string-upcase・string-downcase が ASCII 以外の文字を変換するか"
+sbcl = "変換する"
+zilisp = "変換しない（Phase 19。Reader と同じ）"
+clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）"
+since = "Phase 19"

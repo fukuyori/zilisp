@@ -809,6 +809,31 @@ test "block, return-from, catch, throw and unwind-protect like SBCL 2.6.7 (Phase
     // 深い再帰の途中からの脱出と、何度も繰り返す脱出で、エントリが残らない
     try expectValue(&e, "(progn (defun p18-down (n) (if (= n 0) (throw 'p18-done n) (unwind-protect (p18-down (- n 1)) (setq *p18-cl* n)))) (list (catch 'p18-done (p18-down 500)) *p18-cl*))", "(0 500)");
     try expectClean(&e, "deep");
+    // 暗黙の block（Codex・agy のレビュー P18）：defmacro のコンパイル時の定義にも付く。本体だけを囲み、
+    // ラムダリストの初期値の式は囲まない（SBCL 2.6.7 と同じ）
+    try expectValue(&e, "(progn (defmacro p18-rm () (return-from p18-rm 42)) (p18-rm))", "42");
+    try expectValue(&e, "(block p18-f (flet ((p18-f (&optional (x (return-from p18-f 42))) x)) (p18-f)) 99)", "42");
+    try expectValue(&e, "(progn (defmacro p18-dm (&body body) (declare (ignore body)) (return-from p18-dm ''declared)) (p18-dm 1))", "DECLARED");
+    try expectValue(&e, "(progn (defun p18-kw (&key (a 1)) (declare (ignorable a)) (return-from p18-kw (list 'kw a))) (p18-kw :a 2))", "(KW 2)");
+    try expectValue(&e, "(labels ((p18-lb (n &aux (m (* n 2))) (if (> m 4) (return-from p18-lb m) (p18-lb (+ n 1))))) (p18-lb 0))", "6");
+    try expectError(&e, "(defun p18-badinit (&optional (x (return-from p18-badinit 1))) x)", .program_error);
+    // cleanup の中で起きて受け止められたエラーは、止めていた元のエラーの内容を上書きしない
+    try expectError(&e, "(unwind-protect (car 1) (catch 'recovered (unwind-protect (/ 1 0) (throw 'recovered nil))))", .type_error);
+    try expectClean(&e, "saved error");
+}
+
+test "nested error cleanups beyond the control stack size signal storage-condition (Codex review P18)" {
+    var e: Env = undefined;
+    e.rt = try Runtime.create(testing.allocator);
+    defer e.rt.destroy();
+    e.out = .init(testing.allocator);
+    defer e.out.deinit();
+    e.th = try Thread.create(e.rt, &e.out.writer, .{ .control_count = 64 });
+    defer e.th.destroy();
+    // エラーで cleanup に入るたびに、処理途中の脱出の記録が1つ増える（制御スタックは増えない）
+    try expectError(&e, "(progn (defun p18-ov (n) (unwind-protect (car 1) (if (> n 0) (p18-ov (- n 1))))) (p18-ov 200))", .storage_condition);
+    try expectValue(&e, "(block b (unwind-protect (return-from b 'ok) 1))", "OK");
+    try expectClean(&e, "after overflow");
 }
 
 test "eval matches SBCL 2.6.7" {

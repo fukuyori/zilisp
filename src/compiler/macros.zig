@@ -403,7 +403,20 @@ pub fn expandDestructuringBind(r: *Resolver, form: Value, args: []Value) Error!V
 }
 
 /// (defmacro 名前 ラムダリスト 本体...) の展開関数のフォーム (lambda (#:whole #:env) (let* ...))
-pub fn macroLambda(r: *Resolver, ll: Value, body_forms: []Value) Error!Value {
+/// 本体（説明文字列を除いたもの）の先頭の宣言の後ろを (block 名前 ...) で囲む。
+/// 暗黙の block は本体だけを囲み、ラムダリストの初期値の式は囲まない（CLHS flet・defun・defmacro。Codex・agy のレビュー P18）
+pub fn wrapBodyInBlock(r: *Resolver, name: Value, body: []const Value) Error![]Value {
+    var decl_count: usize = 0;
+    while (decl_count < body.len and body[decl_count].isCons() and Runtime.consPtr(body[decl_count]).car == r.rt.syms.declare) decl_count += 1;
+    const b: Builder = .{ .r = r };
+    const out = try r.arena.alloc(Value, decl_count + 1);
+    @memcpy(out[0..decl_count], body[0..decl_count]);
+    out[decl_count] = try b.listStar(&.{ r.rt.syms.block, name }, try b.list(body[decl_count..]));
+    return out;
+}
+
+/// block_name：本体を囲む暗黙の block の名前（マクロの名前）
+pub fn macroLambda(r: *Resolver, ll: Value, body_forms: []Value, block_name: Value) Error!Value {
     const b: Builder = .{ .r = r };
     const whole = try b.gensym("WHOLE");
     const env = try b.gensym("ENV");
@@ -411,7 +424,7 @@ pub fn macroLambda(r: *Resolver, ll: Value, body_forms: []Value) Error!Value {
     // 説明文字列は本体から除く（let* の本体には書けない）
     var body = body_forms;
     if (body.len > 1 and body[0].isOther() and Runtime.kindOf(body[0]) == .string) body = body[1..];
-    const inner = try destructuringLet(r, ll, args, whole, env, body);
+    const inner = try destructuringLet(r, ll, args, whole, env, try wrapBodyInBlock(r, block_name, body));
     const outer = try b.list(&.{ r.rt.syms.let, try b.list(&.{try b.list(&.{ args, try b.list(&.{ r.rt.syms.cdr, whole }) })}), inner });
     return b.list(&.{ r.rt.syms.lambda, try b.list(&.{ whole, env }), outer });
 }

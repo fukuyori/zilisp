@@ -3,6 +3,10 @@
 //!   - 命令の境界：すべての命令とジャンプ先が命令の先頭にある。末尾で途切れていない
 //!   - 添字の範囲：定数表・局所変数・捕捉した値
 //!   - スタックの深さ：どの経路でも同じ位置では同じ深さ。負にならず、max_stack を超えない。return では 1
+//!   - 制御スタック（Phase 18）：この関数が積んだエントリの並び（block・catch・unwind-protect）と、実行中の cleanup を
+//!     位置ごとに求め、どの経路でも同じ位置では同じ並び。CONTROL_POP は block・catch だけを、UWP_SAVE は unwind-protect の
+//!     エントリを取り除き、UWP_END は cleanup の中でだけ使える。return ではエントリも cleanup も残っていない
+//!     （Codex・agy のレビュー P18）
 //! .zfasl から読み込んだバイトコードにも、ロードの時点で同じ検証を行う（Phase 35）。
 
 const std = @import("std");
@@ -23,7 +27,34 @@ pub const VerifyError = error{
     /// WIDE の後の命令が、添字・個数のオペランドを持たない
     BadWide,
     FallsOffEnd,
+    /// 制御スタックの操作が、積んだエントリの並びと合わない
+    BadControl,
     OutOfMemory,
+};
+
+/// 制御スタックの並びの要素
+const Ctl = struct {
+    const block: u8 = 'b';
+    const catch_tag: u8 = 'c';
+    const uwp: u8 = 'u';
+    /// unwind-protect の cleanup の実行中（エントリは取り除いてある）
+    const cleanup: u8 = 'C';
+};
+
+/// 制御スタックの並びを番号にする（同じ並びは同じ番号）
+const CtlTable = struct {
+    items: std.ArrayList([]u8) = .empty,
+
+    fn intern(t: *CtlTable, gpa: std.mem.Allocator, seq: []const u8) VerifyError!u32 {
+        for (t.items.items, 0..) |s, i| if (std.mem.eql(u8, s, seq)) return @intCast(i);
+        try t.items.append(gpa, try gpa.dupe(u8, seq));
+        return @intCast(t.items.items.len - 1);
+    }
+
+    fn deinit(t: *CtlTable, gpa: std.mem.Allocator) void {
+        for (t.items.items) |s| gpa.free(s);
+        t.items.deinit(gpa);
+    }
 };
 
 const Insn = struct {
@@ -107,17 +138,28 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         at = insn.next;
     }
 
-    // スタックの深さ（-1 は未到達）
+    // スタックの深さ（-1 は未到達）と、制御スタックの並びの番号
     const depth = try gpa.alloc(i64, bc.len);
     defer gpa.free(depth);
     @memset(depth, -1);
+    const ctl = try gpa.alloc(u32, bc.len);
+    defer gpa.free(ctl);
+    var table: CtlTable = .{};
+    defer table.deinit(gpa);
+    var cur: std.ArrayList(u8) = .empty;
+    defer cur.deinit(gpa);
+    var land: std.ArrayList(u8) = .empty;
+    defer land.deinit(gpa);
     var work: std.ArrayList(usize) = .empty;
     defer work.deinit(gpa);
     depth[0] = 0;
+    ctl[0] = try table.intern(gpa, "");
     try work.append(gpa, 0);
     while (work.pop()) |start| {
         var pc = start;
         var d = depth[pc];
+        cur.clearRetainingCapacity();
+        try cur.appendSlice(gpa, table.items.items[ctl[pc]]);
         while (true) {
             const insn = try decode(bc, pc);
             const effect = ops.stackEffect(insn.op, insn.count);
@@ -134,29 +176,62 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
             if (d < pops) return error.StackUnderflow;
             if (insn.op == .@"return") {
                 if (d != 1) return error.BadReturnDepth;
+                if (cur.items.len != 0) return error.BadControl;
                 break;
             }
             // 脱出（この後には進まない）
             if (insn.op == .return_from_nl or insn.op == .throw) break;
+            // 制御スタックの並び。脱出したときに再開する位置の並びは land（エントリを取り除いた並び。cleanup なら印を加える）
+            land.clearRetainingCapacity();
+            try land.appendSlice(gpa, cur.items);
+            switch (insn.op) {
+                .block_enter => try cur.append(gpa, Ctl.block),
+                .catch_enter => try cur.append(gpa, Ctl.catch_tag),
+                .uwp_enter => {
+                    try land.append(gpa, Ctl.cleanup);
+                    try cur.append(gpa, Ctl.uwp);
+                },
+                .control_pop => {
+                    if (insn.count > cur.items.len) return error.BadControl;
+                    for (cur.items[cur.items.len - insn.count ..]) |k| {
+                        if (k != Ctl.block and k != Ctl.catch_tag) return error.BadControl;
+                    }
+                    cur.shrinkRetainingCapacity(cur.items.len - insn.count);
+                },
+                .uwp_save => {
+                    if (cur.items.len == 0 or cur.items[cur.items.len - 1] != Ctl.uwp) return error.BadControl;
+                    cur.items[cur.items.len - 1] = Ctl.cleanup;
+                },
+                .uwp_end => {
+                    if (cur.items.len == 0 or cur.items[cur.items.len - 1] != Ctl.cleanup) return error.BadControl;
+                    _ = cur.pop();
+                },
+                else => {},
+            }
             d += effect;
             if (d > max_stack) return error.StackOverflow;
             if (insn.target) |t| {
                 if (!is_start[t]) return error.BadJumpTarget;
                 // 脱出先を作る命令の rel は、脱出したときに値を積んで再開する位置
-                const td = d + (ops.landingExtra(insn.op) orelse 0);
+                const extra = ops.landingExtra(insn.op);
+                const td = d + (extra orelse 0);
                 if (td > max_stack) return error.StackOverflow;
+                const tc = try table.intern(gpa, if (extra != null) land.items else cur.items);
                 if (depth[t] == -1) {
                     depth[t] = td;
+                    ctl[t] = tc;
                     try work.append(gpa, t);
-                } else if (depth[t] != td) return error.StackMismatch;
+                } else if (depth[t] != td or ctl[t] != tc) return error.StackMismatch;
             }
             if (insn.op == .jump) break;
             pc = insn.next;
             if (pc >= bc.len) return error.FallsOffEnd;
+            const nc = try table.intern(gpa, cur.items);
             if (depth[pc] == -1) {
                 depth[pc] = d;
+                ctl[pc] = nc;
             } else {
-                if (depth[pc] != d) return error.StackMismatch;
+                if (depth[pc] != d or ctl[pc] != nc) return error.StackMismatch;
                 break; // 既に調べた経路に合流した
             }
         }
@@ -189,4 +264,21 @@ test "verifier accepts a simple function and rejects bad code" {
     try std.testing.expectError(error.BadWide, verify(std.testing.allocator, &bad_wide, 1, 0, 0, 1));
     const falls = [_]u8{@backingInt(Op.nil)};
     try std.testing.expectError(error.FallsOffEnd, verify(std.testing.allocator, &falls, 0, 0, 0, 1));
+}
+
+test "verifier checks the control stack (Phase 18, Codex and agy review)" {
+    const a = std.testing.allocator;
+    const P = @backingInt(Op.control_pop);
+    // 積んでいないエントリを取り除く：CONTROL_POP 1; NIL; RETURN
+    try std.testing.expectError(error.BadControl, verify(a, &.{ P, 1, @backingInt(Op.nil), @backingInt(Op.@"return") }, 0, 0, 0, 1));
+    // cleanup の外の UWP_END（偽の印 -1）：NIL; SMALLINT -1; UWP_END; RETURN
+    try std.testing.expectError(error.BadControl, verify(a, &.{ @backingInt(Op.nil), @backingInt(Op.smallint), 0xFF, 0xFF, @backingInt(Op.uwp_end), @backingInt(Op.@"return") }, 0, 0, 0, 2));
+    // エントリを残したまま戻る：BLOCK_ENTER 0 →L; NIL; RETURN; L: RETURN
+    try std.testing.expectError(error.BadControl, verify(a, &.{ @backingInt(Op.block_enter), 0, 0, 2, 0, 0, 0, @backingInt(Op.nil), @backingInt(Op.@"return"), @backingInt(Op.@"return") }, 0, 1, 0, 1));
+    // 正しい形：BLOCK_ENTER 0 →L; NIL; CONTROL_POP 1; L: RETURN
+    try verify(a, &.{ @backingInt(Op.block_enter), 0, 0, 3, 0, 0, 0, @backingInt(Op.nil), P, 1, @backingInt(Op.@"return") }, 0, 1, 0, 1);
+    // unwind-protect の正しい形：UWP_ENTER →L; NIL; UWP_SAVE; L: UWP_END; RETURN
+    try verify(a, &.{ @backingInt(Op.uwp_enter), 2, 0, 0, 0, @backingInt(Op.nil), @backingInt(Op.uwp_save), @backingInt(Op.uwp_end), @backingInt(Op.@"return") }, 0, 0, 0, 2);
+    // UWP_SAVE で block のエントリを取り除こうとする：BLOCK_ENTER 0 →L; NIL; UWP_SAVE; POP; RETURN; L: RETURN
+    try std.testing.expectError(error.BadControl, verify(a, &.{ @backingInt(Op.block_enter), 0, 0, 4, 0, 0, 0, @backingInt(Op.nil), @backingInt(Op.uwp_save), @backingInt(Op.pop), @backingInt(Op.@"return"), @backingInt(Op.@"return") }, 0, 1, 0, 2));
 }

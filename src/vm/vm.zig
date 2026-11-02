@@ -625,7 +625,10 @@ fn execute(th: *Thread, entry_fp: usize) Value {
         .control_pop => {
             const w = wide;
             wide = false;
-            th.control_depth -= readCount(bc, &ip, w);
+            const n = readCount(bc, &ip, w);
+            // 検証済みのバイトコードでは足りなくなることはない（検証器が制御スタックの並びを調べる）
+            if (n > th.control_depth) return th.internalError();
+            th.control_depth -= n;
             continue :dispatch next(bc, &ip);
         },
         .uwp_save => {

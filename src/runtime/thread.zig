@@ -51,6 +51,16 @@ pub const Transfer = struct {
     cleanup_at: u32,
     /// target が no_target のとき、cleanup の後で続けるエラーの理由
     saved_fault: Fault,
+    /// target が no_target のとき、エラーの内容を Thread.saved_errors に退避したか
+    err_saved: bool = false,
+};
+
+/// cleanup の間に退避したエラーの内容（cleanup の中で別のエラーが起きて受け止められても、元のエラーを報告するため）
+pub const SavedError = struct {
+    err: LispError,
+    backtrace: [backtrace_max]Value,
+    backtrace_len: u32,
+    backtrace_depth: u32,
 };
 
 pub const no_target = std.math.maxInt(u32);
@@ -134,9 +144,13 @@ pub const Thread = struct {
     /// 制御スタック（block・catch・unwind-protect。§6.4）
     control: []ControlEntry,
     control_depth: usize = 0,
-    /// 処理途中の非局所脱出のスタック（§6.4）
+    /// 処理途中の非局所脱出のスタック（§6.4）。大きさは制御スタック + 1。
+    /// 制御スタックの深さとの和が制御スタックの大きさを超えないように、エントリを積むときに確かめる
+    /// （cleanup に入るときはエントリを1つ取り除いてから記録を1つ積むので、和は増えない。増えるのは脱出を始めるときの1つだけ）
     unwinds: []Transfer,
     unwind_depth: usize = 0,
+    /// cleanup の間に退避したエラーの内容（エラーの Transfer の err_saved に対応する。まれにしか使わないので必要なときに伸ばす）
+    saved_errors: std.ArrayList(SavedError) = .empty,
     /// 次の block の識別子
     next_token: i64 = 0,
     /// 多値レジスタ（mv[0] は使わない。主値は戻り値）
@@ -165,7 +179,7 @@ pub const Thread = struct {
         errdefer rt.gpa.free(bindings);
         const control = try rt.gpa.alloc(ControlEntry, options.control_count);
         errdefer rt.gpa.free(control);
-        const unwinds = try rt.gpa.alloc(Transfer, options.control_count);
+        const unwinds = try rt.gpa.alloc(Transfer, options.control_count + 1);
         errdefer rt.gpa.free(unwinds);
         th.* = .{
             .rt = rt,
@@ -188,6 +202,7 @@ pub const Thread = struct {
         rt.gpa.free(th.bindings);
         rt.gpa.free(th.control);
         rt.gpa.free(th.unwinds);
+        th.saved_errors.deinit(rt.gpa);
         rt.gpa.destroy(th);
     }
 
@@ -207,6 +222,12 @@ pub const Thread = struct {
         for (th.unwinds[0..th.unwind_depth]) |t| {
             f(ctx, t.primary);
             f(ctx, t.rest);
+        }
+        for (th.saved_errors.items) |*s| {
+            f(ctx, s.err.datum);
+            f(ctx, s.err.expected);
+            f(ctx, s.err.detail);
+            for (s.backtrace[0..s.backtrace_len]) |v| f(ctx, v);
         }
     }
 
@@ -294,6 +315,7 @@ pub const Thread = struct {
         // トップレベルまで戻ったので、エラーで抜けた脱出の記録（cleanup の途中で止まっていたもの）も消す
         th.unwind_depth = 0;
         th.control_depth = 0;
+        th.saved_errors.clearRetainingCapacity();
         th.err = .{};
         th.backtrace_len = 0;
         th.backtrace_depth = 0;
@@ -405,8 +427,14 @@ pub const Thread = struct {
     //      cleanup の後で脱出を続ける（uwpResume）。エラーで抜けるときも cleanup を実行する
     //   4. cleanup の中から cleanup の外へ出る脱出は、止まっている脱出を取り消す（cleanup_at で判断する）
 
+    /// 処理系の内部の誤り（検証済みのバイトコードでは起きない制御スタックの操作など）
+    pub fn internalError(th: *Thread) Value {
+        th.fault = .internal;
+        return Value.unwind;
+    }
+
     pub fn pushControl(th: *Thread, kind: ControlEntry.Kind, token: Value, fp: usize, sp: usize, ip: usize) Value {
-        if (th.control_depth >= th.control.len)
+        if (th.control_depth + th.unwind_depth >= th.control.len)
             return th.signal(.storage_condition, "block・catch・unwind-protect の入れ子が深すぎます", Value.unbound, Value.unbound);
         th.control[th.control_depth] = .{
             .kind = kind,
@@ -478,8 +506,9 @@ pub const Thread = struct {
     /// 制御スタックの深さ depth より内側で実行している cleanup の脱出（cleanup_at > depth）を取り消す
     fn abandonSuspended(th: *Thread, depth: u32) void {
         while (th.unwind_depth > 0) {
-            const at = th.unwinds[th.unwind_depth - 1].cleanup_at;
-            if (at == not_suspended or at <= depth) break;
+            const t = th.unwinds[th.unwind_depth - 1];
+            if (t.cleanup_at == not_suspended or t.cleanup_at <= depth) break;
+            if (t.err_saved) _ = th.saved_errors.pop();
             th.unwind_depth -= 1;
         }
     }
@@ -509,6 +538,7 @@ pub const Thread = struct {
     /// ネイティブの block・catch が Value.unwind を受け取ったとき：脱出先なら値を受け取り、そうでなければ
     /// エントリを取り除いて Value.unwind を返す
     pub fn land(th: *Thread) Value {
+        if (th.control_depth == 0) return th.internalError();
         if (th.isTarget()) return th.landTransfer();
         th.control_depth -= 1;
         return Value.unwind;
@@ -522,8 +552,22 @@ pub const Thread = struct {
             th.unwinds[th.unwind_depth - 1].cleanup_at = depth;
         } else {
             th.abandonSuspended(depth);
-            // 溢れることはない（止まっている脱出は、入れ子の cleanup ごとに1つで、制御スタックより深くならない）
-            std.debug.assert(th.unwind_depth < th.unwinds.len);
+            // 溢れない：エントリを1つ取り除いた後なので、制御スタックの深さとの和は増えない（unwinds の説明）。
+            // 検証していないコードで溢れた場合は、cleanup を内部の誤りのまま実行する（uwpResume が誤りを返す）
+            if (th.unwind_depth >= th.unwinds.len) {
+                th.fault = .internal;
+                return;
+            }
+            // エラーの内容を退避する（cleanup の中で起きて受け止められたエラーが th.err を上書きしても、元に戻すため）
+            var saved = true;
+            th.saved_errors.append(th.rt.gpa, .{
+                .err = th.err,
+                .backtrace = th.backtrace,
+                .backtrace_len = th.backtrace_len,
+                .backtrace_depth = th.backtrace_depth,
+            }) catch {
+                saved = false; // ※確保できなければ、内容は退避しない（理由の種類は残る）
+            };
             th.unwinds[th.unwind_depth] = .{
                 .target = no_target,
                 .primary = Value.nil,
@@ -531,6 +575,7 @@ pub const Thread = struct {
                 .count = 0,
                 .cleanup_at = depth,
                 .saved_fault = th.fault,
+                .err_saved = saved,
             };
             th.unwind_depth += 1;
         }
@@ -539,9 +584,18 @@ pub const Thread = struct {
 
     /// cleanup を終えて、止めていた脱出・エラーを続ける（Value.unwind を返す）
     pub fn uwpResume(th: *Thread) Value {
+        // この cleanup のために止めた脱出は、先頭にあり、cleanup を実行している深さが今の深さと同じ
+        if (th.unwind_depth == 0 or th.unwinds[th.unwind_depth - 1].cleanup_at != th.control_depth) return th.internalError();
         const t = &th.unwinds[th.unwind_depth - 1];
         if (t.target == no_target) {
             th.fault = t.saved_fault;
+            if (t.err_saved) {
+                const s = th.saved_errors.pop().?;
+                th.err = s.err;
+                th.backtrace = s.backtrace;
+                th.backtrace_len = s.backtrace_len;
+                th.backtrace_depth = s.backtrace_depth;
+            }
             th.unwind_depth -= 1;
         } else {
             t.cleanup_at = not_suspended;
@@ -553,6 +607,11 @@ pub const Thread = struct {
     /// unwind-protect の保護したフォームを抜けたとき：エントリを取り除き、cleanup の後で返す値を退避する印を返す。
     ///   fixnum 1：値は primary の1つ。fixnum -1：脱出・エラーの途中（primary が Value.unwind）。リスト：全部の値
     pub fn uwpSave(th: *Thread, primary: Value) Value {
+        if (th.control_depth == 0 or th.control[th.control_depth - 1].kind != .unwind_protect) {
+            _ = th.internalError();
+            th.uwpBegin();
+            return Value.fromFixnum(-1);
+        }
         th.control_depth -= 1;
         if (primary == Value.unwind) {
             th.unbindTo(th.control[th.control_depth].binding_depth);

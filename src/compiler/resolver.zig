@@ -559,7 +559,9 @@ pub const Resolver = struct {
             if (user_body.len > 1 and user_body[0].isOther() and Runtime.kindOf(user_body[0]) == .string) user_body = user_body[1..];
             var decl_count: usize = 0;
             while (decl_count < user_body.len and user_body[decl_count].isCons() and Runtime.consPtr(user_body[decl_count]).car == r.rt.syms.declare) decl_count += 1;
-            const let_form = try macros.lambdaListTail(r, tail, rest_sym, user_body);
+            // 暗黙の block は本体だけを囲む（分解の束縛の初期値の式は、block の外：CLHS flet・defun）
+            const inner_body = if (block_name) |bn| try macros.wrapBodyInBlock(r, bn, user_body) else user_body;
+            const let_form = try macros.lambdaListTail(r, tail, rest_sym, inner_body);
             var new_parts: std.ArrayList(Value) = .empty;
             try new_parts.append(r.arena, parts[0]);
             try new_parts.appendSlice(r.arena, user_body[0..decl_count]);
@@ -570,7 +572,8 @@ pub const Resolver = struct {
             try req.append(r.arena, rest_sym);
             params = req.items;
         }
-        const result = try r.resolveLambdaRequired(params, body_parts, fn_name, fn_kind, scope, block_name);
+        // 必須の引数だけなら、resolveLambdaRequired が本体（宣言の後ろ）を block で囲む
+        const result = try r.resolveLambdaRequired(params, body_parts, fn_name, fn_kind, scope, if (rest_sym == Value.nil) block_name else null);
         result.rest_param = rest_sym != Value.nil;
         return result;
     }
@@ -785,7 +788,7 @@ pub const Resolver = struct {
         if (args.len < 2) return r.failForm("DEFMACRO には名前とラムダリストが必要です", form);
         const name = args[0];
         if (!isSymbol(name) or name == Value.nil) return r.failForm("マクロの名前はシンボルでなければなりません", name);
-        const lam_form = try macros.macroLambda(r, args[1], args[2..]);
+        const lam_form = try macros.macroLambda(r, args[1], args[2..], name);
         if (toplevel_form) {
             const b: macros.Builder = .{ .r = r };
             const def_form = try b.list(&.{ r.rt.sys_defmacro, try b.quote(name), lam_form });
@@ -794,7 +797,8 @@ pub const Resolver = struct {
         }
         // 実行時の定義（名前の付いた関数にする：印字は #<FUNCTION (:MACRO 名前) …>）
         const parts = try r.listItems(Runtime.consPtr(lam_form).cdr, "LAMBDA の形が正しくありません");
-        const l = try r.resolveLambdaParts(parts, name, .macro, scope, name);
+        // 暗黙の block は macroLambda が本体に付けた（コンパイル時の定義と同じ形）
+        const l = try r.resolveLambdaParts(parts, name, .macro, scope, null);
         const call_args = try r.arena.alloc(*Node, 2);
         call_args[0] = try r.node(.{ .constant = name });
         call_args[1] = try r.node(.{ .lambda = l });

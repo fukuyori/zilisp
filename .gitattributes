@@ -1,0 +1,5 @@
+# 行末は LF に固定する（Windows の core.autocrlf=true で取り出しても、zig fmt --check と言語試験の期待値が
+# どの OS でも同じになるように）。Windows のスクリプトだけ CRLF
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.iss text eol=crlf

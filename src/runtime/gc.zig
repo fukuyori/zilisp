@@ -428,8 +428,29 @@ noinline fn makeGarbageCycles(rt: *Runtime, n: usize, out_hidden: []usize) !void
     }
 }
 
-/// スタックに残った古い値を消す（保守的走査で古い参照が見つかるのを減らす）
+/// ゴミを作る関数を、余白（8 KiB）を挟んだ深いフレームで呼ぶ。その関数のフレームに残った古い値が、後で呼ぶ
+/// collect のフレームの書き込まれない枠と重なり、保守的走査で見つかって回収されないことがあるため
+/// （clobberStack は、呼び出した直後の位置のフレームの先頭部分を消さない。x86_64-linux の CI の AVX2 のビルドで発見）
+noinline fn deep(comptime f: anytype, args: anytype) @typeInfo(@TypeOf(f)).@"fn".return_type.? {
+    var pad: [8192]u8 = undefined;
+    @memset(&pad, 0);
+    std.mem.doNotOptimizeAway(&pad);
+    return @call(.never_inline, f, args);
+}
+
+/// スタックに残った古い値を消す（保守的走査で古い参照が見つかるのを減らす）。
+/// 2段にする：呼んだ直後の位置（後で呼ぶ collect のフレームが重なる位置）は、この関数自身のフレームが占めるので、
+/// その局所変数を 0 で埋めてフレームの全体を覆い、さらに深い位置を clobberDeeper が消す
+/// （1段だと、この関数のフレームの先頭部分の枠に古い値が残り、collect のフレームの書き込まれない枠として走査された。
+/// x86_64-linux の CI の AVX2 のビルドで発見）
 noinline fn clobberStack() void {
+    var guard: [64]usize = @splat(0);
+    std.mem.doNotOptimizeAway(&guard);
+    clobberDeeper();
+    std.mem.doNotOptimizeAway(&guard);
+}
+
+noinline fn clobberDeeper() void {
     var buf: [16 * 1024]u8 = undefined;
     @memset(&buf, 0);
     std.mem.doNotOptimizeAway(&buf);
@@ -445,7 +466,7 @@ test "unreachable cycles are collected, reachable data survives" {
             keep = Value.nil;
 
             var hidden: [1000]usize = undefined;
-            try makeGarbageCycles(rt, hidden.len, &hidden);
+            try deep(makeGarbageCycles, .{ rt, hidden.len, &hidden });
             clobberStack();
             collect(rt);
             rt.heap.finishSweep();
@@ -497,7 +518,7 @@ test "string buffers of dead strings are freed" {
     try withRuntime(struct {
         fn body(rt: *Runtime) !void {
             const before = rt.heap.finalizable.items.len;
-            try makeGarbageStrings(rt, 500);
+            try deep(makeGarbageStrings, .{ rt, 500 });
             try testing.expectEqual(before + 500, rt.heap.finalizable.items.len);
             clobberStack();
             collect(rt);
@@ -523,7 +544,7 @@ noinline fn presentHidden(rt: *Runtime, hidden: usize) bool {
 test "large objects are collected" {
     try withRuntime(struct {
         fn body(rt: *Runtime) !void {
-            const hidden = try makeGarbageVector(rt);
+            const hidden = try deep(makeGarbageVector, .{rt});
             try testing.expect(presentHidden(rt, hidden));
             clobberStack();
             collect(rt);
@@ -659,7 +680,7 @@ test "freed slots are reused after sweeping" {
     try withRuntime(struct {
         fn body(rt: *Runtime) !void {
             var hidden: [1000]usize = undefined;
-            try makeGarbageCycles(rt, 1000, &hidden);
+            try deep(makeGarbageCycles, .{ rt, 1000, &hidden });
             const chunks_before = rt.heap.stats.chunks;
             clobberStack();
             collect(rt);

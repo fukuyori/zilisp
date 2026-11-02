@@ -155,7 +155,17 @@ inline fn tagged(v: Value) i64 {
     return @bitCast(v.raw());
 }
 
-/// 実行ループ。フレーム entry_fp（run が積んだもの）から戻ったら、その値を返す
+/// 次の命令を読む
+inline fn next(bc: [*]const u8, ip: *usize) Op {
+    const op: Op = @fromBackingInt(bc[ip.*]);
+    ip.* += 1;
+    return op;
+}
+
+/// 実行ループ。フレーム entry_fp（run が積んだもの）から戻ったら、その値を返す。
+/// 命令の分岐は、ラベル付き switch と continue で行う（§7.1）。各命令の最後で次の命令を読んで直接分岐するので、
+/// 命令ごとに分岐の場所が分かれ、分岐予測が命令の並びを学習できる（スレッデッドコード相当）。
+/// WIDE は、次の命令のオペランドを 32 ビットにする印を立てる。オペランドを読む命令は、最初に印を取り出して消す
 fn execute(th: *Thread, entry_fp: usize) Value {
     const vm = &th.vm;
     const rt = th.rt;
@@ -171,233 +181,284 @@ fn execute(th: *Thread, entry_fp: usize) Value {
     var ip: usize = 0;
     var wide = false;
 
-    while (true) {
-        const op: Op = @fromBackingInt(bc[ip]);
-        ip += 1;
-        // 直前が WIDE なら、この命令のオペランドは 32 ビット
-        const w = wide;
-        wide = false;
-        switch (op) {
-            .@"const" => {
-                stack[sp] = consts[readIndex(bc, &ip, w)];
-                sp += 1;
-            },
-            .nil => {
-                stack[sp] = Value.nil;
-                sp += 1;
-            },
-            .t => {
-                stack[sp] = rt.t;
-                sp += 1;
-            },
-            .smallint => {
-                stack[sp] = Value.fromFixnum(ops.readI16(bc, ip));
-                ip += 2;
-                sp += 1;
-            },
-            .pop => sp -= 1,
-            .load_local => {
-                stack[sp] = stack[base + readIndex(bc, &ip, w)];
-                sp += 1;
-            },
-            .store_local => stack[base + readIndex(bc, &ip, w)] = stack[sp - 1],
-            .load_captured => {
-                stack[sp] = closure.captured()[readIndex(bc, &ip, w)];
-                sp += 1;
-            },
-            .make_cell => {
-                vm.sp = sp;
-                stack[sp - 1] = function.makeCell(rt, stack[sp - 1]) catch return th.outOfMemory();
-            },
-            .cell_ref => stack[sp - 1] = function.cellPtr(stack[sp - 1]).value,
-            .cell_set => {
-                function.cellPtr(stack[sp - 1]).value = stack[sp - 2];
-                sp -= 1;
-            },
-            .load_special => {
-                const sym = consts[readIndex(bc, &ip, w)];
-                const v = rt.symbolPtr(sym).value;
-                if (v == Value.unbound) return th.signal(.unbound_variable, "", sym, Value.unbound);
-                stack[sp] = v;
-                sp += 1;
-            },
-            .store_special => rt.symbolPtr(consts[readIndex(bc, &ip, w)]).value = stack[sp - 1],
-            .load_function => {
-                const sym = consts[readIndex(bc, &ip, w)];
-                const f = th.resolveFunction(sym);
-                if (f == Value.unwind) return f;
-                stack[sp] = f;
-                sp += 1;
-            },
-            .make_closure => {
-                const k = readIndex(bc, &ip, w);
-                const n = readCount(bc, &ip, w);
-                vm.sp = sp;
-                const c = function.makeClosure(rt, consts[k], &closureEntry, stack[sp - n .. sp]) catch return th.outOfMemory();
-                sp -= n;
-                stack[sp] = c;
-                sp += 1;
-            },
-            .call, .call_global => {
-                var n: u32 = undefined;
-                var f: Value = undefined;
-                var ret_sp: usize = undefined;
-                if (op == .call) {
-                    n = readCount(bc, &ip, w);
-                    ret_sp = sp - n - 1;
-                    f = stack[ret_sp];
-                    if (!f.isFunctionPointer()) {
-                        f = th.resolveFunction(f);
-                        if (f == Value.unwind) return f;
-                    }
-                } else {
-                    const k = readIndex(bc, &ip, w);
-                    n = readCount(bc, &ip, w);
-                    ret_sp = sp - n;
-                    f = th.resolveFunction(consts[k]);
+    dispatch: switch (next(bc, &ip)) {
+        .@"const" => {
+            const w = wide;
+            wide = false;
+            stack[sp] = consts[readIndex(bc, &ip, w)];
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .nil => {
+            stack[sp] = Value.nil;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .t => {
+            stack[sp] = rt.t;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .smallint => {
+            stack[sp] = Value.fromFixnum(ops.readI16(bc, ip));
+            ip += 2;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .pop => {
+            sp -= 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .load_local => {
+            const w = wide;
+            wide = false;
+            stack[sp] = stack[base + readIndex(bc, &ip, w)];
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .store_local => {
+            const w = wide;
+            wide = false;
+            stack[base + readIndex(bc, &ip, w)] = stack[sp - 1];
+            continue :dispatch next(bc, &ip);
+        },
+        .load_captured => {
+            const w = wide;
+            wide = false;
+            stack[sp] = closure.captured()[readIndex(bc, &ip, w)];
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .make_cell => {
+            vm.sp = sp;
+            stack[sp - 1] = function.makeCell(rt, stack[sp - 1]) catch return th.outOfMemory();
+            continue :dispatch next(bc, &ip);
+        },
+        .cell_ref => {
+            stack[sp - 1] = function.cellPtr(stack[sp - 1]).value;
+            continue :dispatch next(bc, &ip);
+        },
+        .cell_set => {
+            function.cellPtr(stack[sp - 1]).value = stack[sp - 2];
+            sp -= 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .load_special => {
+            const w = wide;
+            wide = false;
+            const sym = consts[readIndex(bc, &ip, w)];
+            const v = rt.symbolPtr(sym).value;
+            if (v == Value.unbound) return th.signal(.unbound_variable, "", sym, Value.unbound);
+            stack[sp] = v;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .store_special => {
+            const w = wide;
+            wide = false;
+            rt.symbolPtr(consts[readIndex(bc, &ip, w)]).value = stack[sp - 1];
+            continue :dispatch next(bc, &ip);
+        },
+        .load_function => {
+            const w = wide;
+            wide = false;
+            const sym = consts[readIndex(bc, &ip, w)];
+            const f = th.resolveFunction(sym);
+            if (f == Value.unwind) return f;
+            stack[sp] = f;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .make_closure => {
+            const w = wide;
+            wide = false;
+            const k = readIndex(bc, &ip, w);
+            const n = readCount(bc, &ip, w);
+            vm.sp = sp;
+            const c = function.makeClosure(rt, consts[k], &closureEntry, stack[sp - n .. sp]) catch return th.outOfMemory();
+            sp -= n;
+            stack[sp] = c;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        inline .call, .call_global => |op| {
+            const w = wide;
+            wide = false;
+            var n: u32 = undefined;
+            var f: Value = undefined;
+            var ret_sp: usize = undefined;
+            if (op == .call) {
+                n = readCount(bc, &ip, w);
+                ret_sp = sp - n - 1;
+                f = stack[ret_sp];
+                if (!f.isFunctionPointer()) {
+                    f = th.resolveFunction(f);
                     if (f == Value.unwind) return f;
                 }
-                if (isVmClosure(f)) {
-                    // 同じ実行ループの中でフレームを積む
-                    frame.ip = @intCast(ip);
-                    if (!pushFrame(th, f, sp - n, n, ret_sp)) return Value.unwind;
-                    frame = &vm.frames[vm.fp - 1];
-                    closure = function.closurePtr(f);
-                    code = closure.codePtr();
-                    bc = code.bytecode;
-                    consts = code.constants();
-                    base = frame.base;
-                    sp = vm.sp;
-                    ip = 0;
-                } else {
-                    vm.sp = sp;
-                    const r = function.functionHeader(f).entry(th, f, stack + sp - n, n);
-                    if (r == Value.unwind) return r;
-                    sp = ret_sp;
-                    stack[sp] = r;
-                    sp += 1;
-                }
-            },
-            .@"return" => {
-                const result = stack[sp - 1];
-                const ret_sp = frame.ret_sp;
-                vm.fp -= 1;
-                sp = ret_sp;
-                if (vm.fp == entry_fp) {
-                    vm.sp = sp;
-                    th.mv_count = 1;
-                    return result;
-                }
+            } else {
+                const k = readIndex(bc, &ip, w);
+                n = readCount(bc, &ip, w);
+                ret_sp = sp - n;
+                f = th.resolveFunction(consts[k]);
+                if (f == Value.unwind) return f;
+            }
+            if (isVmClosure(f)) {
+                // 同じ実行ループの中でフレームを積む
+                frame.ip = @intCast(ip);
+                if (!pushFrame(th, f, sp - n, n, ret_sp)) return Value.unwind;
                 frame = &vm.frames[vm.fp - 1];
-                closure = function.closurePtr(frame.closure);
+                closure = function.closurePtr(f);
                 code = closure.codePtr();
                 bc = code.bytecode;
                 consts = code.constants();
                 base = frame.base;
-                ip = frame.ip;
-                stack[sp] = result;
-                sp += 1;
-            },
-            .jump => {
-                const rel = ops.readI32(bc, ip);
-                ip = @intCast(@as(i64, @intCast(ip + 4)) + rel);
-            },
-            .jump_if_nil => {
-                const rel = ops.readI32(bc, ip);
-                ip += 4;
-                sp -= 1;
-                if (stack[sp] == Value.nil) ip = @intCast(@as(i64, @intCast(ip)) + rel);
-            },
-            .cons => {
+                sp = vm.sp;
+                ip = 0;
+            } else {
                 vm.sp = sp;
-                const c = rt.cons(stack[sp - 2], stack[sp - 1]) catch return th.outOfMemory();
-                sp -= 1;
-                stack[sp - 1] = c;
-            },
-            .car => {
-                const x = stack[sp - 1];
-                if (x.isCons()) {
-                    stack[sp - 1] = Runtime.consPtr(x).car;
-                } else if (x != Value.nil) {
-                    return th.typeError(x, rt.syms.list);
-                }
-            },
-            .cdr => {
-                const x = stack[sp - 1];
-                if (x.isCons()) {
-                    stack[sp - 1] = Runtime.consPtr(x).cdr;
-                } else if (x != Value.nil) {
-                    return th.typeError(x, rt.syms.list);
-                }
-            },
-            .eq => {
-                sp -= 1;
-                stack[sp - 1] = rt.boolean(stack[sp - 1] == stack[sp]);
-            },
-            .not => stack[sp - 1] = rt.boolean(stack[sp - 1] == Value.nil),
-            .add2, .sub2 => {
-                const a = stack[sp - 2];
-                const b = stack[sp - 1];
-                var r: Value = undefined;
-                if (a.isFixnum() and b.isFixnum()) {
-                    // タグを付けたまま加減算する。溢れは 62 ビットの範囲を超えたことを表す（§2.2）
-                    const x = if (op == .add2) @addWithOverflow(tagged(a), tagged(b)) else @subWithOverflow(tagged(a), tagged(b));
-                    r = if (x[1] == 0) Value.fromRaw(@bitCast(x[0])) else Value.unwind;
-                } else r = Value.unwind;
-                if (r == Value.unwind) {
-                    vm.sp = sp;
-                    r = if (op == .add2) numbers.add2(th, a, b) else numbers.sub2(th, a, b);
-                    if (r == Value.unwind) return r;
-                }
-                sp -= 1;
-                stack[sp - 1] = r;
-            },
-            .add1, .sub1 => {
-                const a = stack[sp - 1];
-                var r: Value = Value.unwind;
-                if (a.isFixnum()) {
-                    const one = tagged(Value.fromFixnum(1));
-                    const x = if (op == .add1) @addWithOverflow(tagged(a), one) else @subWithOverflow(tagged(a), one);
-                    if (x[1] == 0) r = Value.fromRaw(@bitCast(x[0]));
-                }
-                if (r == Value.unwind) {
-                    vm.sp = sp;
-                    r = if (op == .add1) numbers.add2(th, a, Value.fromFixnum(1)) else numbers.sub2(th, a, Value.fromFixnum(1));
-                    if (r == Value.unwind) return r;
-                }
-                stack[sp - 1] = r;
-            },
-            inline .lt2, .gt2, .le2, .ge2, .numeq2 => |o| {
-                const a = stack[sp - 2];
-                const b = stack[sp - 1];
-                const c: numbers.Cmp = switch (o) {
-                    .lt2 => .lt,
-                    .gt2 => .gt,
-                    .le2 => .le,
-                    .ge2 => .ge,
-                    .numeq2 => .eq,
-                    else => unreachable,
-                };
-                var r: Value = undefined;
-                if (a.isFixnum() and b.isFixnum()) {
-                    const x = tagged(a);
-                    const y = tagged(b);
-                    r = rt.boolean(switch (c) {
-                        .lt => x < y,
-                        .gt => x > y,
-                        .le => x <= y,
-                        .ge => x >= y,
-                        .eq => x == y,
-                    });
-                } else {
-                    vm.sp = sp;
-                    r = numbers.compare2(th, c, a, b);
-                    if (r == Value.unwind) return r;
-                }
-                sp -= 1;
-                stack[sp - 1] = r;
-            },
-            .wide => wide = true,
-        }
+                const r = function.functionHeader(f).entry(th, f, stack + sp - n, n);
+                if (r == Value.unwind) return r;
+                sp = ret_sp;
+                stack[sp] = r;
+                sp += 1;
+            }
+            continue :dispatch next(bc, &ip);
+        },
+        .@"return" => {
+            const result = stack[sp - 1];
+            const ret_sp = frame.ret_sp;
+            vm.fp -= 1;
+            sp = ret_sp;
+            if (vm.fp == entry_fp) {
+                vm.sp = sp;
+                th.mv_count = 1;
+                return result;
+            }
+            frame = &vm.frames[vm.fp - 1];
+            closure = function.closurePtr(frame.closure);
+            code = closure.codePtr();
+            bc = code.bytecode;
+            consts = code.constants();
+            base = frame.base;
+            ip = frame.ip;
+            stack[sp] = result;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .jump => {
+            const rel = ops.readI32(bc, ip);
+            ip = @intCast(@as(i64, @intCast(ip + 4)) + rel);
+            continue :dispatch next(bc, &ip);
+        },
+        .jump_if_nil => {
+            const rel = ops.readI32(bc, ip);
+            ip += 4;
+            sp -= 1;
+            if (stack[sp] == Value.nil) ip = @intCast(@as(i64, @intCast(ip)) + rel);
+            continue :dispatch next(bc, &ip);
+        },
+        .cons => {
+            vm.sp = sp;
+            const c = rt.cons(stack[sp - 2], stack[sp - 1]) catch return th.outOfMemory();
+            sp -= 1;
+            stack[sp - 1] = c;
+            continue :dispatch next(bc, &ip);
+        },
+        .car => {
+            const x = stack[sp - 1];
+            if (x.isCons()) {
+                stack[sp - 1] = Runtime.consPtr(x).car;
+            } else if (x != Value.nil) {
+                return th.typeError(x, rt.syms.list);
+            }
+            continue :dispatch next(bc, &ip);
+        },
+        .cdr => {
+            const x = stack[sp - 1];
+            if (x.isCons()) {
+                stack[sp - 1] = Runtime.consPtr(x).cdr;
+            } else if (x != Value.nil) {
+                return th.typeError(x, rt.syms.list);
+            }
+            continue :dispatch next(bc, &ip);
+        },
+        .eq => {
+            sp -= 1;
+            stack[sp - 1] = rt.boolean(stack[sp - 1] == stack[sp]);
+            continue :dispatch next(bc, &ip);
+        },
+        .not => {
+            stack[sp - 1] = rt.boolean(stack[sp - 1] == Value.nil);
+            continue :dispatch next(bc, &ip);
+        },
+        inline .add2, .sub2 => |op| {
+            const a = stack[sp - 2];
+            const b = stack[sp - 1];
+            var r: Value = Value.unwind;
+            if (a.isFixnum() and b.isFixnum()) {
+                // タグを付けたまま加減算する。溢れは 62 ビットの範囲を超えたことを表す（§2.2）
+                const x = if (op == .add2) @addWithOverflow(tagged(a), tagged(b)) else @subWithOverflow(tagged(a), tagged(b));
+                if (x[1] == 0) r = Value.fromRaw(@bitCast(x[0]));
+            }
+            if (r == Value.unwind) {
+                vm.sp = sp;
+                r = if (op == .add2) numbers.add2(th, a, b) else numbers.sub2(th, a, b);
+                if (r == Value.unwind) return r;
+            }
+            sp -= 1;
+            stack[sp - 1] = r;
+            continue :dispatch next(bc, &ip);
+        },
+        inline .add1, .sub1 => |op| {
+            const a = stack[sp - 1];
+            var r: Value = Value.unwind;
+            if (a.isFixnum()) {
+                const one = tagged(Value.fromFixnum(1));
+                const x = if (op == .add1) @addWithOverflow(tagged(a), one) else @subWithOverflow(tagged(a), one);
+                if (x[1] == 0) r = Value.fromRaw(@bitCast(x[0]));
+            }
+            if (r == Value.unwind) {
+                vm.sp = sp;
+                r = if (op == .add1) numbers.add2(th, a, Value.fromFixnum(1)) else numbers.sub2(th, a, Value.fromFixnum(1));
+                if (r == Value.unwind) return r;
+            }
+            stack[sp - 1] = r;
+            continue :dispatch next(bc, &ip);
+        },
+        inline .lt2, .gt2, .le2, .ge2, .numeq2 => |o| {
+            const a = stack[sp - 2];
+            const b = stack[sp - 1];
+            const c: numbers.Cmp = switch (o) {
+                .lt2 => .lt,
+                .gt2 => .gt,
+                .le2 => .le,
+                .ge2 => .ge,
+                .numeq2 => .eq,
+                else => unreachable,
+            };
+            var r: Value = undefined;
+            if (a.isFixnum() and b.isFixnum()) {
+                const x = tagged(a);
+                const y = tagged(b);
+                r = rt.boolean(switch (c) {
+                    .lt => x < y,
+                    .gt => x > y,
+                    .le => x <= y,
+                    .ge => x >= y,
+                    .eq => x == y,
+                });
+            } else {
+                vm.sp = sp;
+                r = numbers.compare2(th, c, a, b);
+                if (r == Value.unwind) return r;
+            }
+            sp -= 1;
+            stack[sp - 1] = r;
+            continue :dispatch next(bc, &ip);
+        },
+        .wide => {
+            wide = true;
+            continue :dispatch next(bc, &ip);
+        },
     }
 }

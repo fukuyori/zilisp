@@ -112,3 +112,11 @@ sbcl = "変換する"
 zilisp = "変換しない（Phase 19。Reader と同じ）"
 clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）"
 since = "Phase 19"
+
+[[items]]
+id = "print-subnormal-float"
+description = "非正規化数の浮動小数の印字の桁数"
+sbcl = "正規化数と同じ桁数で書く（例：最小の正の single-float は 1.4012985e-45）"
+zilisp = "読み戻せる最短の桁で書く（例：1.0e-45）。どちらも読み戻すと同じ値になる"
+clhs = "22.1.3.1.3 Printing Floats（※読み戻して同じ値になればよく、桁数は処理系に任されると推測される。原文では未確認）"
+since = "Phase 05（Phase 20 のレビューで確認）"

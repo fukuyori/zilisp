@@ -322,8 +322,10 @@
             (setq ,l (cdr ,l))
             (go ,top)
           ,end))
+       ;; 結果の式の束縛にも、本体の宣言を付ける（special 宣言などが結果の式にも効くように。Codex のレビュー P19 #8）
        (let ((,var nil))
          (declare (ignorable ,var))
+         ,@(zl-sys::%body-declarations body)
          ,result))))
 
 ;; (dotimes (変数 回数 [結果]) 本体...)：結果は変数が回数のときに評価する（CLHS dotimes）
@@ -431,8 +433,9 @@
 
 (defun reduce (function sequence &key key from-end (start 0) end (initial-value nil initial-value-p))
   (let ((items (zl-sys::%sequence-list sequence start end)))
-    (if key (setq items (mapcar key items)))
+    ;; :from-end では、:key も後ろの要素から順に呼ぶ（SBCL 2.6.7 と同じ。Codex のレビュー P19 #9）
     (if from-end (setq items (reverse items)))
+    (if key (setq items (mapcar key items)))
     (if (null items)
         (if initial-value-p initial-value (funcall function))
         (let ((acc (if initial-value-p initial-value (car items))))
@@ -499,9 +502,17 @@
                    (if pat (list (list 'setq pat form)) nil)
                    (let ((g (gensym)))
                      (list `(let ((,g ,form)) ,@(destructure pat g))))))
+             ;; 型の指定を読み飛ばし、型（なければ NIL）を返す
              (skip-type ()
                (cond ((at "OF-TYPE") (next) (next))
-                     ((at "FIXNUM" "FLOAT" "INTEGER" "NUMBER" "REAL" "SINGLE-FLOAT" "DOUBLE-FLOAT") (next))))
+                     ((at "FIXNUM" "FLOAT" "INTEGER" "NUMBER" "REAL" "SINGLE-FLOAT" "DOUBLE-FLOAT") (next))
+                     (t nil)))
+             ;; with の変数の、型による既定の初期値（数の型なら 0。CLHS 6.1.2.2。Codex のレビュー P19 #10）
+             (type-default (type)
+               (cond ((zl-sys::%loop-keyword-p type '("FIXNUM" "INTEGER" "NUMBER" "REAL" "RATIONAL" "BIT")) 0)
+                     ((zl-sys::%loop-keyword-p type '("FLOAT" "SINGLE-FLOAT" "SHORT-FLOAT")) 0.0)
+                     ((zl-sys::%loop-keyword-p type '("DOUBLE-FLOAT" "LONG-FLOAT")) 0.0d0)
+                     (t nil)))
              (no-and (clause)
                (if (at "AND")
                    (zl-sys::%unimplemented-error "LOOP の並列の束縛（and）は未実装です" clause)))
@@ -698,9 +709,8 @@
            ((at "FOR" "AS") (next) (parse-for))
            ((at "WITH")
             (next)
-            (let ((var (next)))
-              (skip-type)
-              (if (at "=") (progn (next) (bind var (need-form "WITH"))) (bind var nil))
+            (let* ((var (next)) (type (skip-type)))
+              (if (at "=") (progn (next) (bind var (need-form "WITH"))) (bind var (type-default type)))
               (no-and "WITH")))
            ((at "REPEAT")
             (next)

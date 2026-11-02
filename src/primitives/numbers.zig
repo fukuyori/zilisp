@@ -272,11 +272,12 @@ fn intDivMod(th: *Thread, a: Value, b: Value, mode: DivMode) ?QR {
 
 fn intGcd(th: *Thread, a: Value, b: Value) Value {
     if (a.isFixnum() and b.isFixnum()) {
+        // 絶対値は fixnum に収まらないことがある（most-negative-fixnum。Codex のレビュー P20 #1）
         const x: u64 = @abs(a.asFixnum());
         const y: u64 = @abs(b.asFixnum());
-        if (x == 0) return Value.fromFixnum(@intCast(y));
-        if (y == 0) return Value.fromFixnum(@intCast(x));
-        return Value.fromFixnum(@intCast(std.math.gcd(x, y)));
+        if (x == 0) return fromI128(th, y);
+        if (y == 0) return fromI128(th, x);
+        return fromI128(th, std.math.gcd(x, y));
     }
     var x = toManaged(th, a) orelse return Value.unwind;
     defer x.deinit();
@@ -420,9 +421,57 @@ fn ratToFloat(comptime F: type, th: *Thread, n: Value, d: Value) ?F {
         // 余りがあれば、最下位のビットを立てる（q は 64 ビット以上あるので、立てたビットは丸めの判断にだけ使われる）
         q.limbs[0] |= 1;
     }
-    const f = q.toConst().toFloat(F, .nearest_even)[0];
-    const result = std.math.ldexp(f, @intCast(-shift));
+    // 値は q × 2^-shift。q を、結果の形式で使える精度（非正規化数の範囲では少なくなる）のビットに、ここで1回だけ丸める
+    // （浮動小数にしてから ldexp で非正規化数にすると、丸めが2回になる：Codex のレビュー P20 #5）
+    const qc = q.toConst();
+    const len: isize = @intCast(qc.bitCountAbs());
+    const top = len - shift; // 値 < 2^top、値 ≧ 2^(top-1)
+    const emin: isize = std.math.floatExponentMin(F); // 最小の正規化数は 2^emin
+    const emax: isize = std.math.floatExponentMax(F);
+    if (top - 1 > emax) return if (negative) -std.math.inf(F) else std.math.inf(F);
+    var prec: isize = mant_bits;
+    if (top - 1 < emin) prec -= emin - (top - 1);
+    const drop = len - prec; // 捨てるビットの数（q は 66 ビット以上あるので正）
+    var kept: u64 = 0;
+    if (drop < len) {
+        var k = q.toConst().toManaged(th.rt.gpa) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+        defer k.deinit();
+        k.shiftRight(&k, @intCast(drop)) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+        kept = k.toConst().toInt(u64) catch unreachable; // prec ≦ 53 ビット
+    }
+    const round_bit = bitAt(qc, drop - 1);
+    const sticky = anyBitBelow(qc, drop - 1);
+    if (round_bit and (sticky or kept & 1 != 0)) kept += 1;
+    const result = std.math.ldexp(@as(F, @floatFromInt(kept)), @intCast(drop - shift));
     return if (negative) -result else result;
+}
+
+/// 非負の整数の i 番目のビット（i < 0 なら偽）
+fn bitAt(c: big.Const, i: isize) bool {
+    if (i < 0) return false;
+    const idx: usize = @intCast(i);
+    const limb = idx / @bitSizeOf(usize);
+    if (limb >= c.limbs.len) return false;
+    return (c.limbs[limb] >> @intCast(idx % @bitSizeOf(usize))) & 1 != 0;
+}
+
+/// 非負の整数の、i 番目より下のビットに 1 があるか
+fn anyBitBelow(c: big.Const, i: isize) bool {
+    if (i <= 0) return false;
+    const n: usize = @intCast(i);
+    const full = n / @bitSizeOf(usize);
+    for (c.limbs[0..@min(full, c.limbs.len)]) |l| if (l != 0) return true;
+    if (full >= c.limbs.len) return false;
+    const rest: usize = n % @bitSizeOf(usize);
+    if (rest == 0) return false;
+    const mask = (@as(usize, 1) << @intCast(rest)) - 1;
+    return c.limbs[full] & mask != 0;
 }
 
 fn exactToFloat(comptime F: type, th: *Thread, v: Value) ?F {
@@ -857,6 +906,11 @@ fn quotient(th: *Thread, xv: Value, yv: Value, mode: DivMode) ?QR {
                 return null;
             }
             const t = p / q;
+            // 商が浮動小数で表せなければ、浮動小数の溢れ（SBCL 2.6.7 と同じ。Codex のレビュー P20 #2）
+            if (std.math.isInf(t) or std.math.isNan(t)) {
+                _ = th.signal(.floating_point_overflow, "浮動小数の演算が溢れました", Value.unbound, Value.unbound);
+                return null;
+            }
             const qf: F = switch (mode) {
                 .floor => @floor(t),
                 .ceiling => @ceil(t),
@@ -1066,10 +1120,15 @@ pub fn expt(th: *Thread, args: []const Value) Value {
         // 浮動小数の整数乗（(expt x 0) は x の形式の 1）
         return floatResult(th, b == .double, std.math.pow(f64, toF64(th, b).?, @floatFromInt(n)));
     }
-    // 指数が比・浮動小数：結果は浮動小数。負の底は複素数になる
-    if (sign(b) < 0) return complexError(th);
+    // 指数が比・浮動小数：結果は浮動小数。指数が 0 なら 1、底が 0 なら指数の正負で 0 か 0 除算、負の底は複素数になる
+    // （SBCL 2.6.7 と同じ。Codex のレビュー P20 #3）
     const is_double = b == .double or p == .double;
-    if (sign(b) == 0) return floatResult(th, is_double, 0);
+    if (sign(p) == 0) return floatResult(th, is_double, 1);
+    if (sign(b) == 0) {
+        if (sign(p) < 0) return divisionByZero(th);
+        return floatResult(th, is_double, 0);
+    }
+    if (sign(b) < 0) return complexError(th);
     const bf = toF64(th, b) orelse return Value.unwind;
     const pf = toF64(th, p) orelse return Value.unwind;
     return floatResult(th, is_double, std.math.pow(f64, bf, pf));
@@ -1159,18 +1218,48 @@ pub fn atan(th: *Thread, args: []const Value) Value {
     return floatResult(th, y == .double or x == .double, std.math.atan2(yf, xf));
 }
 
+/// 正の整数の自然対数。浮動小数で表せない大きさの整数も、仮数と2進の指数に分けて求める（Codex のレビュー P20 #7）
+fn intLog(th: *Thread, v: Value) ?f64 {
+    if (v.isFixnum()) return @log(@as(f64, @floatFromInt(v.asFixnum())));
+    const len = bitLength(v);
+    if (len <= 1000) return @log(intToFloat(f64, v));
+    var m = toManaged(th, v) orelse return null;
+    defer m.deinit();
+    const sh = len - 64;
+    m.shiftRight(&m, sh) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    return @log(m.toConst().toFloat(f64, .nearest_even)[0]) + @as(f64, @floatFromInt(sh)) * std.math.ln2;
+}
+
+/// 正の数の自然対数（正確な数は、分子と分母を別に求めて、途中の溢れを避ける）
+fn positiveLog(th: *Thread, n: Num) ?f64 {
+    return switch (n) {
+        .fix, .big => intLog(th, exactValue(n)),
+        .ratio => |v| blk: {
+            const p = parts(v);
+            const a = intLog(th, p.num) orelse break :blk null;
+            const b = intLog(th, p.den) orelse break :blk null;
+            break :blk a - b;
+        },
+        .single => |f| @log(@as(f64, f)),
+        .double => |f| @log(f),
+    };
+}
+
 /// (log 数 [底])：0 は division-by-zero、負の数は複素数（未実装）
 pub fn log(th: *Thread, args: []const Value) Value {
     const n = numArg(th, args[0]) orelse return Value.unwind;
     if (sign(n) < 0) return complexError(th);
     if (sign(n) == 0) return divisionByZero(th);
-    const x = toF64(th, n) orelse return Value.unwind;
-    if (args.len == 1) return floatResult(th, n == .double, @log(x));
+    const x = positiveLog(th, n) orelse return Value.unwind;
+    if (args.len == 1) return floatResult(th, n == .double, x);
     const b = numArg(th, args[1]) orelse return Value.unwind;
     if (sign(b) < 0) return complexError(th);
     if (sign(b) == 0) return floatResult(th, n == .double or b == .double, 0);
-    const bf = toF64(th, b) orelse return Value.unwind;
-    return floatResult(th, n == .double or b == .double, @log(x) / @log(bf));
+    const lb = positiveLog(th, b) orelse return Value.unwind;
+    return floatResult(th, n == .double or b == .double, x / lb);
 }
 
 // ---------------------------------------------------------------------------
@@ -1256,6 +1345,8 @@ pub fn ash(th: *Thread, args: []const Value) Value {
         const sh: u6 = @intCast(@min(-count, 63));
         return Value.fromFixnum(args[0].asFixnum() >> sh);
     }
+    // ビットの長さ以上の右シフトは 0 か -1（2^(-count) を作らない。Codex のレビュー P20 #6）
+    if (-count >= bitLength(args[0])) return Value.fromFixnum(if (intSign(args[0]) < 0) -1 else 0);
     // bignum の右シフト：2^(-count) で floor の割り算をする
     var p = Managed.initSet(th.rt.gpa, @as(i64, 1)) catch return th.outOfMemory();
     p.shiftLeft(&p, @intCast(-count)) catch {

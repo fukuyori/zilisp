@@ -112,8 +112,14 @@ pub fn last(th: *Thread, args: []const Value) Value {
     if (!list.isList()) return properListError(th, list);
     var n: usize = 1;
     if (args.len > 1) {
-        if (!args[1].isFixnum() or args[1].asFixnum() < 0) return th.typeError(args[1], cl(th, "UNSIGNED-BYTE"));
-        n = @intCast(args[1].asFixnum());
+        const c = args[1];
+        // 正の bignum はリストより長い個数として扱う（Codex のレビュー P20 #12）
+        if (c.isOther() and Runtime.kindOf(c) == .bignum and Runtime.bignumPtr(c).positive()) {
+            n = std.math.maxInt(usize);
+        } else {
+            if (!c.isFixnum() or c.asFixnum() < 0) return th.typeError(c, cl(th, "UNSIGNED-BYTE"));
+            n = @intCast(c.asFixnum());
+        }
     }
     var len: usize = 0;
     var x = list;

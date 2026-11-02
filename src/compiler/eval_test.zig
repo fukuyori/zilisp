@@ -1252,6 +1252,20 @@ test "numeric tower: bignums, ratios and floats like SBCL 2.6.7 (Phase 20)" {
     try expectError(&e, "(log -1)", .unimplemented);
     try expectError(&e, "(expt -8 1/3)", .unimplemented);
     try expectError(&e, "(asin 2)", .unimplemented);
+    // Codex のレビュー（Phase 19・20）の回帰試験。期待値は SBCL 2.6.7
+    try expectValue(&e, "(gcd -2305843009213693952 0)", "2305843009213693952");
+    try expectError(&e, "(floor 1d308 1d-308)", .floating_point_overflow);
+    try expectValue(&e, "(expt 0 0.0)", "1.0");
+    try expectError(&e, "(expt 0 -1/2)", .division_by_zero);
+    try expectValue(&e, "(= (rational (float (/ (+ (ash 1 70) 1) (ash 1 220)))) (/ 1 (expt 2 149)))", "T");
+    try expectValue(&e, "(list (ash 2305843009213693952 -2305843009213693952) (ash -2305843009213693952 -2305843009213693952))", "(0 -1)");
+    try expectValue(&e, "(list (log (expt 10 400)) (log (/ 1 (expt 10 400))))", "(921.03406 -921.03406)");
+    try expectValue(&e, "(let ((x 42)) (declare (special x)) (dolist (x nil (funcall (lambda () (declare (special x)) x))) (declare (special x))))", "NIL");
+    try expectValue(&e, "(let ((seen nil)) (reduce #'+ '(1 2 3) :from-end t :key (lambda (x) (push x seen) x)) seen)", "(1 2 3)");
+    try expectValue(&e, "(list (loop with x of-type fixnum repeat 1 collect x) (loop with x of-type single-float repeat 1 collect x) (loop with x fixnum repeat 1 collect x))", "((0) (0.0) (0))");
+    try expectValue(&e, "(tagbody (go 2305843009213693952) 2305843009213693952)", "NIL");
+    try expectError(&e, "(tagbody 2305843009213693952 2305843009213693952)", .program_error);
+    try expectValue(&e, "(last (list 1 2) 2305843009213693952)", "(1 2)");
 }
 
 test "eval matches SBCL 2.6.7" {

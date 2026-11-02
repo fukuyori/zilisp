@@ -21,6 +21,14 @@
   反復の教材（Level 6）は Zilisp だけがエラーのブロックが 0 に。教材のブロックの一致は 244 から 347 に
 - 詳細設計書の英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）と、Zig 0.17.0 の照合結果の英語版（`docs/zig-std-usage.md`。日本語版は `docs/zig-std-usage.ja.md` に移した）
 
+### Fixed
+- Codex のレビュー（Phase 19・20）の指摘 11 件：`(gcd most-negative-fixnum 0)` と `(floor 1d308 1d-308)` で異常終了した、
+  底が 0 の `expt` と、指数が 0 の非整数の `expt` が 0.0 を返した（SBCL 2.6.7 と同じく 1.0 か division-by-zero にした）、
+  有理数から浮動小数への変換が非正規化数の近くで2回丸めていた、`ash` の大きな右シフトで巨大な整数を作っていた、
+  とても大きい（小さい）正確な数の `log` が溢れた、`dolist` の結果の式で本体の宣言が失われた、`reduce :from-end` の
+  `:key` を呼ぶ順が逆だった、`loop with x of-type fixnum` の初期値が 0 でなかった、bignum を `tagbody` のタグにできなかった
+  （タグは `eql` で比べる）、`last` が bignum の個数を受け付けなかった
+
 ## 0.2.0 - 2026-11-02
 
 最初の公開版。Reader・印字・GC・バイトコード VM・最小のネイティブバックエンドの上に、関数、マクロ、多値、

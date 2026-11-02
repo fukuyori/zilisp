@@ -22,6 +22,7 @@ const Thread = thread_mod.Thread;
 const ErrorKind = thread_mod.ErrorKind;
 const ir = @import("ir.zig");
 const macros = @import("macros.zig");
+const eql2 = @import("../primitives/lists.zig").eql2;
 const codegen = @import("codegen.zig");
 const Node = ir.Node;
 const Var = ir.Var;
@@ -516,8 +517,8 @@ pub const Resolver = struct {
         return r.node(.{ .block = .{ .blk = blk, .body = body } });
     }
 
-    /// (tagbody {タグ | フォーム}...)（Phase 19）。タグはシンボルか整数（fixnum）、フォームは複合フォーム（CLHS tagbody）。
-    /// それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）
+    /// (tagbody {タグ | フォーム}...)（Phase 19）。タグはシンボルか整数（bignum を含む）、フォームは複合フォーム（CLHS tagbody）。
+    /// タグは eql で比べる。それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）
     fn resolveTagbody(r: *Resolver, args: []Value, scope: *const Scope) Error!*Node {
         const l = scope.lambda;
         const token = try r.arena.create(Var);
@@ -528,8 +529,9 @@ pub const Resolver = struct {
         var bindings: std.ArrayList(TagBinding) = .empty;
         for (args) |a| {
             if (a.isCons()) continue;
-            if (!(isSymbol(a) or a.isFixnum())) return r.failForm("TAGBODY のタグはシンボルか整数でなければなりません", a);
-            for (bindings.items) |b| if (b.name == a) return r.failForm("TAGBODY に同じタグが2回あります", a);
+            const integer = a.isFixnum() or (a.isOther() and Runtime.kindOf(a) == .bignum);
+            if (!(isSymbol(a) or integer)) return r.failForm("TAGBODY のタグはシンボルか整数でなければなりません", a);
+            for (bindings.items) |b| if (eql2(b.name, a)) return r.failForm("TAGBODY に同じタグが2回あります", a);
             try bindings.append(r.arena, .{ .name = a, .tb = tb, .index = @intCast(bindings.items.len) });
         }
         tb.ntags = @intCast(bindings.items.len);
@@ -556,7 +558,7 @@ pub const Resolver = struct {
         var s: ?*const Scope = scope;
         search: while (s) |sc| : (s = sc.parent) {
             for (sc.tags) |t| {
-                if (t.name == name) {
+                if (eql2(t.name, name)) {
                     found = t;
                     break :search;
                 }

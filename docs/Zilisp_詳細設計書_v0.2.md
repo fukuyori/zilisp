@@ -655,7 +655,7 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 - 試験：SBCL 2.6.7 の結果と比べる63通り（GC stress でも実行。毎回、制御スタック・脱出の記録・動的束縛が空に戻ることも確かめる）、エラーと cleanup の組み合わせ、言語試験 `exits.lisp`・`exit-cases.lisp`（63通りをネイティブでも実行）・`error-cleanup.lisp`。
 
 **Phase 19 の実装（tagbody・go）**
-- **Resolver**：tagbody の引数を、タグ（シンボルと fixnum）とフォーム（複合フォーム）に分ける。それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）。go は return-from と同じ規則で、同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出（tagbody に `needs_entry` を付ける）。値は NIL。
+- **Resolver**：tagbody の引数を、タグ（シンボルと整数。bignum を含み、eql で比べる）とフォーム（複合フォーム）に分ける。それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）。go は return-from と同じ規則で、同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出（tagbody に `needs_entry` を付ける）。値は NIL。
 - **制御スタック**：エントリの種類 `tagbody` を加えた。go の実行時の脱出が運ぶ値はタグの番号（fixnum）。block と違い、**脱出先として着地してもエントリを取り除かない**（tagbody の中で続けるため。`landTransfer`）。普通に抜けるときに取り除く。
 - **VM**：命令 `TAGBODY_ENTER i rel`（識別子を局所変数 i に置いてエントリを積む。rel は着地したときの再開の位置）と `GO_NL`（[識別子 タグの番号]。この後には進まない）。着地したら、タグの番号を局所変数に置き、番号を比べてタグの位置へ分岐する（タグの数に比例する。実行時の go はまれなため）。同じ関数の中の go は、途中の値を捨て（`POP`）、横切る動的束縛を戻し、横切るエントリを取り除いてジャンプする（後ろへのジャンプを含む）。検証器は、tagbody のエントリを「着地した後も残る」種類として扱う。
 - **ネイティブ**：tagbody を Zig のラベル付き switch にする（0 番の分岐は最初のタグの前、k+1 番の分岐はタグ k の後ろ）。同じ関数の中の go は `if (true) continue :s番号 k+1;`。実行時の脱出先なら、switch をループで囲み、`Value.unwind` を受け取ったら `N.land` で着地して、タグの分岐から switch に入り直す。

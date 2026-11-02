@@ -23,6 +23,14 @@
   curriculum blocks went from 244 to 347
 - English versions of the detailed design (`docs/Zilisp_Detailed_Design_v0.2.md`) and of the Zig 0.17.0 notes (`docs/zig-std-usage.md`; the Japanese version moves to `docs/zig-std-usage.ja.md`)
 
+### Fixed
+- Codex review (Phases 19 and 20), 11 issues: `(gcd most-negative-fixnum 0)` and `(floor 1d308 1d-308)` crashed the
+  process; `expt` with a zero base or a zero non-integer exponent gave 0.0 (now 1.0 or division-by-zero, as in SBCL 2.6.7);
+  rational-to-float conversion rounded twice near subnormals; a huge right shift in `ash` built a huge integer; `log` of very
+  large or very small exact numbers overflowed; the `dolist` result form lost the body's declarations; `reduce :from-end`
+  called `:key` in the wrong order; `loop with x of-type fixnum` was not initialized to 0; bignums could not be `tagbody`
+  tags (tags are now compared with `eql`); `last` rejected a bignum count
+
 ## 0.2.0 - 2026-11-02
 
 First public release. On top of the reader, printer, GC, bytecode VM and a minimal native backend,

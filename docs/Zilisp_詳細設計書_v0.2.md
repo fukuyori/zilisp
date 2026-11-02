@@ -1384,9 +1384,10 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 
 - `scripts/build-installer.ps1 -Sign` を指定した場合、次の3つに電子署名を付ける。
   1. `zilisp.exe`（インストーラーに入れる前に署名する）
-  2. アンインストーラー（Inno Setup の `SignTool` / `SignedUninstaller` の指定で署名する。指定方法は要検証）
+  2. アンインストーラー（Inno Setup の `SignTool` / `SignedUninstaller` の指定で署名する。`ISCC.exe` に `/Szlsign=$q<signtool>$q sign /n $q<CODESIGN_CERT>$q /fd sha256 /tr <タイムスタンプ> /td sha256 $f` と `/DSign` を渡す。0.2.0 で作成。実際に署名できるかは、利用者の `-Sign` の実行で確認する）
   3. インストーラー本体
-- 署名に使う証明書は、環境変数 `CODESIGN_CERT` の値で指定する。未設定で `-Sign` を指定した場合は、エラーで停止する。
+- 署名に使う証明書は、環境変数 `CODESIGN_CERT` の値で指定する。値は証明書のサブジェクト名で、現在の利用者の証明書ストアから `signtool sign /n` で選ぶ（開発機で、ストアの証明書と一致することを確認した）。未設定で `-Sign` を指定した場合は、エラーで停止する。タイムスタンプは RFC 3161（既定 `http://timestamp.digicert.com`。`-TimestampUrl` で変更できる）。
+- 配布物は `dist/release/` に出力する：`zilisp-<版>-x86_64-windows-setup.exe` と、ターゲットごとの `zilisp-<版>-<target>.zip`（`bin/` の実行ファイル、`LICENSE`、`CHANGELOG.md`）。インストーラーは利用者ごとのインストール（管理者権限は不要。選べば全利用者）で、PATH への追加を選べる。
 - **配布物（ZIP、インストーラー）の作成は利用者（レモン）が `-Sign` を付けて行う。** Claude は配布物を作成しない。
 
 ### 18.3 バージョン更新のチェックリスト

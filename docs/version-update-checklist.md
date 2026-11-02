@@ -9,9 +9,15 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 | `build.zig.zon` | `.version` |
 | `src/version.zig` | `version`（`build.zig.zon` と同じ値にする） |
 | `CHANGELOG.md` | 新しいバージョンの見出しと変更点 |
-| `installer/zilisp.iss` | `AppVersion`（Phase 38 でファイルを作成した後） |
+| `installer/zilisp.iss` | 更新しない（`scripts/build-installer.ps1` が `build.zig.zon` の `.version` を読んで `AppVersion` として渡す。`src/version.zig` と違えば停止する） |
 
 確認：`zig build test` と `zig-out/bin/zilisp --version` の表示が新しいバージョンになっていること。
+
+リリースの手順（タグ・配布物）
+1. 上の表のファイルを更新し、`CHANGELOG.md` の `Unreleased` の内容を新しいバージョンの見出しに移す。
+2. 試験（`zig build test`、`lang-test`、`native-test`）を実行してコミットする。
+3. 利用者が `scripts/build-installer.ps1 -Sign` で配布物（`dist/release/`：インストーラーと ZIP）を作成する（Claude は作成しない）。
+4. タグ（`v<バージョン>`）を作って push し、GitHub のリリースに配布物を添付する。
 
 ## 2. 内部形式を変更したとき（該当する場合のみ）
 

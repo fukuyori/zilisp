@@ -7,7 +7,7 @@
   2. 指定したターゲットごとに ReleaseFast でビルドし、<OutputDirectory>\<target>\bin\ に出力する。
 
   クロスビルドが成功しても、そのターゲットの実機で動作することは保証しない（基本設計 §11）。
-  配布物（ZIP・インストーラー）は作成しない。インストーラーは scripts/build-installer.ps1 で作成する（Phase 38 で追加予定）。
+  配布物（ZIP・インストーラー）は作成しない。配布物は scripts/build-installer.ps1 で作成する（-Sign で署名）。
 
 .PARAMETER OutputDirectory
   出力先。既定は リポジトリ直下の dist。

@@ -2,7 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-11-02
+
+最初の公開版。Reader・印字・GC・バイトコード VM・最小のネイティブバックエンドの上に、関数、マクロ、多値、
+動的束縛、非局所脱出（block・catch・unwind-protect）までを実装した（Phase 01〜18）。
+LOOP・DOLIST・FORMAT・DEFSTRUCT・CLOS・condition などは未実装（`compatibility/eval-status.md`）。
+
 ### Added
+- リリース用のスクリプト：`scripts/build-installer.ps1`（Inno Setup による Windows 用インストーラーと、ターゲットごとの ZIP。
+  `-Sign` で、環境変数 `CODESIGN_CERT` の証明書により `zilisp.exe`・アンインストーラー・インストーラーに署名する）、
+  `installer/zilisp.iss`（利用者ごとのインストール、PATH への追加の選択）
 - 企画・基本設計書（v0.3）と詳細設計書（v0.2）
 - MIT ライセンス
 - Phase 01：`build.zig` / `build.zig.zon`（Zig 0.17.0）、CLI の骨組み（`--version` / `--help`）、

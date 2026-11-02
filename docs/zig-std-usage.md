@@ -53,6 +53,10 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | スタックの上端（Windows） | `std.os.windows.teb().NtTib.StackBase` | §3.4 |
 | 構造体のフィールドの一覧 | `std.meta.fields` は 0.17.0 で廃止（`@compileError`）。`@typeInfo(T).@"struct".field_names`（名前の配列）と `field_types` を使う | Phase 08 |
 | 1 行ずつの入力 | `std.Io.File.Reader.init(.stdin(), io, &buf)` の `interface` に `takeDelimiter('\n')`（終わりで null、行がバッファより長ければ `error.StreamTooLong`） | Phase 08 の REPL |
+| `@frameAddress()` の型 | 0.17.0 では `usize` を返す（ポインタではない。`@intFromPtr` は不要） | Phase 12 |
+| build.zig の構成のキャッシュ | build.zig の構成（`build` 関数の実行）の結果はキャッシュされ、build.zig の内容が変わらない限り作り直されない。構成の時点でディレクトリを読んで試験の一覧を作ると、ファイルを足しても反映されない。試験の一覧は、実行時にディレクトリを読む道具で作る（`tools/native_test`） | Phase 12 |
+| build.zig のパス・Zig | パッケージのディレクトリは `b.root.root_dir.handle`（`Io.Dir`）と `b.root.sub_path`、Io は `b.graph.io`、Zig の実行ファイルは `b.graph.zig_exe` | Phase 12 |
+| 外部のモジュールと一緒にコンパイル | `zig build-exe --dep zilisp -Mroot=gen.zig -Mzilisp=src/lib.zig --stack 67108864 -femit-bin=out.exe`（`--dep` は直後の `-M` のモジュールに付く） | Phase 12 |
 | 書き捨ての Writer | `std.Io.Writer.discarding` はない。`.fixed(&buf)` を使う（あふれると `error.WriteFailed`） | Phase 08 のベンチマーク |
 | enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
 

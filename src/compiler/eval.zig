@@ -8,6 +8,8 @@ const function = @import("../runtime/function.zig");
 const vm = @import("../vm/vm.zig");
 const resolver_mod = @import("resolver.zig");
 const codegen = @import("codegen.zig");
+const verify_ir = @import("verify_ir.zig");
+const builtin = @import("builtin");
 
 /// フォームを評価し、主値を返す。エラーなら Value.unwind（理由は th.fault と th.err）
 pub fn eval(th: *Thread, form: Value) Value {
@@ -32,6 +34,9 @@ pub fn compile(th: *Thread, form: Value) Value {
         error.LispError => Value.unwind,
         error.OutOfMemory => th.outOfMemory(),
     };
+    if (builtin.mode == .debug or builtin.is_test) {
+        verify_ir.verify(lambda) catch |err| std.debug.panic("Resolver が作った IR が正しくありません: {t}", .{err});
+    }
     const code = codegen.compileLambda(rt, arena.allocator(), &pins, lambda) catch return th.outOfMemory();
     return function.makeClosure(rt, code, &vm.closureEntry, &.{}) catch th.outOfMemory();
 }

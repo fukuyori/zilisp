@@ -6,6 +6,7 @@ const version = @import("version.zig");
 const args_mod = @import("cli/args.zig");
 const read_command = @import("cli/read_command.zig");
 const eval_command = @import("cli/eval_command.zig");
+const emit_command = @import("cli/emit_command.zig");
 const runtime = @import("runtime/runtime.zig");
 
 /// コマンドの実行に必要な環境
@@ -74,6 +75,7 @@ pub fn run(ctx: Context, options: args_mod.Options, command: args_mod.Command, s
         .load => |path| return exit(try eval_command.runRepl(ctx.gpa, ctx.io, options, path, stdout, stderr)),
         .script => |path| return exit(try eval_command.runScript(ctx.gpa, ctx.io, options, path, stdout, stderr)),
         .eval => |text| return exit(try eval_command.runEval(ctx.gpa, ctx.io, options, text, stdout, stderr)),
+        .emit_zig => |e| return exit(try emit_command.run(ctx.gpa, ctx.io, options, e.src, e.out, stdout, stderr)),
         .unsupported => |arg| {
             try stderr.print("zilisp: '{s}' は未実装、または不明なオプションです。--help で使い方を表示します。\n", .{arg});
             return .usage;
@@ -105,6 +107,7 @@ pub fn printHelp(w: *Io.Writer) Io.Writer.Error!void {
         \\  zilisp --version, -v    バージョンを表示する
         \\  zilisp --help, -h       このヘルプを表示する
         \\  zilisp --read FILE      FILE のデータを読み、1つずつ印字する（Reader と印字の確認用）
+        \\  zilisp --emit-zig FILE OUT.zig  FILE を Zig のソースにする（ネイティブバックエンドの開発用）
         \\
         \\全体のオプション（コマンドの前に置く）:
         \\  --gc-stress             確保のたびに GC を行う（試験用）

@@ -15,6 +15,8 @@ pub const Command = union(enum) {
     eval: []const u8,
     /// --load FILE：読み込んでから REPL
     load: []const u8,
+    /// --emit-zig FILE OUT.zig：ネイティブバックエンドで Zig のソースを生成する（Phase 12 の開発用）
+    emit_zig: struct { src: []const u8, out: []const u8 },
     version,
     help,
     /// --read FILE：ファイルのデータを読み、1つずつ印字する（Reader と印字の確認用）
@@ -56,6 +58,11 @@ fn parseCommand(rest: []const [:0]const u8) Command {
     const first = rest[0];
     if (eql(first, "--version") or eql(first, "-v")) return .version;
     if (eql(first, "--help") or eql(first, "-h")) return .help;
+    if (eql(first, "--emit-zig")) {
+        if (rest.len < 3) return .{ .missing_argument = first };
+        if (rest.len > 3) return .{ .unsupported = rest[3] };
+        return .{ .emit_zig = .{ .src = rest[1], .out = rest[2] } };
+    }
     if (eql(first, "--read") or eql(first, "--script") or eql(first, "--eval") or eql(first, "--load")) {
         if (rest.len < 2) return .{ .missing_argument = first };
         if (rest.len > 2) return .{ .unsupported = rest[2] };

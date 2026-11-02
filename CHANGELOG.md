@@ -58,6 +58,11 @@
   COMMON-LISP パッケージのシンボルと特殊演算子の名前は局所関数にできない（SBCL 2.6.7 と同じく program-error）。
   印字は `#<FUNCTION (FLET 名前) {アドレス}>`。flet・labels とクロージャの寿命の試験（SBCL 2.6.7 の結果と比べる20通り、
   GC の後も closure と共有した変数が正しいこと）、言語試験 `tests/language/eval/local-functions.lisp`（と gc-stress 版）
+- Phase 12：IR の検証器（`src/compiler/verify_ir.zig`。デバッグビルドと試験でコンパイルのたびに実行）、
+  ネイティブバックエンドの最小実装（`src/native/emit.zig`・`src/native/rt.zig`。IR → Zig のソース → ランタイムと一緒に
+  コンパイル）、開発用のコマンド `zilisp --emit-zig FILE OUT.zig`、`zig build native-test`（言語試験をネイティブで実行し、
+  VM と同じ結果かを確かめる。8件すべて一致）、言語試験 `tests/language/eval/cases.lisp`（P08〜P11 の単体テストの式 160 あまり）。
+  計測：fib(30) で VM 約 34.9 ms、ネイティブ約 9.7 ms。`Value.unwind` の検査の費用は約12%
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

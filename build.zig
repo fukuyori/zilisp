@@ -4,6 +4,8 @@
 //!   zig build run -- ARGS     実行する
 //!   zig build test            単体テストを実行する
 //!   zig build bench           ベンチマークを ReleaseFast で実行する（詳細設計 §13.2）
+//!   zig build lang-test       言語試験（VM）
+//!   zig build native-test     言語試験をネイティブバックエンドで実行し、VM と同じ結果かを確かめる（-Doptimize で最適化を指定）
 //!
 //! 2段階ビルド（標準ライブラリのネイティブ化。詳細設計 §11.3）は Phase 12 で追加する。
 
@@ -70,6 +72,29 @@ pub fn build(b: *std.Build) void {
     const lang_test_step = b.step("lang-test", "Run language tests (tests/language)");
     lang_test_step.dependOn(&run_lang_test.step);
 
+    // ネイティブバックエンドの試験（Phase 12。詳細設計 §5.1「意味論の一致は、全言語試験を VM とネイティブの両方で
+    // 実行して確認する」）：tests/language/eval/*.lisp を zilisp --emit-zig で Zig のソースにし、ランタイムと一緒に
+    // コンパイルして実行する。標準出力を *.expected（VM の言語試験と同じ期待値）と、終了コードを *.exit と比べる。
+    // ディレクトリは実行器が実行時に読む（build.zig の構成はキャッシュされ、ファイルを足しても作り直されないため）
+    const native_test_exe = b.addExecutable(.{
+        .name = "zilisp-native-test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/native_test/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_native_test = b.addRunArtifact(native_test_exe);
+    run_native_test.addArtifactArg(exe);
+    run_native_test.addArg(b.graph.zig_exe);
+    run_native_test.addArg("tests/language/eval");
+    run_native_test.addArg("src/lib.zig");
+    run_native_test.addArg(".zig-cache/native-test");
+    run_native_test.addArg(@tagName(optimize));
+    run_native_test.has_side_effects = true;
+    const native_step = b.step("native-test", "Compile tests/language/eval with the native backend and compare with the VM results");
+    native_step.dependOn(&run_native_test.step);
+
     // 教材のコードブロックの抽出（詳細設計 §12）：zig build extract-samples -- <教材> <出力先>
     const extract_exe = b.addExecutable(.{
         .name = "zilisp-extract-samples",
@@ -110,7 +135,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/lib.zig"),
         .target = b.graph.host,
     });
-    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tests/bench/main.zig" }) |path| {
+    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tools/native_test/main.zig", "tests/bench/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path(path),
             .target = b.graph.host,

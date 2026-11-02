@@ -11,3 +11,4 @@ pub const printer = @import("printer/printer.zig");
 pub const thread = @import("runtime/thread.zig");
 pub const value_builder = @import("reader/value_builder.zig");
 pub const eval = @import("compiler/eval.zig");
+pub const native = @import("native/rt.zig");

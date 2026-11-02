@@ -98,6 +98,10 @@ const Marker = struct {
                     const c: *object.ValueCell = @ptrFromInt(e);
                     m.markValue(c.value);
                 },
+                .hash_table => {
+                    const t: *object.HashTable = @ptrFromInt(e);
+                    m.markValue(t.entries);
+                },
                 // 文字列の中身はバッファ（finalize 待ちの一覧で管理）、double-float は値だけ、
                 // パッケージの本体は Runtime.packages が持つ（ルートとして別に走査する）
                 .string, .double_float, .package => {},

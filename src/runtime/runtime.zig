@@ -30,6 +30,11 @@ pub const Syms = struct {
     declare: Value,
     defun: Value,
     defmacro: Value,
+    @"eval-when": Value,
+    setf: Value,
+    compile: Value,
+    load: Value,
+    eval: Value,
     @"destructuring-bind": Value,
     defvar: Value,
     defparameter: Value,
@@ -130,10 +135,14 @@ pub const Runtime = struct {
     sys_proclaim_special: Value = Value.nil,
     /// ZILISP-SYSTEM::%DEFMACRO（defmacro の展開先）
     sys_defmacro: Value = Value.nil,
+    /// ZILISP-SYSTEM::%SET-FDEFINITION（(defun (setf 名前) ...) の展開先）
+    sys_set_fdefinition: Value = Value.nil,
     /// ZILISP-SYSTEM:QUASIQUOTE（Reader が backquote を読んだ形）
     sys_quasiquote: Value = Value.nil,
     /// ZILISP-SYSTEM::%MISSING（分解束縛で、キーワード引数がないことを表す印）
     sys_missing: Value = Value.nil,
+    /// ZILISP-SYSTEM::%TOMBSTONE（ハッシュ表の削除した枠の印）
+    sys_tombstone: Value = Value.nil,
     /// 標準ライブラリ（src/lisp/boot.lisp）を読み込んでいる間は真（CL のシンボルにマクロ・関数を定義してよい）
     booting: bool = false,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
@@ -373,6 +382,41 @@ pub const Runtime = struct {
         return Value.fromPointer(s, .other);
     }
 
+    /// 長さ n の文字列を作り、文字 cp で埋める（make-array :element-type 'character）
+    pub fn makeStringFilled(rt: *Runtime, n: usize, cp: u21) Error!Value {
+        const width: u16 = if (cp > 0xFF) 4 else 1;
+        const s = try rt.heap.create(object.String, 0);
+        s.* = .{ .header = .{ .kind = .string, .aux = width, .len = @intCast(n) }, .data = undefined };
+        const buf = try rt.heap.allocOwnedBuffer(s, n * width);
+        s.data = buf.ptr;
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            if (width == 4) {
+                const p: [*]u32 = @ptrCast(@alignCast(buf.ptr));
+                p[i] = cp;
+            } else buf[i] = @intCast(cp);
+        }
+        return Value.fromPointer(s, .other);
+    }
+
+    /// 文字列の i 番目の文字を cp にする。幅 1 の文字列に #xFF を超える文字を書くときは、幅 4 のバッファに写す
+    /// （古いバッファは、文字列が回収されるときに一緒に解放される）
+    pub fn stringSetChar(rt: *Runtime, v: Value, i: usize, cp: u21) Error!void {
+        const s = stringPtr(v);
+        if (s.width() == 1 and cp > 0xFF) {
+            const n = s.length();
+            const buf = try rt.heap.allocOwnedBuffer(s, n * 4);
+            const p: [*]u32 = @ptrCast(@alignCast(buf.ptr));
+            for (0..n) |k| p[k] = s.data[k];
+            s.data = buf.ptr;
+            s.header.aux = 4;
+        }
+        if (s.width() == 4) {
+            const p: [*]u32 = @ptrCast(@alignCast(s.data));
+            p[i] = cp;
+        } else s.data[i] = @intCast(cp);
+    }
+
     pub fn stringPtr(v: Value) *object.String {
         return @ptrCast(@alignCast(v.pointer()));
     }
@@ -401,6 +445,14 @@ pub const Runtime = struct {
         }
         std.debug.assert(x == Value.nil);
         return Value.fromPointer(v, .other);
+    }
+
+    /// 長さ n の単純ベクタを作り、v で埋める
+    pub fn makeVectorFilled(rt: *Runtime, n: usize, v: Value) Error!Value {
+        const vec = try rt.heap.create(object.SimpleVector, n * @sizeOf(Value));
+        vec.header = .{ .kind = .simple_vector, .len = @intCast(n) };
+        @memset(vec.items(), v);
+        return Value.fromPointer(vec, .other);
     }
 
     pub fn makeVector(rt: *Runtime, items: []const Value) Error!Value {

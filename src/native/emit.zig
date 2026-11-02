@@ -415,6 +415,7 @@ const FnGen = struct {
                 return val;
             },
             .global_fn => |sym| return f.checked("N.loadFunction(th, N.K[{d}])", .{try e.constant(sym)}),
+            .global_setf_fn => |sym| return f.checked("N.loadSetfFunction(th, N.K[{d}])", .{try e.constant(sym)}),
             .call => |c| {
                 const callee = try f.gen(c.callee);
                 const a = try f.genArgs(c.args);

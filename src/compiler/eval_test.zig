@@ -263,7 +263,7 @@ test "defun, function calls and recursion like SBCL 2.6.7 (Phase 10)" {
     try expectError(&e, "(defun 1 () 1)", .program_error);
     try expectError(&e, "(defun p10-bad)", .program_error);
     try expectError(&e, "(symbol-function 'p10-undefined-xyz)", .undefined_function);
-    try expectError(&e, "(defun (setf p10-x) (v) v)", .unimplemented);
+    try expectValue(&e, "(defun (setf p10-x) (v) v)", "(SETF P10-X)");
     try expectError(&e, "(funcall 'defun 'a nil)", .undefined_function);
     // CL の関数の定義は変わっていない
     try expectValue(&e, "(car '(1 2))", "1");
@@ -518,12 +518,101 @@ test "macros and backquote like SBCL 2.6.7 (Phase 15)" {
     try expectError(&e, "(destructuring-bind (&key a) '(:a) a)", .program_error);
     try expectValue(&e, "(destructuring-bind (&key a &allow-other-keys) '(:b 1 :a 2) a)", "2");
     try expectValue(&e, "(destructuring-bind (&key a) '(:b 1 :allow-other-keys t) a)", "NIL");
-    // 一般の場所は Phase 16
-    try expectError(&e, "(let ((l (list 1))) (incf (car l)))", .unimplemented);
+    // 一般の場所（Phase 16 から）
+    try expectValue(&e, "(let ((l (list 1))) (incf (car l)) l)", "(2)");
     // マクロの展開の中のエラーは、そのフォームのエラーとして報告する
     try expectError(&e, "(progn (defmacro p15-bad () (car 1)) (p15-bad))", .type_error);
     // マクロ関数の印字
     try expectValue(&e, "(progn (defmacro p15-pm () 1) (not (null (macro-function 'p15-pm))))", "T");
+}
+
+/// Phase 16：setf と場所・ハッシュ表・配列（SBCL 2.6.7 の結果）
+const setf_cases = [_][2][]const u8{
+    .{ "(let ((x 1)) (setf x 2) x)", "2" },
+    .{ "(let ((a 1) (b 2)) (setf a 10 b 20) (list a b))", "(10 20)" },
+    .{ "(setf)", "NIL" },
+    .{ "(let ((l (list 1 2 3))) (setf (car l) 'a) (setf (cdr (cdr l)) '(z)) l)", "(A 2 Z)" },
+    .{ "(let ((l (list 1 2 3))) (list (setf (second l) 'b) l))", "(B (1 B 3))" },
+    .{ "(let ((l (list 1 2 3 4))) (setf (nth 2 l) 'c) (setf (cadr l) 'b) (setf (fourth l) 'd) l)", "(1 B C D)" },
+    .{ "(let ((l (list (list 1 2) 3))) (setf (caar l) 'x) (setf (cdar l) '(y)) l)", "((X Y) 3)" },
+    .{ "(let ((v (make-array 3 :initial-element 0))) (setf (aref v 1) 'x) v)", "#(0 X 0)" },
+    .{ "(let ((v (make-array 3 :initial-contents '(a b c)))) (setf (svref v 0) 'z) (list v (length v) (aref v 2)))", "(#(Z B C) 3 C)" },
+    .{ "(make-array 2)", "#(0 0)" },
+    .{ "(let ((s (make-array 3 :element-type 'character :initial-element #\\a))) (setf (char s 1) #\\b) s)", "\"aba\"" },
+    .{ "(let ((s (copy-seq \"hello\"))) (setf (aref s 0) #\\j) s)", "\"jello\"" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (setf (gethash 'b h) 2) (list (gethash 'a h) (gethash 'b h) (gethash 'c h) (hash-table-count h)))", "(1 2 NIL 2)" },
+    .{ "(let ((h (make-hash-table :test 'equal))) (setf (gethash \"key\" h) 'v) (setf (gethash '(1 2) h) 'w) (list (gethash \"key\" h) (gethash (list 1 2) h)))", "(V W)" },
+    .{ "(let ((h (make-hash-table :test #'equal))) (setf (gethash \"a\" h) 1) (gethash \"a\" h))", "1" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash \"a\" h) 1) (gethash \"a\" h))", "NIL" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 1.5d0 h) 'd) (gethash 1.5d0 h))", "D" },
+    .{ "(let ((h (make-hash-table))) (gethash 'x h 'default))", "DEFAULT" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (list (remhash 'a h) (remhash 'a h) (hash-table-count h)))", "(T NIL 0)" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (clrhash h) (hash-table-count h))", "0" },
+    .{ "(let ((h (make-hash-table)) (sum 0)) (setf (gethash 'a h) 1 (gethash 'b h) 2) (maphash (lambda (k v) (declare (ignore k)) (setq sum (+ sum v))) h) sum)", "3" },
+    .{ "(let ((h (make-hash-table))) (incf (gethash 'n h 0)) (incf (gethash 'n h 0) 5) (gethash 'n h))", "6" },
+    .{ "(let ((h (make-hash-table))) (push 'x (gethash 'k h)) (push 'y (gethash 'k h)) (gethash 'k h))", "(Y X)" },
+    .{ "(hash-table-p (make-hash-table))", "T" },
+    .{ "(hash-table-p 1)", "NIL" },
+    .{ "(let ((l (list 1 2 3))) (incf (car l) 10) (decf (cadr l)) l)", "(11 1 3)" },
+    .{ "(let ((l (list nil))) (push 1 (car l)) (push 2 (car l)) (list (pop (car l)) l))", "(2 ((1)))" },
+    .{ "(let ((p (list :a 1 :b 2))) (list (getf p :a) (getf p :b) (getf p :c) (getf p :c 'd)))", "(1 2 NIL D)" },
+    .{ "(let ((p (list :a 1))) (setf (getf p :a) 10) (setf (getf p :b) 20) p)", "(:B 20 :A 10)" },
+    .{ "(let ((p nil)) (incf (getf p :count 0)) (incf (getf p :count 0)) p)", "(:COUNT 2)" },
+    .{ "(progn (setf (get 'p16-sym 'color) 'red) (list (get 'p16-sym 'color) (get 'p16-sym 'size) (get 'p16-sym 'size 'none)))", "(RED NIL NONE)" },
+    .{ "(progn (defvar *p16-v* 1) (setf (symbol-value '*p16-v*) 5) *p16-v*)", "5" },
+    .{ "(progn (setf (symbol-function 'p16-f) (lambda (x) (* x 3))) (p16-f 4))", "12" },
+    .{ "(progn (setf (fdefinition 'p16-g) (lambda () 'g)) (p16-g))", "G" },
+    .{ "(progn (defun (setf p16-first) (new l) (setf (car l) new)) (let ((l (list 1 2))) (setf (p16-first l) 'x) l))", "(X 2)" },
+    .{ "(progn (defun (setf p16-first) (new l) (setf (car l) new)) (funcall #'(setf p16-first) 'y (list 1)))", "Y" },
+    .{ "(progn (defun p16-mid (v) (aref v 1)) (defsetf p16-mid p16-set-mid) (defun p16-set-mid (v x) (setf (aref v 1) x) x) (let ((v (vector 1 2 3))) (setf (p16-mid v) 'm) v))", "#(1 M 3)" },
+    .{ "(progn (defun p16-acc (l) (car l)) (defsetf p16-acc (l) (new) `(progn (rplaca ,l ,new) ,new)) (let ((l (list 1))) (list (setf (p16-acc l) 9) l)))", "(9 (9))" },
+    .{ "(let ((l (list 1 2 3))) (setf (car l) 'a (cadr l) 'b) l)", "(A B 3)" },
+    .{ "(equal '(1 (2 \"a\")) (list 1 (list 2 \"a\")))", "T" },
+    .{ "(equal \"abc\" \"ABC\")", "NIL" },
+    .{ "(equal 1.0 1.0)", "T" },
+    .{ "(equal #(1) #(1))", "NIL" },
+    .{ "(let ((x (list 1 2))) (rplaca x 'a) (rplacd x '(b)) x)", "(A B)" },
+    .{ "(list (nth 0 '(a b)) (nth 5 '(a b)) (nthcdr 1 '(a b c)) (caddr '(1 2 3)) (cddr '(1 2 3)) (third '(1 2 3)) (tenth '(1 2 3 4 5 6 7 8 9 10)))", "(A NIL (B C) 3 (3) 3 10)" },
+    .{ "(list (length '(1 2 3)) (length #(1 2)) (length \"abcd\") (length nil))", "(3 2 4 0)" },
+    .{ "(list (vectorp #(1)) (vectorp \"s\") (vectorp '(1)) (arrayp #(1)) (simple-vector-p #(1)) (simple-vector-p \"s\"))", "(T T NIL T T NIL)" },
+    .{ "(let ((x 1)) (incf x) (incf x 10) x)", "12" },
+};
+
+test "setf, places, hash tables and arrays like SBCL 2.6.7 (Phase 16)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (setf_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (setf_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // 1000 個の項目（作り直しを含む）。SBCL 2.6.7：(1000 998001 250000)
+    try expectValue(&e,
+        \\(let ((h (make-hash-table)))
+        \\  (labels ((fill-table (i) (if (< i 1000) (progn (setf (gethash i h) (* i i)) (fill-table (+ i 1))) nil)))
+        \\    (fill-table 0))
+        \\  (list (hash-table-count h) (gethash 999 h) (gethash 500 h)))
+    , "(1000 998001 250000)");
+    // 削除と追加を繰り返しても、表は正しい（削除した枠の作り直し）
+    try expectValue(&e,
+        \\(let ((h (make-hash-table :test 'equal)))
+        \\  (labels ((churn (i) (if (< i 2000) (progn (setf (gethash (list i) h) i) (remhash (list (- i 1)) h) (churn (+ i 1))) nil)))
+        \\    (churn 0))
+        \\  (list (hash-table-count h) (gethash (list 1999) h) (gethash (list 5) h)))
+    , "(1 1999 NIL)");
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(setf (car 1) 2)", .type_error);
+    try expectError(&e, "(let ((v (vector 1 2))) (setf (aref v 5) 0))", .type_error);
+    try expectError(&e, "(gethash 1 2)", .type_error);
+    try expectError(&e, "(make-hash-table :test 'foo)", .simple_error);
+    try expectError(&e, "(setf x)", .program_error);
+    try expectError(&e, "(let ((x (list 1))) (setf (p16-undefined-place x) 1))", .undefined_function);
+    // 未実装（Phase 21）
+    try expectError(&e, "(make-hash-table :test 'equalp)", .unimplemented);
+    try expectError(&e, "(make-array '(2 3))", .unimplemented);
+    try expectError(&e, "(make-array 3 :fill-pointer 0)", .unimplemented);
+    // CL の関数の setf 関数は定義できない
+    try expectError(&e, "(defun (setf car) (v x) v)", .package_error);
 }
 
 test "eval matches SBCL 2.6.7" {

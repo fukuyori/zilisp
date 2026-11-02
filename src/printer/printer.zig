@@ -37,6 +37,17 @@ pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Error!void {
         .closure, .native_function => return w.print("#<object {x}>", .{v.raw()}),
         .code => return w.print("#<CODE {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
         .value_cell => return w.print("#<VALUE-CELL {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
+        .hash_table => {
+            const object = @import("../values/object.zig");
+            const t: *object.HashTable = @ptrCast(@alignCast(v.pointer()));
+            const name = switch (@as(object.HashTest, @fromBackingInt(t.header.aux))) {
+                .eq => "EQ",
+                .eql => "EQL",
+                .equal => "EQUAL",
+            };
+            // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
+            return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
+        },
         _ => return w.print("#<object {x}>", .{v.raw()}),
     }
 }
@@ -54,8 +65,8 @@ fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
             const name = function.closurePtr(v).codePtr().name;
             try w.writeAll("#<FUNCTION ");
             try printCodeName(rt, w, name);
-            // 名前の付いた大域の関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
-            if (!name.isCons()) return w.writeByte('>');
+            // 名前の付いた大域の関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>、#<FUNCTION (SETF F)>）
+            if (!name.isCons() or Runtime.consPtr(name).car == rt.syms.setf) return w.writeByte('>');
             try w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
         },
         else => try w.print("#<FUNCTION {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),

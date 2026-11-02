@@ -41,6 +41,8 @@ pub const Op = enum(u8) {
     progv_bind,
     // 関数
     load_function,
+    /// シンボルの setf 関数を積む（Phase 16）
+    load_setf_function,
     make_closure,
     /// [関数 引数...] → [値]
     call,
@@ -74,7 +76,7 @@ pub const Operand = enum { k, i, n, rel, s16 };
 
 pub fn operands(op: Op) []const Operand {
     return switch (op) {
-        .@"const", .load_special, .store_special, .load_function, .bind_special => &.{.k},
+        .@"const", .load_special, .store_special, .load_function, .load_setf_function, .bind_special => &.{.k},
         .load_local, .store_local, .load_captured => &.{.i},
         .smallint => &.{.s16},
         .make_closure, .call_global => &.{ .k, .n },
@@ -104,7 +106,7 @@ pub fn length(op: Op, wide: bool) usize {
 pub fn stackEffect(op: Op, n: u32) i64 {
     const ni: i64 = n;
     return switch (op) {
-        .@"const", .nil, .t, .smallint, .load_local, .load_captured, .load_special, .load_function => 1,
+        .@"const", .nil, .t, .smallint, .load_local, .load_captured, .load_special, .load_function, .load_setf_function => 1,
         .pop, .cell_set, .jump_if_nil, .@"return", .bind_special, .unbind_to => -1,
         .binding_depth => 1,
         .progv_bind => -2,

@@ -86,16 +86,16 @@ seq	id	outcome	detail
 00087	chapters/05-Level 3.md#L1034	match	
 00088	chapters/06-Level 4.md#L69	match	
 00089	chapters/06-Level 4.md#L76	match	
-00090	chapters/06-Level 4.md#L103	zilisp-error	未実装：SETF
+00090	chapters/06-Level 4.md#L103	match	
 00091	chapters/06-Level 4.md#L134	match	
 00092	chapters/06-Level 4.md#L163	match	
-00093	chapters/06-Level 4.md#L174	zilisp-error	未実装：SETF
+00093	chapters/06-Level 4.md#L174	match	
 00094	chapters/06-Level 4.md#L193	match	
 00095	chapters/06-Level 4.md#L200	match	
 00096	chapters/06-Level 4.md#L211	match	
-00097	chapters/06-Level 4.md#L222	zilisp-error	未実装：SETF
-00098	chapters/06-Level 4.md#L249	zilisp-error	未実装：SETF
-00099	chapters/06-Level 4.md#L263	zilisp-error	未実装：SETF
+00097	chapters/06-Level 4.md#L222	match	
+00098	chapters/06-Level 4.md#L249	match	
+00099	chapters/06-Level 4.md#L263	match	
 00100	chapters/06-Level 4.md#L286	both-error	
 00101	chapters/06-Level 4.md#L304	match	
 00102	chapters/06-Level 4.md#L317	both-error	
@@ -107,7 +107,7 @@ seq	id	outcome	detail
 00109	chapters/06-Level 4.md#L448	both-error	
 00110	chapters/06-Level 4.md#L468	match	
 00111	chapters/06-Level 4.md#L474	both-error	
-00112	chapters/06-Level 4.md#L497	zilisp-error	未実装：SETF
+00112	chapters/06-Level 4.md#L497	match	
 00113	chapters/06-Level 4.md#L517	both-error	
 00114	chapters/06-Level 4.md#L529	both-error	
 00115	chapters/06-Level 4.md#L567	zilisp-error	未実装の関数：MAPCAR
@@ -117,7 +117,7 @@ seq	id	outcome	detail
 00119	chapters/06-Level 4.md#L649	both-error	
 00120	chapters/06-Level 4.md#L656	match	
 00121	chapters/06-Level 4.md#L672	match	
-00122	chapters/06-Level 4.md#L684	zilisp-error	未実装：SETF
+00122	chapters/06-Level 4.md#L684	match	
 00123	chapters/06-Level 4.md#L698	match	
 00124	chapters/06-Level 4.md#L705	both-error	
 00125	chapters/06-Level 4.md#L727	zilisp-error	未実装：DOLIST
@@ -142,7 +142,7 @@ seq	id	outcome	detail
 00148	chapters/08-Level 5.md#L373	match	
 00149	chapters/08-Level 5.md#L388	zilisp-error	未実装の関数：FORMAT
 00150	chapters/08-Level 5.md#L431	zilisp-error	未実装の関数：STRING=
-00151	chapters/08-Level 5.md#L456	zilisp-error	未実装の関数：EQUAL
+00151	chapters/08-Level 5.md#L456	zilisp-error	未実装の関数：EQUALP
 00154	chapters/08-Level 5.md#L501	match	
 00155	chapters/08-Level 5.md#L528	zilisp-error	未実装の関数：EVENP
 00156	chapters/08-Level 5.md#L547	zilisp-error	未実装：DOLIST
@@ -164,7 +164,7 @@ seq	id	outcome	detail
 00172	chapters/09-Level 6.md#L154	both-error	
 00173	chapters/09-Level 6.md#L164	zilisp-error	未実装：DOTIMES
 00174	chapters/09-Level 6.md#L180	zilisp-error	未実装：DOTIMES
-00175	chapters/09-Level 6.md#L190	zilisp-error	未実装の関数：AREF
+00175	chapters/09-Level 6.md#L190	match	
 00176	chapters/09-Level 6.md#L221	zilisp-error	未実装：DOTIMES
 00177	chapters/09-Level 6.md#L237	both-error	
 00178	chapters/09-Level 6.md#L246	zilisp-error	未実装：DOLIST
@@ -208,18 +208,18 @@ seq	id	outcome	detail
 00216	chapters/10-Level 7.md#L116	both-error	
 00217	chapters/10-Level 7.md#L129	zilisp-error	未実装の関数：ASSOC
 00218	chapters/10-Level 7.md#L157	match	
-00219	chapters/10-Level 7.md#L172	zilisp-error	未実装の関数：GETF
-00220	chapters/10-Level 7.md#L193	zilisp-error	未実装：SETF
+00219	chapters/10-Level 7.md#L172	match	
+00220	chapters/10-Level 7.md#L193	match	
 00221	chapters/10-Level 7.md#L212	zilisp-error	未実装：REMF
-00222	chapters/10-Level 7.md#L227	zilisp-error	未実装：SETF
+00222	chapters/10-Level 7.md#L227	match	
 00223	chapters/10-Level 7.md#L248	zilisp-error	未実装：&KEY
-00224	chapters/10-Level 7.md#L270	zilisp-error	未実装の関数：MAKE-HASH-TABLE
-00225	chapters/10-Level 7.md#L280	zilisp-error	未実装の関数：MAKE-HASH-TABLE
+00224	chapters/10-Level 7.md#L270	match	
+00225	chapters/10-Level 7.md#L280	match	
 00226	chapters/10-Level 7.md#L303	both-error	
 00227	chapters/10-Level 7.md#L315	both-error	
 00228	chapters/10-Level 7.md#L326	both-error	
 00229	chapters/10-Level 7.md#L337	both-error	
-00230	chapters/10-Level 7.md#L344	zilisp-error	未実装の関数：EQUAL
+00230	chapters/10-Level 7.md#L344	match	
 00231	chapters/10-Level 7.md#L374	zilisp-error	未実装：DEFSTRUCT
 00232	chapters/10-Level 7.md#L391	both-error	
 00233	chapters/10-Level 7.md#L404	both-error	
@@ -227,9 +227,9 @@ seq	id	outcome	detail
 00235	chapters/10-Level 7.md#L427	both-error	
 00236	chapters/10-Level 7.md#L437	zilisp-error	未実装：DEFSTRUCT
 00237	chapters/10-Level 7.md#L451	zilisp-error	未実装：DEFSTRUCT
-00238	chapters/10-Level 7.md#L483	zilisp-error	未実装の関数：SECOND
+00238	chapters/10-Level 7.md#L483	zilisp-error	未実装：DEFSTRUCT
 00239	chapters/10-Level 7.md#L503	zilisp-error	未実装：DEFSTRUCT
-00240	chapters/10-Level 7.md#L513	zilisp-error	未実装の関数：EQUAL
+00240	chapters/10-Level 7.md#L513	zilisp-error	未実装：&OPTIONAL
 00241	chapters/10-Level 7.md#L540	both-error	
 00242	chapters/10-Level 7.md#L561	both-error	
 00243	chapters/10-Level 7.md#L582	both-error	
@@ -264,7 +264,7 @@ seq	id	outcome	detail
 00272	chapters/11-Level 8.md#L417	zilisp-error	未実装：&KEY
 00273	chapters/11-Level 8.md#L449	both-error	
 00274	chapters/11-Level 8.md#L462	match	
-00275	chapters/11-Level 8.md#L473	zilisp-error	未実装：SETF
+00275	chapters/11-Level 8.md#L473	match	
 00276	chapters/11-Level 8.md#L502	zilisp-error	未実装の関数：MAPCAR
 00277	chapters/11-Level 8.md#L510	zilisp-error	未実装の関数：MAPCAR
 00278	chapters/11-Level 8.md#L543	zilisp-error	未実装の関数：REMOVE-IF-NOT
@@ -334,8 +334,8 @@ seq	id	outcome	detail
 00343	chapters/13-Level 9.md#L1033	both-error	
 00344	chapters/13-Level 9.md#L1044	both-error	
 00345	chapters/14-Level 10.md#L9	match	
-00346	chapters/14-Level 10.md#L19	zilisp-error	未実装の関数：LENGTH
-00347	chapters/14-Level 10.md#L34	zilisp-error	未実装の関数：CHAR
+00346	chapters/14-Level 10.md#L19	match	
+00347	chapters/14-Level 10.md#L34	zilisp-error	未実装の関数：ELT
 00348	chapters/14-Level 10.md#L51	zilisp-error	未実装の関数：MAKE-STRING
 00349	chapters/14-Level 10.md#L88	zilisp-error	未実装の関数：STRING=
 00350	chapters/14-Level 10.md#L117	zilisp-error	未実装の関数：STRING=
@@ -345,7 +345,7 @@ seq	id	outcome	detail
 00354	chapters/14-Level 10.md#L190	zilisp-error	未実装の関数：COUNT
 00355	chapters/14-Level 10.md#L206	zilisp-error	未実装の関数：SUBSEQ
 00356	chapters/14-Level 10.md#L222	zilisp-error	未実装の関数：SUBSEQ
-00357	chapters/14-Level 10.md#L237	zilisp-error	未実装の関数：LENGTH
+00357	chapters/14-Level 10.md#L237	zilisp-error	未実装の関数：STRING=
 00358	chapters/14-Level 10.md#L266	zilisp-error	未実装の関数：CONCATENATE
 00359	chapters/14-Level 10.md#L280	zilisp-error	未実装の関数：FORMAT
 00360	chapters/14-Level 10.md#L292	zilisp-error	未実装の関数：STRING-UPCASE
@@ -357,7 +357,7 @@ seq	id	outcome	detail
 00366	chapters/14-Level 10.md#L439	zilisp-error	未実装の関数：ALPHA-CHAR-P
 00367	chapters/14-Level 10.md#L475	zilisp-error	未実装の関数：CHAR-UPCASE
 00368	chapters/14-Level 10.md#L494	zilisp-error	未実装の関数：CHAR=
-00369	chapters/14-Level 10.md#L509	zilisp-error	未実装の関数：LENGTH
+00369	chapters/14-Level 10.md#L509	zilisp-error	未実装の関数：UPPER-CASE-P
 00370	chapters/14-Level 10.md#L529	both-error	
 00371	chapters/14-Level 10.md#L573	zilisp-error	未実装：LOOP
 00372	chapters/14-Level 10.md#L619	zilisp-error	未実装の関数：POSITION
@@ -374,7 +374,7 @@ seq	id	outcome	detail
 00383	chapters/14-Level 10.md#L774	both-error	
 00384	chapters/14-Level 10.md#L781	zilisp-error	未実装の関数：FORMAT
 00385	chapters/14-Level 10.md#L824	both-error	
-00386	chapters/15-Level 11.md#L18	zilisp-error	未実装の関数：LENGTH
+00386	chapters/15-Level 11.md#L18	zilisp-error	未実装の関数：ELT
 00387	chapters/15-Level 11.md#L143	zilisp-error	未実装の関数：EVENP
 00388	chapters/15-Level 11.md#L309	zilisp-error	未実装の関数：REMOVE-DUPLICATES
 00389	chapters/15-Level 11.md#L405	zilisp-error	未実装の関数：COPY-LIST
@@ -385,7 +385,7 @@ seq	id	outcome	detail
 00394	chapters/15-Level 11.md#L519	zilisp-error	未実装の関数：REMOVE
 00395	chapters/15-Level 11.md#L705	zilisp-error	未実装の関数：REMOVE-IF-NOT
 00396	chapters/15-Level 11.md#L734	zilisp-error	未実装の関数：COERCE
-00397	chapters/15-Level 11.md#L757	zilisp-error	未実装の関数：LENGTH
+00397	chapters/15-Level 11.md#L757	zilisp-error	未実装の関数：REMOVE-DUPLICATES
 00398	chapters/15-Level 11.md#L772	zilisp-error	未実装の関数：REMOVE-IF-NOT
 00399	chapters/15-Level 11.md#L800	both-error	
 00400	chapters/15-Level 11.md#L807	zilisp-error	未実装の関数：EVENP
@@ -509,7 +509,7 @@ seq	id	outcome	detail
 00523	chapters/19-Level 14.md#L862	zilisp-error	未実装の関数：MAPCAR
 00524	chapters/19-Level 14.md#L883	zilisp-error	未実装の関数：GET-INTERNAL-REAL-TIME
 00525	chapters/19-Level 14.md#L904	both-error	
-00526	chapters/19-Level 14.md#L925	zilisp-error	未実装：SETF
+00526	chapters/19-Level 14.md#L925	zilisp-error	未実装：ECASE
 00527	chapters/20-Level 15.md#L30	zilisp-error	未実装の変数：*PACKAGE*
 00529	chapters/20-Level 15.md#L61	zilisp-error	未実装：DEFPACKAGE
 00530	chapters/20-Level 15.md#L97	both-error	
@@ -627,7 +627,7 @@ seq	id	outcome	detail
 00655	chapters/25-Level 18-B.md#L120	both-error	
 00656	chapters/25-Level 18-B.md#L142	both-error	
 00657	chapters/25-Level 18-B.md#L162	both-error	
-00658	chapters/25-Level 18-B.md#L181	zilisp-error	未実装：SETF
+00658	chapters/25-Level 18-B.md#L181	zilisp-error	未実装：REMF
 00659	chapters/25-Level 18-B.md#L215	zilisp-error	未実装：LOOP
 00660	chapters/25-Level 18-B.md#L233	both-error	
 00661	chapters/25-Level 18-B.md#L383	zilisp-error	未実装：LOOP
@@ -636,7 +636,7 @@ seq	id	outcome	detail
 00664	chapters/25-Level 18-B.md#L460	both-error	
 00665	chapters/25-Level 18-B.md#L488	zilisp-error	未実装：LOOP
 00666	chapters/25-Level 18-B.md#L506	both-error	
-00667	chapters/25-Level 18-B.md#L537	zilisp-error	未実装：SETF
+00667	chapters/25-Level 18-B.md#L537	match	
 00668	chapters/25-Level 18-B.md#L630	both-error	
 00669	chapters/25-Level 18-B.md#L665	zilisp-error	未実装：ASSERT
 00670	chapters/25-Level 18-B.md#L750	both-error	
@@ -707,11 +707,11 @@ seq	id	outcome	detail
 00789	chapters/27-Level 19.md#L295	zilisp-error	未実装：DEFSTRUCT
 00790	chapters/27-Level 19.md#L355	zilisp-error	未実装：DEFSTRUCT
 00791	chapters/27-Level 19.md#L369	zilisp-error	未実装：DEFSTRUCT
-00792	chapters/27-Level 19.md#L388	zilisp-error	未実装：SETF
+00792	chapters/27-Level 19.md#L388	match	
 00793	chapters/27-Level 19.md#L407	match	
-00794	chapters/27-Level 19.md#L432	zilisp-error	未実装：SETF
+00794	chapters/27-Level 19.md#L432	match	
 00795	chapters/27-Level 19.md#L452	match	
-00796	chapters/27-Level 19.md#L468	zilisp-error	未実装：(GETHASH VALUE INDEX)
+00796	chapters/27-Level 19.md#L468	match	
 00797	chapters/27-Level 19.md#L511	both-error	
 00798	chapters/27-Level 19.md#L576	zilisp-error	未実装：&KEY
 00799	chapters/27-Level 19.md#L605	both-error	
@@ -719,7 +719,7 @@ seq	id	outcome	detail
 00801	chapters/27-Level 19.md#L678	both-error	
 00802	chapters/27-Level 19.md#L709	zilisp-error	未実装：DOLIST
 00803	chapters/27-Level 19.md#L754	zilisp-error	未実装：&KEY
-00805	chapters/27-Level 19.md#L817	zilisp-error	未実装：SETF
+00805	chapters/27-Level 19.md#L817	match	
 00806	chapters/27-Level 19.md#L854	both-error	
 00807	chapters/27-Level 19.md#L896	zilisp-error	未実装：&KEY
 00808	chapters/27-Level 19.md#L941	both-error	
@@ -730,7 +730,7 @@ seq	id	outcome	detail
 00813	chapters/27-Level 19.md#L1251	both-error	
 00814	chapters/27-Level 19.md#L1265	zilisp-error	未実装：&KEY
 00815	chapters/27-Level 19.md#L1279	both-error	
-00816	chapters/27-Level 19.md#L1299	zilisp-error	未実装：SETF
+00816	chapters/27-Level 19.md#L1299	match	
 00817	chapters/27-Level 19.md#L1331	both-error	
 00819	chapters/27-Level 19.md#L1396	both-error	
 00820	chapters/27-Level 19.md#L1412	match	
@@ -744,11 +744,11 @@ seq	id	outcome	detail
 00836	chapters/29-Level 20-A.md#L511	both-error	
 00837	chapters/29-Level 20-A.md#L560	match	
 00838	chapters/29-Level 20-A.md#L585	both-error	
-00839	chapters/29-Level 20-A.md#L613	zilisp-error	未実装：SETF
+00839	chapters/29-Level 20-A.md#L613	match	
 00840	chapters/29-Level 20-A.md#L665	both-error	
 00841	chapters/29-Level 20-A.md#L716	match	
 00842	chapters/29-Level 20-A.md#L724	both-error	
-00843	chapters/29-Level 20-A.md#L774	zilisp-error	未実装：SETF
+00843	chapters/29-Level 20-A.md#L774	zilisp-error	未実装：LOOP
 00844	chapters/29-Level 20-A.md#L848	zilisp-error	未実装：DOLIST
 00845	chapters/29-Level 20-A.md#L903	zilisp-error	未実装：LOOP
 00846	chapters/29-Level 20-A.md#L1200	both-error	
@@ -759,12 +759,12 @@ seq	id	outcome	detail
 00851	chapters/29-Level 20-A.md#L1389	both-error	
 00852	chapters/29-Level 20-A.md#L1418	both-error	
 00853	chapters/29-Level 20-A.md#L1498	both-error	
-00854	chapters/29-Level 20-A.md#L1570	zilisp-error	未実装の関数：SECOND
+00854	chapters/29-Level 20-A.md#L1570	zilisp-error	未実装の関数：EVAL
 00861	chapters/30-Level 20-B.md#L319	match	
 00864	chapters/30-Level 20-B.md#L400	zilisp-error	未実装：LOOP
-00865	chapters/30-Level 20-B.md#L616	zilisp-error	未実装：SETF
-00866	chapters/30-Level 20-B.md#L656	zilisp-error	未実装：SETF
-00867	chapters/30-Level 20-B.md#L680	zilisp-error	未実装：SETF
+00865	chapters/30-Level 20-B.md#L616	match	
+00866	chapters/30-Level 20-B.md#L656	match	
+00867	chapters/30-Level 20-B.md#L680	match	
 00868	chapters/30-Level 20-B.md#L729	match	
 00877	chapters/31-Level 21-A.md#L86	zilisp-error	未実装：DEFCLASS
 00879	chapters/31-Level 21-A.md#L122	both-error	
@@ -782,10 +782,10 @@ seq	id	outcome	detail
 00891	chapters/31-Level 21-A.md#L542	zilisp-error	未実装：DEFCLASS
 00892	chapters/31-Level 21-A.md#L607	zilisp-error	未実装：DEFCLASS
 00893	chapters/31-Level 21-A.md#L659	zilisp-error	未実装：DEFCLASS
-00894	chapters/31-Level 21-A.md#L702	zilisp-error	未実装の関数：MAKE-HASH-TABLE
-00895	chapters/31-Level 21-A.md#L718	zilisp-error	未実装：SETF
+00894	chapters/31-Level 21-A.md#L702	match	
+00895	chapters/31-Level 21-A.md#L718	zilisp-error	未実装：&OPTIONAL
 00896	chapters/31-Level 21-A.md#L775	zilisp-error	未実装：LOOP
-00897	chapters/31-Level 21-A.md#L867	zilisp-error	未実装：SETF
+00897	chapters/31-Level 21-A.md#L867	match	
 00898	chapters/31-Level 21-A.md#L927	both-error	
 00899	chapters/31-Level 21-A.md#L935	match	
 00900	chapters/31-Level 21-A.md#L948	both-error	
@@ -798,27 +798,27 @@ seq	id	outcome	detail
 00907	chapters/31-Level 21-A.md#L1203	both-error	
 00908	chapters/31-Level 21-A.md#L1294	both-error	
 00909	chapters/31-Level 21-A.md#L1308	zilisp-error	未実装：LOOP
-00910	chapters/32-Level 21-B.md#L84	zilisp-error	未実装：SETF
-00911	chapters/32-Level 21-B.md#L108	zilisp-error	未実装：SETF
+00910	chapters/32-Level 21-B.md#L84	match	
+00911	chapters/32-Level 21-B.md#L108	match	
 00912	chapters/32-Level 21-B.md#L225	both-error	
-00913	chapters/32-Level 21-B.md#L236	zilisp-error	未実装：SETF
-00915	chapters/32-Level 21-B.md#L349	zilisp-error	未実装：SETF
+00913	chapters/32-Level 21-B.md#L236	match	
+00915	chapters/32-Level 21-B.md#L349	match	
 00916	chapters/32-Level 21-B.md#L369	match	
 00917	chapters/32-Level 21-B.md#L388	match	
-00919	chapters/32-Level 21-B.md#L409	zilisp-error	未実装：SETF
-00920	chapters/32-Level 21-B.md#L456	zilisp-error	未実装：SETF
-00921	chapters/32-Level 21-B.md#L495	zilisp-error	未実装：SETF
+00919	chapters/32-Level 21-B.md#L409	zilisp-error	未実装：DOLIST
+00920	chapters/32-Level 21-B.md#L456	zilisp-error	未実装：DOLIST
+00921	chapters/32-Level 21-B.md#L495	match	
 00922	chapters/32-Level 21-B.md#L523	both-error	
 00923	chapters/32-Level 21-B.md#L537	zilisp-error	未実装：LOOP
 00924	chapters/32-Level 21-B.md#L595	match	
-00925	chapters/32-Level 21-B.md#L649	zilisp-error	未実装：SETF
-00926	chapters/32-Level 21-B.md#L673	zilisp-error	未実装：SETF
-00927	chapters/32-Level 21-B.md#L700	zilisp-error	未実装の関数：MAKE-HASH-TABLE
+00925	chapters/32-Level 21-B.md#L649	match	
+00926	chapters/32-Level 21-B.md#L673	match	
+00927	chapters/32-Level 21-B.md#L700	zilisp-error	未実装：DEFCLASS
 00928	chapters/32-Level 21-B.md#L1394	both-error	
 00929	chapters/32-Level 21-B.md#L1486	both-error	
 00930	chapters/32-Level 21-B.md#L1562	both-error	
 00931	chapters/32-Level 21-B.md#L1629	match	
-00932	chapters/32-Level 21-B.md#L1645	zilisp-error	未実装：SETF
+00932	chapters/32-Level 21-B.md#L1645	match	
 00933	chapters/33-Level 21-C.md#L663	both-error	
 00934	chapters/33-Level 21-C.md#L671	both-error	
 00938	chapters/35-Level 22.md#L217	zilisp-error	未実装：DEFPACKAGE
@@ -833,7 +833,7 @@ seq	id	outcome	detail
 00971	chapters/36-Level 23-A.md#L299	zilisp-error	未実装：DEFSTRUCT
 00972	chapters/36-Level 23-A.md#L320	both-error	
 00973	chapters/36-Level 23-A.md#L358	zilisp-error	未実装：DEFSTRUCT
-00974	chapters/36-Level 23-A.md#L387	zilisp-error	未実装：(LEXER-POS LEXER)
+00974	chapters/36-Level 23-A.md#L387	zilisp-error	未実装：&OPTIONAL
 00975	chapters/36-Level 23-A.md#L412	both-error	
 00976	chapters/36-Level 23-A.md#L439	zilisp-error	未実装：LOOP
 00977	chapters/36-Level 23-A.md#L460	zilisp-error	未実装：LOOP
@@ -848,7 +848,7 @@ seq	id	outcome	detail
 00986	chapters/36-Level 23-A.md#L715	zilisp-error	未実装：LOOP
 00987	chapters/36-Level 23-A.md#L735	zilisp-error	未実装：DOLIST
 00988	chapters/36-Level 23-A.md#L822	zilisp-error	未実装：DEFSTRUCT
-00989	chapters/36-Level 23-A.md#L837	zilisp-error	未実装：(PARSER-POS PARSER)
+00989	chapters/36-Level 23-A.md#L837	zilisp-error	未実装：LOOP
 00990	chapters/36-Level 23-A.md#L889	match	
 00991	chapters/36-Level 23-A.md#L916	both-error	
 00992	chapters/36-Level 23-A.md#L938	match	
@@ -858,8 +858,8 @@ seq	id	outcome	detail
 00996	chapters/36-Level 23-A.md#L1092	zilisp-error	未実装：DEFSTRUCT
 00997	chapters/36-Level 23-A.md#L1124	both-error	
 00998	chapters/36-Level 23-A.md#L1138	match	
-00999	chapters/36-Level 23-A.md#L1176	zilisp-error	未実装：(TURTLE-LINES TURTLE)
-01000	chapters/36-Level 23-A.md#L1203	zilisp-error	未実装：SETF
+00999	chapters/36-Level 23-A.md#L1176	match	
+01000	chapters/36-Level 23-A.md#L1203	match	
 01001	chapters/36-Level 23-A.md#L1241	zilisp-error	未実装：DOLIST
 01002	chapters/36-Level 23-A.md#L1314	zilisp-error	未実装：DOLIST
 01003	chapters/36-Level 23-A.md#L1364	match	
@@ -882,7 +882,7 @@ seq	id	outcome	detail
 01021	chapters/37-Level 23-B.md#L424	both-error	
 01022	chapters/37-Level 23-B.md#L440	match	
 01023	chapters/37-Level 23-B.md#L499	zilisp-error	未実装：DEFSTRUCT
-01024	chapters/37-Level 23-B.md#L510	zilisp-error	未実装：(ENVIRONMENT-BINDINGS ENV)
+01024	chapters/37-Level 23-B.md#L510	match	
 01025	chapters/37-Level 23-B.md#L541	zilisp-error	未実装：DEFSTRUCT
 01026	chapters/37-Level 23-B.md#L553	zilisp-error	未実装：DEFSTRUCT
 01027	chapters/37-Level 23-B.md#L574	match	
@@ -905,7 +905,7 @@ seq	id	outcome	detail
 01047	chapters/38-Level 24-A.md#L179	both-error	
 01048	chapters/38-Level 24-A.md#L203	both-error	
 01049	chapters/38-Level 24-A.md#L238	zilisp-error	未実装：DEFSTRUCT
-01050	chapters/38-Level 24-A.md#L260	zilisp-error	未実装：SETF
+01050	chapters/38-Level 24-A.md#L260	match	
 01052	chapters/38-Level 24-A.md#L326	match	
 01053	chapters/38-Level 24-A.md#L392	both-error	
 01054	chapters/38-Level 24-A.md#L434	both-error	
@@ -919,9 +919,9 @@ seq	id	outcome	detail
 01064	chapters/39-Level 24-B.md#L170	match	
 01066	chapters/39-Level 24-B.md#L232	both-error	
 01067	chapters/39-Level 24-B.md#L254	match	
-01068	chapters/39-Level 24-B.md#L327	zilisp-error	未実装：SETF
+01068	chapters/39-Level 24-B.md#L327	match	
 01069	chapters/39-Level 24-B.md#L360	zilisp-error	未実装：&KEY
-01070	chapters/39-Level 24-B.md#L416	zilisp-error	未実装：SETF
+01070	chapters/39-Level 24-B.md#L416	match	
 01071	chapters/39-Level 24-B.md#L452	zilisp-error	未実装：WITH-OPEN-FILE
 01072	chapters/39-Level 24-B.md#L516	match	
 01073	chapters/39-Level 24-B.md#L532	match	
@@ -936,11 +936,11 @@ seq	id	outcome	detail
 01086	chapters/42-Level 26.md#L202	both-error	
 01087	chapters/42-Level 26.md#L224	zilisp-error	未実装：DEFSTRUCT
 01088	chapters/42-Level 26.md#L239	zilisp-error	未実装：DEFSTRUCT
-01089	chapters/42-Level 26.md#L255	zilisp-error	未実装：SETF
+01089	chapters/42-Level 26.md#L255	match	
 01090	chapters/42-Level 26.md#L287	match	
 01091	chapters/42-Level 26.md#L324	zilisp-error	未実装：DEFSTRUCT
 01093	chapters/42-Level 26.md#L413	zilisp-error	未実装：DOLIST
-01094	chapters/42-Level 26.md#L451	zilisp-error	未実装：(SS-STATE-UNDO-STACK *STATE*)
+01094	chapters/42-Level 26.md#L451	match	
 01095	chapters/42-Level 26.md#L481	zilisp-error	未実装：WITH-OPEN-FILE
 01096	chapters/42-Level 26.md#L529	match	
 01097	chapters/42-Level 26.md#L566	zilisp-error	未実装：DOLIST

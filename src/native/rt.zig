@@ -55,6 +55,10 @@ pub inline fn loadFunction(th: *Thread, sym: Value) Value {
     return th.resolveFunction(sym);
 }
 
+pub inline fn loadSetfFunction(th: *Thread, sym: Value) Value {
+    return th.resolveSetfFunction(sym);
+}
+
 pub inline fn captured(self: Value, i: usize) Value {
     return function.closurePtr(self).captured()[i];
 }

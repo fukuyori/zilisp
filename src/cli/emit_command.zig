@@ -55,6 +55,8 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
         _ = rt.roots.set(root, list);
 
         var res = resolver_mod.Resolver.init(s.th, arena.allocator(), &pins);
+        // ファイル全体を先にコンパイルする（compile-file の意味。eval-when の扱いが変わる）
+        res.compile_file = true;
         const lambda = res.toplevel(form) catch |err| {
             if (err == error.OutOfMemory) return oom(stderr);
             try stderr.print("{s}:{d}:{d}: ", .{ path, loc.line, loc.col });

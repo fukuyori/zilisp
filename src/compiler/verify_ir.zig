@@ -63,7 +63,7 @@ fn visible(l: *const Lambda, v: *const Var) IrError!void {
 
 fn node(l: *const Lambda, n: *const Node) IrError!void {
     switch (n.kind) {
-        .constant, .global_ref, .global_fn => {},
+        .constant, .global_ref, .global_fn, .global_setf_fn => {},
         .lex_ref => |v| try visible(l, v),
         .lex_set => |s| {
             try visible(l, s.v);

@@ -297,6 +297,15 @@ fn execute(th: *Thread, entry_fp: usize) Value {
             sp += 1;
             continue :dispatch next(bc, &ip);
         },
+        .load_setf_function => {
+            const w = wide;
+            wide = false;
+            const f = th.resolveSetfFunction(consts[readIndex(bc, &ip, w)]);
+            if (f == Value.unwind) return f;
+            stack[sp] = f;
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
         .make_closure => {
             const w = wide;
             wide = false;

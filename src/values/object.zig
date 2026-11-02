@@ -20,6 +20,8 @@ pub const ObjKind = enum(u8) {
     native_function,
     /// 捕捉され、かつ代入される変数の箱
     value_cell,
+    /// ハッシュ表（Phase 16。詳細設計 §2.6）
+    hash_table,
     _,
 };
 
@@ -121,3 +123,16 @@ pub const ValueCell = extern struct {
     header: ObjHeader,
     value: Value,
 };
+
+/// ハッシュ表（詳細設計 §2.6。Phase 16 の最小版）。header.aux は比較の種類（HashTest）。
+/// 要素は simple-vector entries に (キー 値) の組で並べる（開番地法。空きはキーが unbound、削除した枠は墓標のシンボル）。
+/// 非移動型の GC なので、eq・eql のハッシュ値にアドレスを使える（§3）
+pub const HashTable = extern struct {
+    header: ObjHeader,
+    entries: Value,
+    count: u32,
+    /// 削除した枠の数（増えたら作り直す）
+    tombstones: u32,
+};
+
+pub const HashTest = enum(u16) { eq, eql, equal };

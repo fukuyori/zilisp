@@ -89,6 +89,14 @@
   `append`・`vector`。Lisp で書く標準ライブラリ `src/lisp/boot.lisp`（`when`・`unless`・`cond`・`and`・`or`・`case`・`prog1`・`prog2`、
   変数の場所の `incf`・`decf`・`push`・`pop`）を起動時に読み込む。試験：SBCL 2.6.7 の結果と比べる57通り（GC stress でも実行）、
   言語試験 `tests/language/eval/macros.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 100 から 179 に
+- Phase 16：`setf`（複数の組）と場所の展開（Lisp で書く。`defsetf` の短い形・長い形、`(defun (setf 名前) …)`、`#'(setf 名前)`）、
+  場所：変数・`car`・`cdr`・`first`〜`tenth`・`cXXr`・`nth`・`aref`・`svref`・`char`・`schar`・`gethash`・`getf`・`get`・`symbol-value`・
+  `symbol-function`・`fdefinition`。展開を共有する `incf`・`decf`・`push`・`pop`。`eval-when`。VM の eval はトップレベルの
+  `progn`・マクロの展開結果・`eval-when` の中のフォームを1つずつ評価する。ハッシュ表（`make-hash-table` の `:test` は `eq`・`eql`・`equal`、
+  `gethash`・`remhash`・`clrhash`・`maphash`・`hash-table-count`・`hash-table-p`）、1次元の配列（`make-array`・`aref`・`svref`・`char`・
+  `length`・`copy-seq` など）、`equal`・`rplaca`・`rplacd`・`nth`・`nthcdr`・`getf`・`get`・`symbol-plist`・`fdefinition`。
+  試験：SBCL 2.6.7 の結果と比べる48通り（GC stress でも実行）、言語試験 `tests/language/eval/setf.lisp`（と gc-stress 版。ネイティブでも一致）。
+  教材のブロックの一致は 179 から 223 に
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

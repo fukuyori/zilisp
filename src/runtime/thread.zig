@@ -320,6 +320,15 @@ pub const Thread = struct {
         return entry(th, fv, args.ptr, @intCast(args.len));
     }
 
+    /// シンボルの setf 関数。なければ undefined-function（名前は (setf シンボル)）
+    pub fn resolveSetfFunction(th: *Thread, sym: Value) Value {
+        const f = th.rt.symbolPtr(sym).setf_function;
+        if (f != Value.unbound) return f;
+        const tail = th.rt.cons(sym, Value.nil) catch return th.outOfMemory();
+        const name = th.rt.cons(th.rt.syms.setf, tail) catch return th.outOfMemory();
+        return th.signal(.undefined_function, "", name, Value.unbound);
+    }
+
     /// 関数指定子を関数オブジェクトにする（シンボルなら大域の関数）
     pub fn resolveFunction(th: *Thread, f: Value) Value {
         if (f.isFunctionPointer()) return f;

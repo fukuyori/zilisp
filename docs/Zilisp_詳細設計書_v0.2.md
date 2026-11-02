@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記14） | 2026-11-02 | Phase 16：setf と場所の展開、eval でのトップレベルのフォームの順の処理、eval-when、ハッシュ表と1次元の配列の最小版（§2.6・§5.2） |
 | 0.2（追記13） | 2026-11-02 | Phase 15：マクロ展開器、defmacro、分解束縛、backquote の展開、Lisp で書く標準ライブラリの読み込み（§5.2・§11.2） |
 | 0.2（追記12） | 2026-11-02 | Phase 14：動的束縛の実装（束縛のスタック、VM の命令、エラーで抜けるときの復元、special 宣言の表し方、defvar・defparameter のコンパイル時の宣言。§6.5） |
 | 0.2（追記11） | 2026-11-02 | Phase 13：教材のブロックの実行と SBCL との比較（`zig build eval-check`。§13.1）、エラーの報告の呼び出しの履歴（§9.4） |
@@ -240,6 +241,8 @@ pub const ObjHeader = packed struct(u64) {
 
 ### 2.6 ハッシュテーブル
 
+**Phase 16 の最小版**（`src/primitives/hashtables.zig`）：比較は `eq`・`eql`・`equal`（`equalp` は Phase 21）。項目は simple-vector に (キー 値) の組で並べる開番地法（線形探査。容量は 2 の冪。使用率 3/4 を超えたら作り直す）。空きの枠はキーが unbound、削除した枠は墓標のシンボル。非移動型の GC なので、`eq`・`eql` のハッシュ値にアドレスを使う。`equal` のハッシュ値は、cons は深さ 4 まで、文字列は中身から作る。`gethash` は2つ目の値（あったかどうか）も多値レジスタに置く。弱いハッシュ表は未実装。
+
 - **`eq` のハッシュ**：非移動型 GC なので、アドレス（即値は語そのもの）を使える。
 - **`eql` のハッシュ**（レビュー #4）：アドレスは使えない。`eql` は、型が同じで値が等しい数（bignum・ratio・double-float・complex）と文字を等しいとみなすため（例：`(eql (expt 2 100) (expt 2 100))` は T、`eq` は NIL。SBCL 2.6.7 で確認）。数と文字は値からハッシュを計算し、それ以外のオブジェクトはアドレスを使う。
 - **`equal` と `equalp` のハッシュは別の関数にする**（agy #12）。
@@ -448,6 +451,9 @@ pub const Node = union(enum) {
 - **分解束縛**（`defmacro`・`destructuring-bind` のラムダリスト。CLHS 3.4.4・3.4.5）：必須・`&optional`（既定値・供給の変数）・`&rest`・`&body`・ドット対の末尾・`&key`（`((:k v) …)`、`&allow-other-keys`、`:allow-other-keys t`）・`&aux`・`&whole`・`&environment`・入れ子のラムダリストを、`let*` の束縛の並びにする。引数の数の誤り・奇数個のキーワード引数・知らないキーワードは `program-error`。
 - **backquote**：`zl-sys:quasiquote` を、`list`・`list*`・`append`・`(apply #'vector …)` の呼び出しにする（CLHS 2.4.6）。unquote を含まない部分は `quote` にする（共有してよい：CLHS 2.4.6）。`,.` は `,@` と同じく、壊さずにつなぐ。入れ子の backquote は深さを数えて扱う。
 - **Phase 15 で実装しなかったもの**（§5.2 の当初の予定から外した。Phase 30 で行う：tque #341）：`macrolet`、`symbol-macrolet`、`define-symbol-macro`、環境のオブジェクト（`&environment` の値。今は NIL）、`compiler-macro`。教材のブロックで使っているものは0件（Phase 15 の時点）。
+- **setf**（Phase 16）：`src/lisp/boot.lisp` に Lisp で書く。場所の展開は CLHS 5.1.1.2 の5つの要素（一時変数・値の式・格納変数・格納フォーム・読み出しフォーム）で表し、多値ができる Phase 17 まではリストで返す（`zl-sys::%setf-expansion`。`get-setf-expansion`・`define-setf-expander` は Phase 17）。展開の順序は、場所の展開関数（`defsetf` で定義し、シンボルの属性 `zl-sys::setf-expander` に置く）→ マクロの展開 → setf 関数（`(funcall #'(setf 名前) 値 引数…)`）。`incf`・`decf`・`push`・`pop` も同じ展開の上に作る（場所の部分のフォームは1回だけ、左から順に評価する：CLHS 5.1.2）。`(defun (setf 名前) …)` はシンボルの `setf_function` の欄に置き、`#'(setf 名前)` は VM の命令 `LOAD_SETF_FUNCTION` で読む。
+- **eval でのトップレベルのフォームの処理**（Phase 16）：VM の `eval` は、トップレベルの `progn`・マクロの展開結果・`eval-when`（`:execute`）の中のフォームを、1つずつコンパイルして実行する（SBCL 2.6.7 の eval と同じ。`(progn (defsetf f g) (setf (f x) 1))` の2つ目は、1つ目を実行した後で展開される）。
+- **eval-when**（Phase 16）：eval の意味（VM）では `:execute` だけを見る。compile-file の意味（ネイティブバックエンド）では、トップレベルなら `:compile-toplevel` で本体をその場で評価し、`:load-toplevel` で本体をトップレベルの `progn` として扱う（CLHS 3.2.3.1）。`defsetf` は `(eval-when (:compile-toplevel :load-toplevel :execute) …)` に展開する。
 - `let*` は、変数1つの `let_` を入れ子にして表す（Phase 09）。各初期値は、それより前の変数が見える範囲で解決する。`let` と違い、同じ名前の変数を2回束縛してよい（後の束縛が前を隠す。SBCL 2.6.7 で確認）。`let`・`let*` の変数の局所変数の番号は、本体を抜けた後で再利用する（closure は作った時点の値か value_cell を捕捉するので、番号の再利用の影響を受けない）。
 - `Var` は `captured` と `assigned` を持つ。両方が真の変数だけを `value_cell` に入れる（assignment conversion）。
 - `Var` と `Node` は推論した型（`TypeId`：fixnum、double-float、cons、simple-vector、`t` など）を持つ。ネイティブバックエンドは型に応じてボックス化と型検査を省く（§7A.3）。

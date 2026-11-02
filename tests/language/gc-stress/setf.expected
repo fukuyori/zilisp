@@ -1,0 +1,13 @@
+
+(10 20) 
+(A B C D) 
+(11 2 2) 
+(2 1 NIL 2) 
+((Y X) (Z)) 
+(4 2 GONE) 
+(#(FIRST 0 5) 3) 
+"-+-" 
+("Bob" 30 NONE) 
+SILVER 
+#(1 M 3) 
+(NEW) 

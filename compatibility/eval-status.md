@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 179 |
+| match | 両方とも正常に終わり、標準出力が同じ | 223 |
 | both-error | 両方ともエラーで終わった | 362 |
 | output-diff | 両方とも正常に終わったが、標準出力が違う | 0 |
-| zilisp-error | Zilisp だけがエラー | 414 |
+| zilisp-error | Zilisp だけがエラー | 370 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -18,32 +18,28 @@
 
 | 最初のエラー | ブロック数 |
 |---|---|
-| 未実装：SETF | 39 |
-| 未実装：LOOP | 35 |
-| 未実装：DEFSTRUCT | 30 |
-| 未実装：DOLIST | 25 |
+| 未実装：LOOP | 37 |
+| 未実装：DEFSTRUCT | 31 |
+| 未実装：DOLIST | 27 |
 | 未実装の関数：FORMAT | 22 |
-| 未実装：DEFCLASS | 20 |
+| 未実装：DEFCLASS | 21 |
 | 未実装：&KEY | 19 |
 | 未実装：WITH-OPEN-FILE | 16 |
+| 未実装：&OPTIONAL | 11 |
 | 未実装：&REST | 9 |
 | 未実装：HANDLER-CASE | 9 |
 | 未実装の関数：MAPCAR | 8 |
-| 未実装：&OPTIONAL | 8 |
 | 未実装：DEFPACKAGE | 8 |
 | 未実装：DOTIMES | 7 |
 | 未実装の関数：EVENP | 6 |
+| 未実装の関数：STRING= | 6 |
 | 未実装の関数：ABS | 5 |
 | 未実装の関数：EXPT | 5 |
-| 未実装の関数：LENGTH | 5 |
 | 未実装の関数：REDUCE | 5 |
-| 未実装の関数：STRING= | 5 |
 | 未実装：ASSERT | 5 |
 | 未実装：DEFINE-CONDITION | 5 |
-| 未実装の関数：MAKE-HASH-TABLE | 4 |
+| 未実装の関数：EVAL | 4 |
 | 未実装の関数：COPY-LIST | 3 |
-| 未実装の関数：EQUAL | 3 |
-| 未実装の関数：EVAL | 3 |
 | 未実装の関数：FIND | 3 |
 | 未実装の関数：FLOOR | 3 |
 | 未実装の関数：POSITION | 3 |
@@ -53,14 +49,16 @@
 | 未実装：WITH-OUTPUT-TO-STRING | 3 |
 | 未実装の関数：ASSOC | 2 |
 | 未実装の関数：CONCATENATE | 2 |
+| 未実装の関数：ELT | 2 |
 | 未実装の関数：MAX | 2 |
 | 未実装の関数：PRINC | 2 |
 | 未実装の関数：RANDOM | 2 |
 | 未実装の関数：READ | 2 |
+| 未実装の関数：REMOVE-DUPLICATES | 2 |
 | 未実装の関数：REVERSE | 2 |
-| 未実装の関数：SECOND | 2 |
 | 未実装の関数：SUBSEQ | 2 |
 | 未実装の関数：SUBSTITUTE | 2 |
+| 未実装：REMF | 2 |
 | 未実装：RESTART-CASE | 2 |
 | READER-ERROR | 1 |
 | 未定義の関数：QUIT | 1 |
@@ -68,8 +66,6 @@
 | 未実装の変数：*RANDOM-STATE* | 1 |
 | 未実装の関数：ALPHA-CHAR-P | 1 |
 | 未実装の関数：APROPOS | 1 |
-| 未実装の関数：AREF | 1 |
-| 未実装の関数：CHAR | 1 |
 | 未実装の関数：CHAR-CODE | 1 |
 | 未実装の関数：CHAR-UPCASE | 1 |
 | 未実装の関数：CHAR= | 1 |
@@ -79,10 +75,10 @@
 | 未実装の関数：DIRECTORY | 1 |
 | 未実装の関数：DISASSEMBLE | 1 |
 | 未実装の関数：DOCUMENTATION | 1 |
+| 未実装の関数：EQUALP | 1 |
 | 未実装の関数：FLOAT | 1 |
 | 未実装の関数：FLOATP | 1 |
 | 未実装の関数：GET-INTERNAL-REAL-TIME | 1 |
-| 未実装の関数：GETF | 1 |
 | 未実装の関数：INSPECT | 1 |
 | 未実装の関数：LOG | 1 |
 | 未実装の関数：LOGAND | 1 |
@@ -97,7 +93,6 @@
 | 未実装の関数：READ-LINE | 1 |
 | 未実装の関数：REALP | 1 |
 | 未実装の関数：REMOVE | 1 |
-| 未実装の関数：REMOVE-DUPLICATES | 1 |
 | 未実装の関数：ROOM | 1 |
 | 未実装の関数：SEARCH | 1 |
 | 未実装の関数：SIN | 1 |
@@ -107,19 +102,14 @@
 | 未実装の関数：STRING | 1 |
 | 未実装の関数：STRING-TRIM | 1 |
 | 未実装の関数：STRING-UPCASE | 1 |
+| 未実装の関数：UPPER-CASE-P | 1 |
 | 未実装の関数：WARN | 1 |
-| 未実装：(ENVIRONMENT-BINDINGS ENV) | 1 |
-| 未実装：(GETHASH VALUE INDEX) | 1 |
-| 未実装：(LEXER-POS LEXER) | 1 |
-| 未実装：(PARSER-POS PARSER) | 1 |
-| 未実装：(SS-STATE-UNDO-STACK *STATE*) | 1 |
-| 未実装：(TURTLE-LINES TURTLE) | 1 |
 | 未実装：DECLAIM | 1 |
 | 未実装：DEFMETHOD | 1 |
+| 未実装：ECASE | 1 |
 | 未実装：HANDLER-BIND | 1 |
 | 未実装：IGNORE-ERRORS | 1 |
 | 未実装：MULTIPLE-VALUE-BIND | 1 |
-| 未実装：REMF | 1 |
 | 未実装：TIME | 1 |
 | 未実装：TYPECASE | 1 |
 | 未実装：UNWIND-PROTECT | 1 |

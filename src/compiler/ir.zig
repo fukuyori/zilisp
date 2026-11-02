@@ -84,6 +84,8 @@ pub const Node = struct {
         global_set: struct { sym: Value, value: *Node },
         /// (function シンボル)
         global_fn: Value,
+        /// (function (setf シンボル))：シンボルの setf 関数（Phase 16）
+        global_setf_fn: Value,
         /// 関数の値を呼ぶ（funcall、((lambda ...) ...)）
         call: struct { callee: *Node, args: []*Node },
         /// シンボルの関数セルを呼ぶ

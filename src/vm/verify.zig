@@ -90,7 +90,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         const insn = try decode(bc, at);
         is_start[at] = true;
         switch (insn.op) {
-            .@"const", .load_special, .store_special, .load_function, .make_closure, .call_global, .bind_special => if (insn.index >= nconsts) return error.BadConstIndex,
+            .@"const", .load_special, .store_special, .load_function, .load_setf_function, .make_closure, .call_global, .bind_special => if (insn.index >= nconsts) return error.BadConstIndex,
             .load_local, .store_local => if (insn.index >= nlocals) return error.BadLocalIndex,
             .load_captured => if (insn.index >= ncaptured) return error.BadCapturedIndex,
             else => {},

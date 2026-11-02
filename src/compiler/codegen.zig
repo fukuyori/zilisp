@@ -191,6 +191,7 @@ const Gen = struct {
                 try g.opIndex(.store_special, try g.constant(s.sym));
             },
             .global_fn => |sym| try g.opIndex(.load_function, try g.constant(sym)),
+            .global_setf_fn => |sym| try g.opIndex(.load_setf_function, try g.constant(sym)),
             .call => |c| {
                 try g.gen(c.callee);
                 for (c.args) |a| try g.gen(a);

@@ -78,6 +78,9 @@ pub const Resolver = struct {
     pins: *codegen.Pins,
     /// 今から解決するフォームがトップレベルのフォームか（CLHS 3.2.3.1：トップレベルの progn の中のフォームもトップレベル）
     at_toplevel: bool = false,
+    /// ファイル全体を先にコンパイルする（compile-file の意味。ネイティブバックエンド）。偽なら eval の意味（VM）。
+    /// eval-when の扱いが変わる（CLHS 3.2.3.1）
+    compile_file: bool = false,
 
     pub fn init(th: *Thread, arena: std.mem.Allocator, pins: *codegen.Pins) Resolver {
         return .{ .th = th, .rt = th.rt, .arena = arena, .pins = pins };
@@ -320,6 +323,7 @@ pub const Resolver = struct {
             if (head == y.defparameter) return r.resolveDefvar(form, args, scope, true, toplevel_form);
             if (head == y.progv) return r.resolveProgv(form, args, scope);
             if (head == y.defmacro) return r.resolveDefmacro(form, args, scope, toplevel_form);
+            if (head == y.@"eval-when") return r.resolveEvalWhen(form, args, scope, toplevel_form);
             if (head == y.@"destructuring-bind") return r.resolve(try macros.expandDestructuringBind(r, form, args), scope);
             if (head == r.rt.sys_quasiquote) {
                 if (args.len != 1) return r.failForm("QUASIQUOTE の引数は1つです", form);
@@ -414,7 +418,8 @@ pub const Resolver = struct {
         }
         if (name.isCons() and Runtime.consPtr(name).car == r.rt.syms.lambda)
             return r.node(.{ .lambda = try r.resolveLambda(name, scope) });
-        return r.fail(.unimplemented, "この関数の名前は未実装です（(setf 名前) は Phase 16 で実装予定）", name);
+        if (r.setfName(name)) |sym| return r.node(.{ .global_setf_fn = sym });
+        return r.failForm("関数の名前ではありません", name);
     }
 
     fn resolveLambda(r: *Resolver, form: Value, scope: *const Scope) Error!*Lambda {
@@ -526,7 +531,18 @@ pub const Resolver = struct {
     fn resolveDefun(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
         if (args.len < 2) return r.fail(.program_error, "DEFUN には名前とラムダリストが必要です", form);
         const name = args[0];
-        if (name.isCons()) return r.fail(.unimplemented, "(setf 名前) の関数の定義は未実装です（Phase 16 で実装予定）", name);
+        if (name.isCons()) {
+            // (defun (setf 名前) (新しい値 引数...) ...)：setf 関数（CLHS 5.1.2.9）
+            _ = r.setfName(name) orelse return r.failForm("関数の名前ではありません", name);
+            const l = try r.resolveLambdaParts(args[1..], name, .global, scope);
+            const set_args = try r.arena.alloc(*Node, 2);
+            set_args[0] = try r.node(.{ .constant = name });
+            set_args[1] = try r.node(.{ .lambda = l });
+            const forms = try r.arena.alloc(*Node, 2);
+            forms[0] = try r.node(.{ .call_global = .{ .sym = r.rt.sys_set_fdefinition, .args = set_args } });
+            forms[1] = try r.node(.{ .constant = name });
+            return r.node(.{ .progn = forms });
+        }
         if (!isSymbol(name) or name == Value.nil) return r.fail(.program_error, "関数の名前はシンボルでなければなりません", name);
         const l = try r.resolveLambdaParts(args[1..], name, .global, scope);
         const call_args = try r.arena.alloc(*Node, 2);
@@ -636,6 +652,49 @@ pub const Resolver = struct {
         call_args[0] = try r.node(.{ .constant = name });
         call_args[1] = try r.node(.{ .lambda = l });
         return r.node(.{ .call_global = .{ .sym = r.rt.sys_defmacro, .args = call_args } });
+    }
+
+    /// (setf シンボル) の形ならシンボルを返す
+    fn setfName(r: *Resolver, name: Value) ?Value {
+        if (!name.isCons()) return null;
+        const c = Runtime.consPtr(name);
+        if (c.car != r.rt.syms.setf or !c.cdr.isCons()) return null;
+        const d = Runtime.consPtr(c.cdr);
+        if (d.cdr != Value.nil or !isSymbol(d.car) or d.car == Value.nil) return null;
+        return d.car;
+    }
+
+    /// eval-when（特殊演算子。CLHS 3.2.3.1。Phase 16）
+    ///   eval の意味（VM）：:execute（execute・eval）があれば本体を progn として扱う。なければ NIL
+    ///   compile-file の意味（ネイティブ）：トップレベルなら、:compile-toplevel で本体をその場で評価し、
+    ///     :load-toplevel で本体をトップレベルの progn として扱う。トップレベルでなければ :execute だけを見る
+    fn resolveEvalWhen(r: *Resolver, form: Value, args: []Value, scope: *const Scope, toplevel_form: bool) Error!*Node {
+        if (args.len < 1) return r.failForm("EVAL-WHEN には状況の並びが必要です", form);
+        const sits = try r.listItems(args[0], "EVAL-WHEN の状況の並びが正しくありません");
+        var ct = false;
+        var lt = false;
+        var ex = false;
+        const rt = r.rt;
+        for (sits) |s| {
+            if (s == try rt.internKeyword("COMPILE-TOPLEVEL") or s == rt.syms.compile) ct = true else if (s == try rt.internKeyword("LOAD-TOPLEVEL") or s == rt.syms.load) lt = true else if (s == try rt.internKeyword("EXECUTE") or s == rt.syms.eval) ex = true else return r.failForm("EVAL-WHEN の状況が正しくありません", s);
+        }
+        const body = args[1..];
+        var use_body = ex;
+        if (r.compile_file and toplevel_form) {
+            if (ct) {
+                const eval_mod = @import("eval.zig");
+                for (body) |f| if (eval_mod.eval(r.th, f) == Value.unwind) return error.LispError;
+            }
+            use_body = lt;
+        }
+        if (!use_body or body.len == 0) return r.node(.{ .constant = Value.nil });
+        const nodes = try r.arena.alloc(*Node, body.len);
+        for (body, 0..) |f, i| {
+            r.at_toplevel = toplevel_form;
+            nodes[i] = try r.resolve(f, scope);
+            r.at_toplevel = false;
+        }
+        return if (nodes.len == 1) nodes[0] else r.node(.{ .progn = nodes });
     }
 
     const Binding = struct { name: Value, init_form: Value };

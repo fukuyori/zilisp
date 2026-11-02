@@ -142,3 +142,76 @@ pub fn sysProclaimSpecial(th: *Thread, args: []const Value) Value {
     th.rt.symbolPtr(args[0]).header.flags |= @import("../values/object.zig").SymbolFlags.special;
     return args[0];
 }
+
+// ---------------------------------------------------------------------------
+// シンボルの属性リストと関数（Phase 16）
+
+/// get シンボル 指示子 [既定値]
+pub fn get(th: *Thread, args: []const Value) Value {
+    if (!isSymbol(args[0])) return th.typeError(args[0], th.rt.syms.symbol);
+    const lists = @import("lists.zig");
+    var a = [_]Value{ th.rt.symbolPtr(args[0]).plist, args[1], if (args.len > 2) args[2] else Value.nil };
+    return lists.getf(th, &a);
+}
+
+/// ZILISP-SYSTEM::%PUT シンボル 指示子 [既定値] 値：(setf (get ...) 値) の展開先。値を返す
+pub fn sysPut(th: *Thread, args: []const Value) Value {
+    if (!isSymbol(args[0])) return th.typeError(args[0], th.rt.syms.symbol);
+    const lists = @import("lists.zig");
+    const s = th.rt.symbolPtr(args[0]);
+    const v = args[args.len - 1];
+    var a = [_]Value{ s.plist, args[1], v };
+    const p = lists.sysPutf(th, &a);
+    if (p == Value.unwind) return p;
+    th.rt.symbolPtr(args[0]).plist = p;
+    return v;
+}
+
+pub fn symbolPlist(th: *Thread, args: []const Value) Value {
+    if (!isSymbol(args[0])) return th.typeError(args[0], th.rt.syms.symbol);
+    return th.rt.symbolPtr(args[0]).plist;
+}
+
+/// 関数の名前（シンボル、または (setf シンボル)）の、関数を置く欄
+fn functionCell(th: *Thread, name: Value) ?*Value {
+    if (isSymbol(name) and name != Value.nil) return &th.rt.symbolPtr(name).function;
+    if (name.isCons()) {
+        const c = @import("../runtime/runtime.zig").Runtime.consPtr(name);
+        const setf_sym = (th.rt.findSymbol(th.rt.cl, "SETF") orelse unreachable).symbol;
+        if (c.car == setf_sym and c.cdr.isCons()) {
+            const sym = @import("../runtime/runtime.zig").Runtime.consPtr(c.cdr).car;
+            if (isSymbol(sym) and sym != Value.nil) {
+                if (th.rt.symbolPtr(sym).package == th.rt.cl.obj and !th.rt.booting) {
+                    _ = th.signal(.package_error, "COMMON-LISP パッケージのシンボルの関数は定義できません", name, Value.unbound);
+                    return null;
+                }
+                return &th.rt.symbolPtr(sym).setf_function;
+            }
+        }
+    }
+    _ = th.signal(.type_error, "関数の名前ではありません", name, Value.unbound);
+    return null;
+}
+
+/// fdefinition 名前（シンボル、または (setf シンボル)）
+pub fn fdefinition(th: *Thread, args: []const Value) Value {
+    const cell = functionCell(th, args[0]) orelse return Value.unwind;
+    if (cell.* == Value.unbound) return th.signal(.undefined_function, "", args[0], Value.unbound);
+    return cell.*;
+}
+
+/// ZILISP-SYSTEM::%SET-FDEFINITION 名前 関数：(setf (fdefinition 名前) 関数)・(setf (symbol-function 名前) 関数) の展開先
+pub fn sysSetFdefinition(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (isSymbol(name) and name != Value.nil) {
+        const s = th.rt.symbolPtr(name);
+        if (s.package == th.rt.cl.obj and !th.rt.booting)
+            return th.signal(.package_error, "COMMON-LISP パッケージのシンボルの関数は定義できません", name, Value.unbound);
+        // 関数を置くと、マクロではなくなる
+        s.header.flags &= ~@import("../values/object.zig").SymbolFlags.macro;
+    }
+    const cell = functionCell(th, name) orelse return Value.unwind;
+    if (!args[1].isFunctionPointer()) return th.typeError(args[1], th.rt.syms.function);
+    cell.* = args[1];
+    return args[1];
+}

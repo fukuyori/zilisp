@@ -121,3 +121,142 @@ pub fn append(th: *Thread, args: []const Value) Value {
 pub fn vector(th: *Thread, args: []const Value) Value {
     return th.rt.makeVector(args) catch th.outOfMemory();
 }
+
+/// equal：eql か、cons なら car と cdr が equal、文字列なら同じ文字の並び（CLHS equal）
+pub fn equal2(a: Value, b: Value) bool {
+    var x = a;
+    var y = b;
+    while (true) {
+        if (eql2(x, y)) return true;
+        if (x.isCons() and y.isCons()) {
+            if (!equal2(Runtime.consPtr(x).car, Runtime.consPtr(y).car)) return false;
+            x = Runtime.consPtr(x).cdr;
+            y = Runtime.consPtr(y).cdr;
+            continue;
+        }
+        if (x.isOther() and y.isOther() and Runtime.kindOf(x) == .string and Runtime.kindOf(y) == .string) {
+            const s = Runtime.stringPtr(x);
+            const t = Runtime.stringPtr(y);
+            if (s.length() != t.length()) return false;
+            for (0..s.length()) |i| if (s.charAt(i) != t.charAt(i)) return false;
+            return true;
+        }
+        return false;
+    }
+}
+
+pub fn equal(th: *Thread, args: []const Value) Value {
+    return th.rt.boolean(equal2(args[0], args[1]));
+}
+
+pub fn rplaca(th: *Thread, args: []const Value) Value {
+    if (!args[0].isCons()) return th.typeError(args[0], th.rt.syms.cons);
+    Runtime.consPtr(args[0]).car = args[1];
+    return args[0];
+}
+
+pub fn rplacd(th: *Thread, args: []const Value) Value {
+    if (!args[0].isCons()) return th.typeError(args[0], th.rt.syms.cons);
+    Runtime.consPtr(args[0]).cdr = args[1];
+    return args[0];
+}
+
+/// ZILISP-SYSTEM::%SET-CAR・%SET-CDR：(setf (car x) v) の展開先。値を返す
+pub fn sysSetCar(th: *Thread, args: []const Value) Value {
+    if (!args[0].isCons()) return th.typeError(args[0], th.rt.syms.cons);
+    Runtime.consPtr(args[0]).car = args[1];
+    return args[1];
+}
+
+pub fn sysSetCdr(th: *Thread, args: []const Value) Value {
+    if (!args[0].isCons()) return th.typeError(args[0], th.rt.syms.cons);
+    Runtime.consPtr(args[0]).cdr = args[1];
+    return args[1];
+}
+
+fn indexArg(th: *Thread, v: Value) ?usize {
+    if (v.isFixnum() and v.asFixnum() >= 0) return @intCast(v.asFixnum());
+    _ = th.typeError(v, th.rt.syms.integer);
+    return null;
+}
+
+pub fn nthcdr1(th: *Thread, n: usize, lst: Value) Value {
+    var x = lst;
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        if (x == Value.nil) return Value.nil;
+        if (!x.isCons()) return th.typeError(lst, th.rt.syms.list);
+        x = Runtime.consPtr(x).cdr;
+    }
+    return x;
+}
+
+pub fn nthcdr(th: *Thread, args: []const Value) Value {
+    return nthcdr1(th, indexArg(th, args[0]) orelse return Value.unwind, args[1]);
+}
+
+pub fn nth(th: *Thread, args: []const Value) Value {
+    const x = nthcdr1(th, indexArg(th, args[0]) orelse return Value.unwind, args[1]);
+    if (x == Value.unwind) return x;
+    return car1(th, x);
+}
+
+/// c[ad]+r：path の文字を右から順に適用する（"ad" は (car (cdr x))）
+fn cxr(th: *Thread, comptime path: []const u8, x0: Value) Value {
+    var x = x0;
+    comptime var i = path.len;
+    inline while (i > 0) : (i -= 1) {
+        x = if (path[i - 1] == 'a') car1(th, x) else cdr1(th, x);
+        if (x == Value.unwind) return x;
+    }
+    return x;
+}
+
+pub fn makeCxr(comptime path: []const u8) fn (*Thread, []const Value) Value {
+    return struct {
+        fn f(th: *Thread, args: []const Value) Value {
+            return cxr(th, path, args[0]);
+        }
+    }.f;
+}
+
+/// second〜tenth
+pub fn makeNth(comptime n: usize) fn (*Thread, []const Value) Value {
+    return struct {
+        fn f(th: *Thread, args: []const Value) Value {
+            const x = nthcdr1(th, n, args[0]);
+            if (x == Value.unwind) return x;
+            return car1(th, x);
+        }
+    }.f;
+}
+
+/// getf 属性リスト 指示子 [既定値]
+pub fn getf(th: *Thread, args: []const Value) Value {
+    var x = args[0];
+    while (x.isCons()) {
+        const c = Runtime.consPtr(x);
+        if (!c.cdr.isCons()) return th.typeError(args[0], th.rt.syms.list);
+        if (c.car == args[1]) return Runtime.consPtr(c.cdr).car;
+        x = Runtime.consPtr(c.cdr).cdr;
+    }
+    if (x != Value.nil) return th.typeError(args[0], th.rt.syms.list);
+    return if (args.len > 2) args[2] else Value.nil;
+}
+
+/// ZILISP-SYSTEM::%PUTF 属性リスト 指示子 値：指示子があれば値を書き換えて同じリストを、なければ先頭に足したリストを返す
+/// （(setf (getf 場所 指示子) 値) の展開先。CLHS getf：新しい組は先頭に足してよい。SBCL 2.6.7 も先頭に足す）
+pub fn sysPutf(th: *Thread, args: []const Value) Value {
+    var x = args[0];
+    while (x.isCons()) {
+        const c = Runtime.consPtr(x);
+        if (!c.cdr.isCons()) return th.typeError(args[0], th.rt.syms.list);
+        if (c.car == args[1]) {
+            Runtime.consPtr(c.cdr).car = args[2];
+            return args[0];
+        }
+        x = Runtime.consPtr(c.cdr).cdr;
+    }
+    const tail = th.rt.cons(args[2], args[0]) catch return th.outOfMemory();
+    return th.rt.cons(args[1], tail) catch th.outOfMemory();
+}

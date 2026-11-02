@@ -535,6 +535,19 @@ fn toF64(th: *Thread, n: Num) ?f64 {
     };
 }
 
+/// 数を、正しく丸めた f64 にする（溢れは無限大）。equalp のハッシュ値に使う：= で等しい数は同じ値になる（Phase 21）。
+/// メモリが足りなければ null（エラーを記録済み）
+pub fn hashF64(th: *Thread, v: Value) ?f64 {
+    return toF64(th, toNum(v).?);
+}
+
+/// (= a b)。どちらも数であること。メモリが足りなければ null（エラーを記録済み）
+pub fn numEqual(th: *Thread, a: Value, b: Value) ?bool {
+    if (a.isFixnum() and b.isFixnum()) return a == b;
+    const o = compareNum(th, toNum(a).?, toNum(b).?) orelse return null;
+    return o == .eq;
+}
+
 fn toF32(th: *Thread, n: Num) ?f32 {
     return switch (n) {
         .single => |f| f,

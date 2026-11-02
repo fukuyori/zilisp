@@ -26,6 +26,8 @@ pub const ObjKind = enum(u8) {
     bignum,
     /// 比（Phase 20）
     ratio,
+    /// 単純でない配列（多次元・fill-pointer・adjustable。Phase 21）
+    array,
     _,
 };
 
@@ -128,6 +130,25 @@ pub const Ratio = extern struct {
     denominator: Value,
 };
 
+/// 単純でない配列（Phase 21）：多次元の配列、fill-pointer のあるベクタ、adjustable な配列。
+/// 1次元で fill-pointer も adjustable もない配列は、単純ベクタか文字列で表す（このオブジェクトは使わない）。
+/// 要素は data（単純ベクタか文字列）に行優先で並べる。各次元の大きさはヘッダの直後に並べる（header.len が次元の数）。
+/// adjustable な配列は、大きさを変えると data と次元を書き換える
+pub const Array = extern struct {
+    header: ObjHeader,
+    /// fill-pointer（flags に fill_pointer があるときだけ意味がある）
+    fill_pointer: usize,
+    data: Value,
+
+    pub const adjustable: u8 = 1 << 0;
+    pub const has_fill_pointer: u8 = 1 << 1;
+
+    pub fn dims(a: *Array) []usize {
+        const base: [*]usize = @ptrCast(@alignCast(@as([*]u8, @ptrCast(a)) + @sizeOf(Array)));
+        return base[0..a.header.len];
+    }
+};
+
 /// 単純ベクタ。要素はヘッダの直後に並べる（header.len が要素数）。
 pub const SimpleVector = extern struct {
     header: ObjHeader,
@@ -161,4 +182,4 @@ pub const HashTable = extern struct {
     tombstones: u32,
 };
 
-pub const HashTest = enum(u16) { eq, eql, equal };
+pub const HashTest = enum(u16) { eq, eql, equal, equalp };

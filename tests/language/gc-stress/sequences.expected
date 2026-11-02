@@ -1,0 +1,22 @@
+
+(("apple" . 1040) ("durian" . 900) ("banana" . 480) ("cherry" . 300)) 
+((1 5 1380) (2 2 1340)) 
+(("2026-01-05" "apple" 3 120) ("2026-01-05" "banana" 5 80) ("2026-02-01" "apple" 4 110) ("2026-02-03" "durian" 1 900)) 
+("apple" "banana" "Apple" "cherry" "banana" "apple" "durian") 
+("Apple" "Banana" "Cherry" "Durian") 
+3 
+6 
+("2026-02-01" "apple" 4 110) 
+2720 
+T 
+"durian" 
+("id" " name " "score") 
+("id" "name" "score") 
+(10 20 30) 
+#2A((1 2 3 4) (2 4 6 8) (3 6 9 12)) 
+(3 4) 
+60 
+(10 3 2 "HELLO__WORLD_____" "321 !dlroW ,olleH" "Hello,-World!-123" "HelloWorld123") 
+((1 2 3 4 5 6 7) (4 5) (1 2 3) T (1 2 3 4 5) (6 7)) 
+(2 C (1 (2 3))) 
+(3 2 1) 

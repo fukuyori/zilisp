@@ -104,6 +104,10 @@ const Marker = struct {
                 },
                 // 文字列の中身はバッファ（finalize 待ちの一覧で管理）、double-float は値だけ、
                 // パッケージの本体は Runtime.packages が持つ（ルートとして別に走査する）
+                .array => {
+                    const a: *object.Array = @ptrFromInt(e);
+                    m.markValue(a.data);
+                },
                 .ratio => {
                     const r: *object.Ratio = @ptrFromInt(e);
                     m.markValue(r.numerator);

@@ -188,6 +188,8 @@
 (defsetf svref zl-sys::%svset)
 (defsetf char zl-sys::%set-char)
 (defsetf schar zl-sys::%set-char)
+(defsetf row-major-aref zl-sys::%set-row-major-aref)
+(defsetf fill-pointer zl-sys::%set-fill-pointer)
 (defsetf gethash zl-sys::%puthash)
 (defsetf get zl-sys::%put)
 (defsetf symbol-value set)
@@ -762,3 +764,247 @@
             zl-sys::%loop-end
               ,@(reverse epilogue)
               (return-from ,name ,default-return)))))))
+
+
+;;; ---------------------------------------------------------------------------
+;;; 列・リスト・集合（Phase 21。CLHS 14 章・17 章）
+;;; find・position・remove・sort などの列の関数は Zig（seqfns.zig）。ここには、リスト・集合・木の関数と、
+;;; それらを使うマクロ（pushnew・remf）、列の場所（elt・subseq）を書く。
+;;; 集合の関数の結果の順序は、SBCL 2.6.7 と同じにする（CLHS では処理系依存）。
+
+(defsetf elt zl-sys::%set-elt)
+(defsetf subseq (sequence start &optional end) (new)
+  `(progn (replace ,sequence ,new :start1 ,start :end1 ,end) ,new))
+
+(defun identity (object) object)
+
+(defun complement (function)
+  (lambda (&rest arguments) (not (apply function arguments))))
+
+(defun constantly (value)
+  (lambda (&rest arguments) (declare (ignore arguments)) value))
+
+(defun acons (key datum alist) (cons (cons key datum) alist))
+
+(defun pairlis (keys data &optional alist)
+  ;; SBCL 2.6.7 と同じく、前の組から順に alist の前に積む（結果は逆順）
+  (do ((k keys (cdr k)) (d data (cdr d)) (result alist))
+      ((or (endp k) (endp d))
+       (if (or k d) (zl-sys::%macro-form-error "PAIRLIS のキーと値の数が違います" (list keys data)))
+       result)
+    (setq result (acons (car k) (car d) result))))
+
+(defun copy-alist (alist)
+  (mapcar (lambda (x) (if (consp x) (cons (car x) (cdr x)) x)) alist))
+
+(defun copy-tree (tree)
+  (if (consp tree) (cons (copy-tree (car tree)) (copy-tree (cdr tree))) tree))
+
+(defun revappend (list tail)
+  (do ((x list (cdr x)) (result tail (cons (car x) result)))
+      ((endp x) result)))
+
+(defun nreconc (list tail)
+  (nconc (nreverse list) tail))
+
+(defun butlast (list &optional (n 1))
+  (let ((len (length list)))
+    (if (<= len n) nil (subseq list 0 (- len n)))))
+
+(defun nbutlast (list &optional (n 1))
+  (let ((len (length list)))
+    (if (<= len n)
+        nil
+        (progn (rplacd (nthcdr (- len n 1) list) nil) list))))
+
+(defun tailp (object list)
+  (do ((x list (cdr x)))
+      ((atom x) (eql x object))
+    (if (eql x object) (return t))))
+
+(defun ldiff (list object)
+  (let ((head nil) (tail nil))
+    (do ((x list (cdr x)))
+        ((atom x)
+         ;; ドット対の終わりが object でなければ、それも残す
+         (if (and x (not (eql x object)))
+             (if tail (rplacd tail x) (setq head x)))
+         head)
+      (if (eql x object) (return head))
+      (let ((c (cons (car x) nil)))
+        (if tail (rplacd tail c) (setq head c))
+        (setq tail c)))))
+
+;; 写像（CLHS mapl・maplist・mapcon）：関数にリストの残りの部分を渡す
+(defun mapl (function list &rest more-lists)
+  (do ((lists (cons list more-lists) (zl-sys::%cdrs lists)))
+      ((zl-sys::%any-endp lists) list)
+    (apply function lists)))
+
+(defun maplist (function list &rest more-lists)
+  (let ((head nil) (tail nil))
+    (do ((lists (cons list more-lists) (zl-sys::%cdrs lists)))
+        ((zl-sys::%any-endp lists) head)
+      (let ((c (cons (apply function lists) nil)))
+        (if tail (rplacd tail c) (setq head c))
+        (setq tail c)))))
+
+(defun mapcon (function list &rest more-lists)
+  (apply #'nconc (apply #'maplist function list more-lists)))
+
+;; 木（CLHS subst・sublis・tree-equal）。変わらない部分は元の木を共有する
+(defun zl-sys::%subst (new pred tree key)
+  (cond ((funcall pred (if key (funcall key tree) tree)) new)
+        ((atom tree) tree)
+        (t (let ((a (zl-sys::%subst new pred (car tree) key))
+                 (d (zl-sys::%subst new pred (cdr tree) key)))
+             (if (and (eq a (car tree)) (eq d (cdr tree))) tree (cons a d))))))
+
+(defun zl-sys::%test-function (test test-not)
+  (cond ((and test test-not) (zl-sys::%macro-form-error ":test と :test-not は同時に指定できません" (list test test-not)))
+        (test-not (lambda (a b) (not (funcall test-not a b))))
+        (test test)
+        (t #'eql)))
+
+(defun subst (new old tree &key key test test-not)
+  (let ((f (zl-sys::%test-function test test-not)))
+    (zl-sys::%subst new (lambda (x) (funcall f old x)) tree key)))
+
+(defun subst-if (new predicate tree &key key)
+  (zl-sys::%subst new predicate tree key))
+
+(defun subst-if-not (new predicate tree &key key)
+  (zl-sys::%subst new (complement predicate) tree key))
+
+(defun nsubst (new old tree &key key test test-not)
+  (subst new old tree :key key :test test :test-not test-not))
+
+(defun nsubst-if (new predicate tree &key key)
+  (subst-if new predicate tree :key key))
+
+(defun nsubst-if-not (new predicate tree &key key)
+  (subst-if-not new predicate tree :key key))
+
+(defun sublis (alist tree &key key test test-not)
+  (let ((f (zl-sys::%test-function test test-not)))
+    (labels ((walk (x)
+               (let ((pair (assoc (if key (funcall key x) x) alist :test f)))
+                 (cond (pair (cdr pair))
+                       ((atom x) x)
+                       (t (let ((a (walk (car x))) (d (walk (cdr x))))
+                            (if (and (eq a (car x)) (eq d (cdr x))) x (cons a d))))))))
+      (walk tree))))
+
+(defun nsublis (alist tree &key key test test-not)
+  (sublis alist tree :key key :test test :test-not test-not))
+
+(defun tree-equal (tree-1 tree-2 &key test test-not)
+  (let ((f (zl-sys::%test-function test test-not)))
+    (labels ((walk (a b)
+               (cond ((and (consp a) (consp b)) (and (walk (car a) (car b)) (walk (cdr a) (cdr b))))
+                     ((or (consp a) (consp b)) nil)
+                     (t (funcall f a b)))))
+      (walk tree-1 tree-2))))
+
+;; 集合（CLHS 14.1.2）。要素の比較は (funcall test (key x) (key y))
+(defun zl-sys::%set-member (item list key test test-not)
+  (if key
+      (member (funcall key item) list :key key :test (zl-sys::%test-function test test-not))
+      (member item list :test (zl-sys::%test-function test test-not))))
+
+(defun adjoin (item list &key key test test-not)
+  (if (zl-sys::%set-member item list key test test-not) list (cons item list)))
+
+;; list-2 の要素 item が list-1 にあるか（比較の引数は list-1 の要素が先：CLHS 17.2.1）
+(defun zl-sys::%set-member-flipped (item list key test test-not)
+  (let ((f (zl-sys::%test-function test test-not)))
+    (member (if key (funcall key item) item) list :key key :test (lambda (a b) (funcall f b a)))))
+
+;; 短い方のリストの要素で調べ、長い方のリストの前に積む（長さが同じなら list-2 の要素を list-1 の前に。SBCL 2.6.7 と同じ順序）
+(defun union (list-1 list-2 &key key test test-not)
+  (cond ((null list-1) list-2)
+        ((null list-2) list-1)
+        ((< (length list-2) (length list-1))
+         (let ((result list-2))
+           (dolist (x list-1 result)
+             (unless (zl-sys::%set-member x list-2 key test test-not) (setq result (cons x result))))))
+        (t
+         (let ((result list-1))
+           (dolist (x list-2 result)
+             (unless (zl-sys::%set-member-flipped x list-1 key test test-not) (setq result (cons x result))))))))
+
+(defun nunion (list-1 list-2 &key key test test-not)
+  (union list-1 list-2 :key key :test test :test-not test-not))
+
+(defun intersection (list-1 list-2 &key key test test-not)
+  (let ((result nil))
+    (if list-2
+        (dolist (x list-1)
+          (if (zl-sys::%set-member x list-2 key test test-not) (setq result (cons x result)))))
+    result))
+
+(defun nintersection (list-1 list-2 &key key test test-not)
+  (intersection list-1 list-2 :key key :test test :test-not test-not))
+
+(defun set-difference (list-1 list-2 &key key test test-not)
+  (if (null list-2)
+      list-1
+      (let ((result nil))
+        (dolist (x list-1 result)
+          (unless (zl-sys::%set-member x list-2 key test test-not) (setq result (cons x result)))))))
+
+(defun nset-difference (list-1 list-2 &key key test test-not)
+  (set-difference list-1 list-2 :key key :test test :test-not test-not))
+
+(defun set-exclusive-or (list-1 list-2 &key key test test-not)
+  (let ((result nil))
+    (dolist (x list-1)
+      (unless (zl-sys::%set-member x list-2 key test test-not) (setq result (cons x result))))
+    (dolist (x list-2)
+      (unless (zl-sys::%set-member-flipped x list-1 key test test-not) (setq result (cons x result))))
+    result))
+
+(defun nset-exclusive-or (list-1 list-2 &key key test test-not)
+  (set-exclusive-or list-1 list-2 :key key :test test :test-not test-not))
+
+(defun subsetp (list-1 list-2 &key key test test-not)
+  (dolist (x list-1 t)
+    (unless (zl-sys::%set-member x list-2 key test test-not) (return nil))))
+
+;; (pushnew 要素 場所 &key key test test-not)：場所のリストになければ前に加える
+(defmacro pushnew (item place &rest keys)
+  (let ((g (gensym)))
+    (if (symbolp place)
+        `(let ((,g ,item)) (setq ,place (adjoin ,g ,place ,@keys)))
+        (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
+          `(let* ((,g ,item) ,@(zl-sys::%zip temps vals) (,(car stores) (adjoin ,g ,access ,@keys)))
+             ,store-form)))))
+
+;; (remf 場所 指示子)：属性リストから指示子の組を除く。除いたら T
+(defun zl-sys::%remf (plist indicator)
+  ;; 新しい属性リストと、除いたかどうか
+  (do ((x plist (cddr x)) (prev nil x))
+      ((atom x) (values plist nil))
+    (when (eq (car x) indicator)
+      (if prev
+          (progn (rplacd (cdr prev) (cddr x)) (return (values plist t)))
+          (return (values (cddr x) t))))))
+
+(defmacro remf (place indicator)
+  (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
+    (let ((removed (gensym)))
+      `(let* (,@(zl-sys::%zip temps vals))
+         (multiple-value-bind (,(car stores) ,removed) (zl-sys::%remf ,access ,indicator)
+           ,store-form
+           ,removed)))))
+
+;; (merge 型 列1 列2 述語 &key key)：安定に併合する（同じなら列1 の要素が先）
+(defun merge (result-type sequence-1 sequence-2 predicate &key key)
+  (let ((a (coerce sequence-1 'list)) (b (coerce sequence-2 'list)) (result nil))
+    (loop
+      (cond ((null a) (return))
+            ((null b) (return))
+            ((funcall predicate (if key (funcall key (car b)) (car b)) (if key (funcall key (car a)) (car a)))
+             (setq result (cons (car b) result) b (cdr b)))
+            (t (setq result (cons (car a) result) a (cdr a)))))
+    (coerce (nreconc result (if a a b)) result-type)))

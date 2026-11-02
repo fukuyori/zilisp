@@ -107,11 +107,19 @@ since = "Phase 20"
 
 [[items]]
 id = "string-case-non-ascii"
-description = "string-upcase・string-downcase が ASCII 以外の文字を変換するか"
-sbcl = "変換する"
-zilisp = "変換しない（Phase 19。Reader と同じ）"
+description = "string-upcase・string-downcase・string-capitalize・char-upcase・char-downcase が ASCII 以外の文字を変換するか。char-equal・string-equal・equalp が ASCII 以外の文字の大文字・小文字を区別しないか"
+sbcl = "変換する（例：(char-upcase (code-char 224)) は (code-char 192)。(char-equal (code-char 192) (code-char 224)) は T）"
+zilisp = "変換しない・区別する（Phase 19・21。Reader と同じ）"
 clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）"
 since = "Phase 19"
+
+[[items]]
+id = "char-class-non-ascii"
+description = "alpha-char-p・alphanumericp・upper-case-p・lower-case-p・both-case-p・digit-char-p が ASCII 以外の文字を英字・数字とみなすか"
+sbcl = "みなす（例：(alpha-char-p (code-char 12354)) は T、(digit-char-p (code-char 65297)) は 1、(upper-case-p (code-char 192)) は T）"
+zilisp = "みなさない（ASCII の英字・数字だけ。Phase 21）"
+clhs = "13.1.4 Character Categories（※標準の文字以外の分類は処理系に任されると推測される。原文では未確認）"
+since = "Phase 21"
 
 [[items]]
 id = "print-subnormal-float"

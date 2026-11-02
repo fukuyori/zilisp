@@ -5,6 +5,19 @@
 ## Unreleased
 
 ### Added
+- Phase 21: general arrays (multidimensional arrays, fill pointers, adjustable arrays; `aref` with any number of subscripts,
+  `row-major-aref`, `array-dimensions` and the other array inquiries, `vector-push`, `vector-push-extend`, `vector-pop`,
+  `adjust-array`, printing as `#2A(...)`); `equalp`, `equalp` hash tables and `sxhash`; the character functions (`char-code`,
+  `code-char`, `char-upcase`, `alpha-char-p`, `digit-char-p`, the `char<` and `char-equal` families, ...); the string functions
+  (`string`, the `string<` and `string-equal` families, `string-capitalize`, `nstring-upcase`, `string-trim`, `make-string`,
+  `parse-integer`); the sequence functions with `:test`, `:test-not`, `:key`, `:start`, `:end`, `:from-end` and `:count` (`find`,
+  `position`, `count`, `remove`, `delete`, `substitute`, `remove-duplicates`, `sort`, `stable-sort`, `search`, `mismatch`, `subseq`,
+  `elt`, `fill`, `replace`, `concatenate`, `coerce`, `map`, `map-into`, `some`, `every`, `merge`, ...); list, tree and set functions
+  (`member`, `assoc`, `rassoc`, `acons`, `pairlis`, `butlast`, `ldiff`, `maplist`, `subst`, `sublis`, `union`, `intersection`,
+  `set-difference`, `adjoin`, `pushnew`, `remf`, ...). Displaced arrays are not implemented (explicit error). Character classes and
+  case cover ASCII only. Tests: 127 cases compared with SBCL 2.6.7 (also under GC stress), language tests `sequences.lisp` (a data
+  processing sample; also a gc-stress version) and `sequence-cases.lisp` (matches natively too). Matching curriculum blocks went
+  from 362 to 421
 - README in English and Japanese; the changelog is split into English (`CHANGELOG.md`) and Japanese (`CHANGELOG.ja.md`)
 - Phase 20: the numeric tower. Bignums (limbs stored inside the object; values that fit a fixnum are always fixnums), ratios
   (always reduced), mixing with floats (exact comparisons, correctly rounded conversions), `floor`, `ceiling`, `truncate`, `round`

@@ -393,6 +393,18 @@ pub const Runtime = struct {
         return Value.fromPointer(r, .other);
     }
 
+    /// 単純でない配列を作る（Phase 21）
+    pub fn makeArrayObject(rt: *Runtime, dims: []const usize, data: Value, flags: u8, fill_pointer: usize) Error!Value {
+        const a = try rt.heap.create(object.Array, dims.len * @sizeOf(usize));
+        a.* = .{ .header = .{ .kind = .array, .flags = flags, .len = @intCast(dims.len) }, .fill_pointer = fill_pointer, .data = data };
+        @memcpy(a.dims(), dims);
+        return Value.fromPointer(a, .other);
+    }
+
+    pub fn arrayPtr(v: Value) *object.Array {
+        return @ptrCast(@alignCast(v.pointer()));
+    }
+
     pub fn ratioPtr(v: Value) *object.Ratio {
         return @ptrCast(@alignCast(v.pointer()));
     }

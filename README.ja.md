@@ -43,8 +43,12 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `evenp`・`oddp`・`mod`・`rem`・`string=`・`string-upcase`・`princ`、`format` の最小版（`T`・`NIL` への `~A ~S ~D ~% ~& ~~`）
 - bignum と比、浮動小数との正確な比較、`floor`・`ceiling`・`truncate`・`round`、`gcd`・`lcm`、`expt`・`sqrt`・`isqrt`・
   `exp`・`log`・三角関数、ビット演算（`logand`・`ash` など）
+- 多次元の配列・fill-pointer・adjustable な配列（`vector-push-extend`・`adjust-array`）、`equalp` と `equalp` のハッシュ表
+- 列の関数（`find`・`position`・`remove-if`・`substitute`・`sort`・`subseq`・`search`・`concatenate`・`map`・`coerce` など）、
+  リスト・集合の関数（`member`・`assoc`・`union`・`pushnew` など）、文字・文字列の関数（`char-upcase`・`string<`・
+  `string-trim`・`parse-integer` など）
 
-未実装（後の版で実装する予定）：多くの列の関数（`find`・`remove-if`・`sort`・`subseq` など）・`format` の全体・
+未実装（後の版で実装する予定）：`format` の全体・
 複素数・ストリームとファイル・パッケージ（`defpackage`・`in-package`）・`defstruct`・CLOS・condition
 （`handler-case`・restart）。
 

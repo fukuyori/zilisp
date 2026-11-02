@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記22） | 2026-11-02 | Phase 21：一般の配列（多次元・fill-pointer・adjustable。§2.4）、`equalp` と `equalp` のハッシュ表（§2.6）、文字・文字列・列・リスト・集合の関数（§11.2） |
 | 0.2（追記21） | 2026-11-02 | Phase 20：数の階層の実装（bignum・比、浮動小数との混在、整数の割り算、累乗・平方根・初等関数、ビット演算。§2.4）。複素数は後の Phase |
 | 0.2（追記20） | 2026-11-02 | Phase 19：tagbody・go の実装（§6.4）、反復のマクロ・loop・写像と畳み込み・format の最小版と、反復の教材で使う関数（§11.2） |
 | 0.2（追記19） | 2026-11-02 | §5.2 の `define-symbol-macro` などの時期の記述（Phase 30 に移したことに合わせる）と、§6.4 の `ControlEntry` のネイティブの再開の説明（Phase 18 の実装に合わせる）を直した。英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）を作成。以後、本書を変更するときは英語版も同じ変更で更新する。`docs/zig-std-usage.md` は英語版になり、日本語版は `docs/zig-std-usage.ja.md` |
@@ -253,6 +254,14 @@ pub const ObjHeader = packed struct(u64) {
 - **SBCL 2.6.7 との違い**：fixnum は 62 ビット（SBCL は 63 ビット。`most-positive-fixnum` が違う）。超越関数は Zig の実装（`@exp` など）を使うので、double-float で最後の 1 ビットが違うことがある（例：`(exp 1d0)` は SBCL が `2.718281828459045d0`、Zilisp が `2.7182818284590455d0`。どちらも誤差は 1 ulp 未満。※CLHS には超越関数の浮動小数の結果の精度の規定がないと推測されます。原文での確認はしていません）。`tests/differential/impl-dependent.toml` に記録した。
 - 試験：SBCL 2.6.7 の結果と比べる192通り（GC stress でも実行。ネイティブでも実行：`number-cases.lisp`）、fixnum の境界、読み・印字の往復、`eql`・ハッシュ表、エラーの種類。言語試験 `numbers.lisp`（と gc-stress 版）。
 
+**Phase 21 の実装（一般の配列）**
+- **表し方**：1次元で fill-pointer がなく adjustable でない配列は、今までどおり simple-vector（要素の型 T）か文字列（要素の型 character）。それ以外（多次元・fill-pointer あり・adjustable）は `array` オブジェクト（`object.Array`）：header.len は次元の数、header.flags は adjustable と fill-pointer の印、続いて fill-pointer、data（要素を行優先で並べた simple-vector か文字列）、次元の大きさ。GC は data だけを印付けする。
+- **要素の型**：T と文字（`character`・`base-char`・`standard-char`、要素の型がこれらの複合の型指定）。ほかの型は T に格上げする（CLHS 15.1.2.1）。数の特化ベクタは上記のとおり 1.0 から。
+- **fill-pointer のあるベクタは adjustable**（`adjustable-array-p` が T。`vector-push-extend` でいつでも大きくできる。SBCL 2.6.7 と同じ）。`vector-push-extend` で大きくするとき、増やす数の既定は今の大きさ（0 なら 1）。指定があればその数。`adjust-array` は、adjustable な配列はその配列を書き換えて返し、そうでなければ新しい配列を返す。新旧の両方の次元に収まる添字の要素を引き継ぐ。
+- **displaced な配列は未実装**（明示的なエラー）。
+- **関数**：`make-array`（次元のリスト、`:element-type`・`:initial-element`・次元の数だけ入れ子の `:initial-contents`・`:adjustable`・`:fill-pointer`）、添字がいくつでもよい `aref` と `(setf aref)`、`row-major-aref`、`array-dimensions`・`array-dimension`・`array-rank`・`array-total-size`・`array-row-major-index`・`array-in-bounds-p`・`array-element-type`・`array-has-fill-pointer-p`・`adjustable-array-p`、`fill-pointer`（と setf）、`vector-push`・`vector-push-extend`・`vector-pop`・`adjust-array`、`stringp`・`simple-string-p`。`length`・`copy-seq`・`elt`・列の関数・`equal`・`equal` のハッシュ値・印字は、単純でないベクタの有効な部分（fill-pointer まで）を使う。単純でない文字列も文字列として扱う（`stringp`・`equal`・文字列の関数）。
+- **印字**（SBCL 2.6.7 と同じ）：1次元はベクタ・文字列と同じ形（有効な部分だけ）。多次元は `#2A((1 2) (3 4))`、0次元は `#0A7`。
+
 ### 2.5 文字列
 
 - 型は `(simple-array character (*))`。内部的には幅1バイト（コード ≤ #xFF）と幅4バイトの2通りの表現を持つ。幅1の文字列に #xFF を超える文字を `setf` した時点で、バッファだけを幅4に再確保する（オブジェクトは移動しない）。
@@ -261,7 +270,7 @@ pub const ObjHeader = packed struct(u64) {
 
 ### 2.6 ハッシュテーブル
 
-**Phase 16 の最小版**（`src/primitives/hashtables.zig`）：比較は `eq`・`eql`・`equal`（`equalp` は Phase 21）。項目は simple-vector に (キー 値) の組で並べる開番地法（線形探査。容量は 2 の冪。使用率 3/4 を超えたら作り直す）。空きの枠はキーが unbound、削除した枠は墓標のシンボル。非移動型の GC なので、`eq`・`eql` のハッシュ値にアドレスを使う。`equal` のハッシュ値は、cons は深さ 4 まで、文字列は中身から作る。`gethash` は2つ目の値（あったかどうか）も多値レジスタに置く。弱いハッシュ表は未実装。
+**Phase 16 の最小版**（`src/primitives/hashtables.zig`）：比較は `eq`・`eql`・`equal`（`equalp` は Phase 21 で加えた。下記）。項目は simple-vector に (キー 値) の組で並べる開番地法（線形探査。容量は 2 の冪。使用率 3/4 を超えたら作り直す）。空きの枠はキーが unbound、削除した枠は墓標のシンボル。非移動型の GC なので、`eq`・`eql` のハッシュ値にアドレスを使う。`equal` のハッシュ値は、cons は深さ 4 まで、文字列は中身から作る。`gethash` は2つ目の値（あったかどうか）も多値レジスタに置く。弱いハッシュ表は未実装。
 
 - **`eq` のハッシュ**：非移動型 GC なので、アドレス（即値は語そのもの）を使える。
 - **`eql` のハッシュ**（レビュー #4）：アドレスは使えない。`eql` は、型が同じで値が等しい数（bignum・ratio・double-float・complex）と文字を等しいとみなすため（例：`(eql (expt 2 100) (expt 2 100))` は T、`eq` は NIL。SBCL 2.6.7 で確認）。数と文字は値からハッシュを計算し、それ以外のオブジェクトはアドレスを使う。
@@ -271,6 +280,12 @@ pub const ObjHeader = packed struct(u64) {
   - キーとして使っている間にオブジェクトを変更した場合の結果は未定義である（CLHS 18.1.2）。
 - **エントリの並べ方**（レビュー #21）：挿入順のエントリ配列とオープンアドレス方式のインデックス表で構成する案を初期案とする。CLHS は `maphash` の順序を規定しておらず、差分試験は順序を並べ替えて比べる（§13.1）ため、挿入順を保つ必要はない。**Phase 21 で、挿入順を保たない方式と、検索・挿入・削除・走査の速さとメモリ使用量を比べ、速い方を採用する。**
 - `:weakness` 引数は 1.0 では未対応とし、指定された場合はエラーにする。
+
+**Phase 21 の実装（`equalp`）**
+- `equalp`（`src/primitives/equalp.zig`）：文字は `char-equal`、数は `=`、cons は再帰的に、配列は次元が同じで要素がすべて `equalp`（ベクタは有効な部分を比べるので、文字列と文字のベクタも `equalp` になりうる）、ハッシュ表は比較の種類と項目の数が同じで、一方の各キーがもう一方にあり値が `equalp`。それ以外は `eq`。大文字・小文字をそろえるのは ASCII の文字だけ（ほかの大文字・小文字の関数と同じ。`tests/differential/impl-dependent.toml`）。
+- **`equalp` のハッシュ表**：数のハッシュ値は、正しく丸めた double-float の値から求める（`=` で等しい数は同じ double-float に丸まるので、同じハッシュ値になる。`-0.0` と `0.0` はそろえる）。文字は大文字・小文字をそろえる。ベクタは長さと先頭の 16 個までの要素（深さを制限）、多次元の配列は全体の大きさ、ハッシュ表は項目の数、cons は深さ 4 まで。
+- `equal` のハッシュ値と `equal` は、単純でない文字列も中身で扱う。`sxhash` は `equal` のハッシュ値を負でない fixnum で返す。
+- 上記の、Phase 21 で行う予定だったエントリの並べ方の比較は**まだ行っていない**（今の開番地法と墓標の表のまま）。
 
 ---
 
@@ -1187,6 +1202,15 @@ instance                      rack
 - Zig で書いた関数：`evenp`・`oddp`・`zerop`・`plusp`・`minusp`・`max`・`min`・`abs`・`mod`・`rem`、`reverse`・`nreverse`・`copy-list`・`last`・`endp`、`symbol-name`・`string=`・`string-upcase`・`string-downcase`・`char=`、`princ`、`format` の最小版。大文字・小文字の変換は ASCII の文字だけ（Reader と同じ。SBCL 2.6.7 は Unicode の文字も変換する）。
 - **format の最小版**：出力先は `T`（標準出力）と `NIL`（文字列を返す）。指示子は `~A`・`~S`・`~D`・`~%`・`~&`・`~~` と、`~` に続く改行。引数・修飾子の付いた指示子（`~5D`、`~:A`）とほかの指示子、ほかの出力先は明示的なエラー（Phase 24 で全体を実装する）。`~&` のため、スレッドは標準出力が行の先頭にいるかを覚える（`Thread.line_start`）。引数が足りないときのエラーは `simple-error`（SBCL 2.6.7 は処理系固有の `format-error`）。
 - 結果：Level 6 の 48 ブロックは、一致 41、両方ともエラー 7（Zilisp だけがエラーのものはない）。教材のブロック全体の一致は 244 から 347 に。
+
+**Phase 21 の時点**：文字・文字列・列・リスト・集合の関数（上の表の 20 の行）。`:test`・`:key` などを取る関数は、速さのため Zig で書き、残りを `boot.lisp` に書く。
+- **Zig**（`src/primitives/seqfns.zig`）：`member`・`assoc`・`rassoc`・`find`・`position`・`count`・`remove`・`delete`・`substitute`・`nsubstitute`（それぞれ `-if`・`-if-not` も）、`remove-duplicates`・`delete-duplicates`、`sort`・`stable-sort`（どちらも安定なマージソート。リストは car を並べ替え、ベクタはその場で並べ替える）、`search`・`mismatch`、`elt`（と setf）・`subseq`・`fill`・`replace`、`concatenate`・`coerce`・`make-sequence`・`map`・`map-into`・`some`・`every`・`notany`・`notevery`、`make-list`・`list-length`（循環リストは NIL）。`:test`・`:test-not` が `eq`・`eql`・`equal` なら関数を呼ばずに比べ、キーワードのない `member` は速い道を通る。`delete` などは新しい列を返す（CLHS 17.2 で許される）。`:test`・`:key` の関数は要素の順に呼ぶ（`:from-end` でも。CLHS は順序を決めていない）。要素を一時的に Zig の配列に置くことがあるが、元の列から届くので GC に回収されない（結果を書き戻すのは最後）。
+- **結果の型**（`concatenate`・`coerce`・`make-sequence`・`map`・`merge`）：`list`（と `cons`・`null`）、`vector`・`simple-vector`・`array`・`simple-array`、`string`・`simple-string`・`base-string`・`simple-base-string`、`(vector character)`・`(simple-array character (*))` などの複合の型指定。型指定の長さは確かめる。それ以外の型は明示的なエラー。`coerce` は `character`、浮動小数の型、`t`・`function`、数の型（`number`・`real`・`rational`・`integer`。その型の値ならそのまま返す）も扱う。
+- **Zig**（`src/primitives/strings.zig`）：`characterp`・`char-code`・`code-char`（`char-code-limit` は #x110000）・`char-int`・`char-upcase`・`char-downcase`・`upper-case-p`・`lower-case-p`・`both-case-p`・`alpha-char-p`・`alphanumericp`・`digit-char-p`・`digit-char`・`graphic-char-p`・`standard-char-p`、`char=`・`char-equal` の仲間、`string`、`string=`・`string-equal` の仲間（結果は違う位置の添字）、`string-upcase`・`string-downcase`・`string-capitalize` と `nstring-` の形、`string-trim`・`string-left-trim`・`string-right-trim`、`make-string`、`parse-integer`（bignum も。`parse-error`、`:junk-allowed` なら NIL）。文字の種類と大文字・小文字は ASCII の文字だけ（SBCL 2.6.7 は Unicode。`tests/differential/impl-dependent.toml` に記録）。エラーの種類 `parse_error` を加えた。
+- **Lisp**（`src/lisp/boot.lisp`）：`identity`・`complement`・`constantly`、`acons`・`pairlis`・`copy-alist`・`copy-tree`・`revappend`・`nreconc`・`butlast`・`nbutlast`・`tailp`・`ldiff`、`mapl`・`maplist`・`mapcon`、`subst`・`subst-if`・`subst-if-not`・`nsubst`（と仲間）・`sublis`・`nsublis`・`tree-equal`、`adjoin`・`union`・`intersection`・`set-difference`・`set-exclusive-or`・`subsetp`（と `n` の形。引数は壊さない）、`merge`、マクロ `pushnew`・`remf`、場所 `elt`・`subseq`。集合の関数の結果の順序は SBCL 2.6.7 と同じ（`union` は短い方のリストを調べ、長い方の前に積む）。
+- エラーは SBCL 2.6.7 と同じ：`:start`・`:end` の誤りと範囲外の `elt` は `type-error`（SBCL の `bounding-indices-bad-error`・`index-too-large-error` は `type-error` の一種）、添字の数の誤りは `simple-error`。
+- 結果：Level 11 の 25 ブロックのうち 19 が一致し、6 は両方ともエラー（Zilisp だけがエラーのものは 0）。Level 7・Level 10 で Zilisp だけがエラーで残るのは `defstruct`（Phase 26）と `format` の指示子（Phase 24）。教材のブロックの一致は 362 から 421 に。
+- 試験：SBCL 2.6.7 の結果と比べる127通り（GC stress でも実行。ネイティブでも実行：`sequence-cases.lisp`）、大きな列の GC stress、エラーの種類。言語試験 `sequences.lisp`（データ処理のサンプル。gc-stress 版も）。
 
 ### 11.3 標準ライブラリのビルド
 

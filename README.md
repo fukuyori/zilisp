@@ -49,9 +49,13 @@ Implemented after 0.2.0 (in `main`, not yet released):
   (`~A ~S ~D ~% ~& ~~` to `T` or `NIL`)
 - Bignums and ratios, exact comparisons with floats, `floor`/`ceiling`/`truncate`/`round`, `gcd`, `lcm`,
   `expt`, `sqrt`, `isqrt`, `exp`, `log`, trigonometric functions and bit operations (`logand`, `ash`, ...)
+- Multidimensional arrays, fill pointers and adjustable arrays (`vector-push-extend`, `adjust-array`),
+  `equalp` and `equalp` hash tables
+- Sequence functions (`find`, `position`, `remove-if`, `substitute`, `sort`, `subseq`, `search`,
+  `concatenate`, `map`, `coerce`, ...), list and set functions (`member`, `assoc`, `union`, `pushnew`, ...),
+  and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...)
 
-Not yet implemented (planned for later releases): most sequence functions (`find`, `remove-if`,
-`sort`, `subseq`, ...), the full `format`, complex numbers, streams and files, packages
+Not yet implemented (planned for later releases): the full `format`, complex numbers, streams and files, packages
 (`defpackage`, `in-package`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
 
 Error messages are currently written in Japanese.

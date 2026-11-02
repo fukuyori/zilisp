@@ -50,6 +50,7 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
             }
             return w.writeByte(')');
         },
+        .array => return printArray(rt, w, v, escape),
         .package => return w.print("#<PACKAGE \"{s}\">", .{Runtime.packageData(v).name}),
         .closure, .native_function => return w.print("#<object {x}>", .{v.raw()}),
         .code => return w.print("#<CODE {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
@@ -61,6 +62,7 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
                 .eq => "EQ",
                 .eql => "EQL",
                 .equal => "EQUAL",
+                .equalp => "EQUALP",
             };
             // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
             return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
@@ -117,6 +119,52 @@ fn printList(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
     if (x != Value.nil) {
         try w.writeAll(" . ");
         try write(rt, w, x, escape);
+    }
+    try w.writeByte(')');
+}
+
+/// 単純でない配列（Phase 21）。1次元はベクタ・文字列と同じ形で、有効な部分（fill-pointer まで）だけを書く。
+/// 多次元は #nA((…) …)、0次元は #0A要素（SBCL 2.6.7 と同じ。CLHS 22.1.3.8）
+fn printArray(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
+    const object = @import("../values/object.zig");
+    const a: *object.Array = @ptrCast(@alignCast(v.pointer()));
+    const dims = a.dims();
+    const is_string = Runtime.kindOf(a.data) == .string;
+    if (dims.len == 1) {
+        const n = if (a.header.flags & object.Array.has_fill_pointer != 0) a.fill_pointer else dims[0];
+        if (is_string) {
+            const s = Runtime.stringPtr(a.data);
+            if (escape) try w.writeByte('"');
+            for (0..n) |i| {
+                const cp = s.charAt(i);
+                if (escape and (cp == '"' or cp == '\\')) try w.writeByte('\\');
+                try writeCp(w, cp);
+            }
+            if (escape) try w.writeByte('"');
+            return;
+        }
+        try w.writeAll("#(");
+        for (Runtime.vectorPtr(a.data).items()[0..n], 0..) |x, i| {
+            if (i > 0) try w.writeByte(' ');
+            try write(rt, w, x, escape);
+        }
+        return w.writeByte(')');
+    }
+    try w.print("#{d}A", .{dims.len});
+    var index: usize = 0;
+    return printArrayAxis(rt, w, a.data, is_string, dims, &index, escape);
+}
+
+fn printArrayAxis(rt: *Runtime, w: *Writer, data: Value, is_string: bool, dims: []const usize, index: *usize, escape: bool) Error!void {
+    if (dims.len == 0) {
+        const x = if (is_string) Value.fromChar(Runtime.stringPtr(data).charAt(index.*)) else Runtime.vectorPtr(data).items()[index.*];
+        index.* += 1;
+        return write(rt, w, x, escape);
+    }
+    try w.writeByte('(');
+    for (0..dims[0]) |i| {
+        if (i > 0) try w.writeByte(' ');
+        try printArrayAxis(rt, w, data, is_string, dims[1..], index, escape);
     }
     try w.writeByte(')');
 }

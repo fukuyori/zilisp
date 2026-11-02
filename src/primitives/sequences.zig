@@ -1,20 +1,15 @@
-//! 列・文字列の関数の一部（Phase 19。反復の教材と loop の展開が使うもの）：
-//! reverse・nreverse・copy-list・last・endp、symbol-name・string=・string-upcase・string-downcase。
-//! 列の関数の全体（:test・:key を取る関数、subseq など）は Phase 21 で実装する。
-//! 大文字・小文字の変換は ASCII の文字だけを対象にする（Reader の変換と同じ。SBCL 2.6.7 は Unicode の文字も変換する）。
+//! 列の関数のうち Zig で書くもの（Phase 19・21）：reverse・nreverse・copy-list・last・endp・symbol-name、
+//! elt・subseq・make-list・vector-pop・fill・replace・concatenate・coerce の一部（Phase 21）。
+//! :test・:key を取る列の関数（find・position・remove など）は boot.lisp に書く。
+//! 文字・文字列の関数は strings.zig。
 
 const std = @import("std");
 const Value = @import("../values/value.zig").Value;
 const Thread = @import("../runtime/thread.zig").Thread;
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const keyargs = @import("keyargs.zig");
+const arrays = @import("arrays.zig");
 
-fn isVector(v: Value) bool {
-    return v.isOther() and Runtime.kindOf(v) == .simple_vector;
-}
-fn isString(v: Value) bool {
-    return v.isOther() and Runtime.kindOf(v) == .string;
-}
 fn isSymbol(v: Value) bool {
     return v == Value.nil or (v.isOther() and Runtime.kindOf(v) == .symbol);
 }
@@ -27,7 +22,7 @@ fn properListError(th: *Thread, v: Value) Value {
     return th.typeError(v, th.rt.syms.list);
 }
 
-/// (reverse 列)：新しい列を返す
+/// (reverse 列)：新しい列を返す（ベクタは有効な部分を、単純なベクタ・文字列に逆順に写す）
 pub fn reverse(th: *Thread, args: []const Value) Value {
     const seq = args[0];
     if (seq.isList()) {
@@ -37,21 +32,12 @@ pub fn reverse(th: *Thread, args: []const Value) Value {
         if (x != Value.nil) return properListError(th, seq);
         return out;
     }
-    if (isVector(seq)) {
-        const n = Runtime.vectorPtr(seq).items().len;
-        const v = th.rt.makeVectorFilled(n, Value.nil) catch return th.outOfMemory();
-        const src = Runtime.vectorPtr(seq).items();
-        const dst = Runtime.vectorPtr(v).items();
-        for (0..n) |i| dst[i] = src[n - 1 - i];
-        return v;
-    }
-    if (isString(seq)) {
-        const n = Runtime.stringPtr(seq).length();
-        const s = th.rt.makeStringFilled(n, ' ') catch return th.outOfMemory();
-        for (0..n) |i| th.rt.stringSetChar(s, i, Runtime.stringPtr(seq).charAt(n - 1 - i)) catch return th.outOfMemory();
-        return s;
-    }
-    return th.typeError(seq, cl(th, "SEQUENCE"));
+    const view = arrays.vectorView(seq) orelse return th.typeError(seq, cl(th, "SEQUENCE"));
+    const out = arrays.makeLike(th, view.data, view.len);
+    if (out == Value.unwind) return out;
+    const src = arrays.dataOf(seq);
+    for (0..view.len) |i| if (arrays.storageSet(th, out, i, arrays.storageGet(src, view.len - 1 - i)) == Value.unwind) return Value.unwind;
+    return out;
 }
 
 /// (nreverse 列)：リストはつなぎ替え、ベクタ・文字列はその場で並べ替える
@@ -70,23 +56,20 @@ pub fn nreverse(th: *Thread, args: []const Value) Value {
         if (x != Value.nil) return properListError(th, seq);
         return prev;
     }
-    if (isVector(seq)) {
-        std.mem.reverse(Value, Runtime.vectorPtr(seq).items());
+    const view = arrays.vectorView(seq) orelse return th.typeError(seq, cl(th, "SEQUENCE"));
+    if (arrays.isSimpleVector(view.data)) {
+        std.mem.reverse(Value, Runtime.vectorPtr(view.data).items()[0..view.len]);
         return seq;
     }
-    if (isString(seq)) {
-        const s = Runtime.stringPtr(seq);
-        const n = s.length();
-        var i: usize = 0;
-        while (i < n / 2) : (i += 1) {
-            const a = s.charAt(i);
-            const b = s.charAt(n - 1 - i);
-            th.rt.stringSetChar(seq, i, b) catch return th.outOfMemory();
-            th.rt.stringSetChar(seq, n - 1 - i, a) catch return th.outOfMemory();
-        }
-        return seq;
+    const n = view.len;
+    var i: usize = 0;
+    while (i < n / 2) : (i += 1) {
+        const a = arrays.storageGet(view.data, i);
+        const b = arrays.storageGet(view.data, n - 1 - i);
+        if (arrays.storageSet(th, view.data, i, b) == Value.unwind) return Value.unwind;
+        if (arrays.storageSet(th, view.data, n - 1 - i, a) == Value.unwind) return Value.unwind;
     }
-    return th.typeError(seq, cl(th, "SEQUENCE"));
+    return seq;
 }
 
 /// (copy-list リスト)：最上位の cons を写す（ドット対の終わりもそのまま）
@@ -144,90 +127,4 @@ pub fn symbolName(th: *Thread, args: []const Value) Value {
     if (!isSymbol(s)) return th.typeError(s, th.rt.syms.symbol);
     if (s == Value.nil) return th.rt.nil_symbol.name;
     return th.rt.symbolPtr(s).name;
-}
-
-/// 文字列指定子（文字列・シンボル・文字）を文字列にする。文字なら1文字の文字列を作る
-fn stringDesignator(th: *Thread, v: Value) Value {
-    if (isString(v)) return v;
-    if (isSymbol(v)) return if (v == Value.nil) th.rt.nil_symbol.name else th.rt.symbolPtr(v).name;
-    if (v.isChar()) return th.rt.makeStringFilled(1, v.asChar()) catch th.outOfMemory();
-    return th.typeError(v, cl(th, "STRING"));
-}
-
-/// :start・:end を [start, end) にする（end が NIL なら長さ）。範囲が正しくなければ null（エラーを記録済み）
-fn bounds(th: *Thread, start: ?Value, end: ?Value, len: usize) ?[2]usize {
-    var s: usize = 0;
-    var e: usize = len;
-    if (start) |v| {
-        if (!v.isFixnum() or v.asFixnum() < 0) {
-            _ = th.typeError(v, cl(th, "UNSIGNED-BYTE"));
-            return null;
-        }
-        s = @intCast(v.asFixnum());
-    }
-    if (end) |v| if (v != Value.nil) {
-        if (!v.isFixnum() or v.asFixnum() < 0) {
-            _ = th.typeError(v, cl(th, "UNSIGNED-BYTE"));
-            return null;
-        }
-        e = @intCast(v.asFixnum());
-    };
-    if (s > e or e > len) {
-        _ = th.signal(.program_error, "列の範囲（:start・:end）が正しくありません", Value.fromFixnum(@intCast(s)), Value.unbound);
-        return null;
-    }
-    return .{ s, e };
-}
-
-/// (string= a b &key start1 end1 start2 end2)
-pub fn stringEq(th: *Thread, args: []const Value) Value {
-    var kv: [4]?Value = undefined;
-    if (!keyargs.parse(th, args[2..], &.{ "START1", "END1", "START2", "END2" }, &kv)) return Value.unwind;
-    const a = stringDesignator(th, args[0]);
-    if (a == Value.unwind) return a;
-    const b = stringDesignator(th, args[1]);
-    if (b == Value.unwind) return b;
-    const sa = Runtime.stringPtr(a);
-    const sb = Runtime.stringPtr(b);
-    const ra = bounds(th, kv[0], kv[1], sa.length()) orelse return Value.unwind;
-    const rb = bounds(th, kv[2], kv[3], sb.length()) orelse return Value.unwind;
-    if (ra[1] - ra[0] != rb[1] - rb[0]) return Value.nil;
-    for (0..ra[1] - ra[0]) |i| {
-        if (sa.charAt(ra[0] + i) != sb.charAt(rb[0] + i)) return Value.nil;
-    }
-    return th.rt.t;
-}
-
-fn convertCase(th: *Thread, args: []const Value, comptime upper: bool) Value {
-    var kv: [2]?Value = undefined;
-    if (!keyargs.parse(th, args[1..], &.{ "START", "END" }, &kv)) return Value.unwind;
-    const src = stringDesignator(th, args[0]);
-    if (src == Value.unwind) return src;
-    const n = Runtime.stringPtr(src).length();
-    const r = bounds(th, kv[0], kv[1], n) orelse return Value.unwind;
-    const out = th.rt.makeStringFilled(n, ' ') catch return th.outOfMemory();
-    for (0..n) |i| {
-        var cp = Runtime.stringPtr(src).charAt(i);
-        if (i >= r[0] and i < r[1] and cp < 0x80) {
-            const c: u8 = @intCast(cp);
-            cp = if (upper) std.ascii.toUpper(c) else std.ascii.toLower(c);
-        }
-        th.rt.stringSetChar(out, i, cp) catch return th.outOfMemory();
-    }
-    return out;
-}
-
-pub fn stringUpcase(th: *Thread, args: []const Value) Value {
-    return convertCase(th, args, true);
-}
-
-pub fn stringDowncase(th: *Thread, args: []const Value) Value {
-    return convertCase(th, args, false);
-}
-
-/// (char= 文字 ...)（Phase 19）
-pub fn charEq(th: *Thread, args: []const Value) Value {
-    for (args) |a| if (!a.isChar()) return th.typeError(a, cl(th, "CHARACTER"));
-    for (args[1..]) |a| if (a.asChar() != args[0].asChar()) return Value.nil;
-    return th.rt.t;
 }

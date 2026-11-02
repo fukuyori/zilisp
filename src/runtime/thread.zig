@@ -95,6 +95,7 @@ pub const ErrorKind = enum {
     floating_point_overflow,
     floating_point_invalid_operation,
     storage_condition,
+    parse_error,
     /// 未実装の機能（CL の型ではない。Zilisp の拡張：基本設計 §3.1「黙って別の値を返さない」）
     unimplemented,
 
@@ -111,6 +112,7 @@ pub const ErrorKind = enum {
             .floating_point_overflow => "FLOATING-POINT-OVERFLOW",
             .floating_point_invalid_operation => "FLOATING-POINT-INVALID-OPERATION",
             .storage_condition => "STORAGE-CONDITION",
+            .parse_error => "PARSE-ERROR",
             .unimplemented => "ZILISP:UNIMPLEMENTED",
         };
     }

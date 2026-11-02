@@ -7,6 +7,7 @@ const Value = @import("../values/value.zig").Value;
 const Thread = @import("../runtime/thread.zig").Thread;
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const numbers = @import("numbers.zig");
+const arrays = @import("arrays.zig");
 
 pub fn cons(th: *Thread, args: []const Value) Value {
     return th.rt.cons(args[0], args[1]) catch th.outOfMemory();
@@ -140,11 +141,14 @@ pub fn equal2(a: Value, b: Value) bool {
             y = Runtime.consPtr(y).cdr;
             continue;
         }
-        if (x.isOther() and y.isOther() and Runtime.kindOf(x) == .string and Runtime.kindOf(y) == .string) {
-            const s = Runtime.stringPtr(x);
-            const t = Runtime.stringPtr(y);
-            if (s.length() != t.length()) return false;
-            for (0..s.length()) |i| if (s.charAt(i) != t.charAt(i)) return false;
+        // 文字列（単純でないものも。有効な部分を比べる：Phase 21）
+        if (arrays.isStringLike(x) and arrays.isStringLike(y)) {
+            const vx = arrays.vectorView(x).?;
+            const vy = arrays.vectorView(y).?;
+            if (vx.len != vy.len) return false;
+            const s = Runtime.stringPtr(vx.data);
+            const t = Runtime.stringPtr(vy.data);
+            for (0..vx.len) |i| if (s.charAt(i) != t.charAt(i)) return false;
             return true;
         }
         return false;

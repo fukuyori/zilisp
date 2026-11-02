@@ -607,10 +607,8 @@ test "setf, places, hash tables and arrays like SBCL 2.6.7 (Phase 16)" {
     try expectError(&e, "(make-hash-table :test 'foo)", .simple_error);
     try expectError(&e, "(setf x)", .program_error);
     try expectError(&e, "(let ((x (list 1))) (setf (p16-undefined-place x) 1))", .undefined_function);
-    // 未実装（Phase 21）
-    try expectError(&e, "(make-hash-table :test 'equalp)", .unimplemented);
-    try expectError(&e, "(make-array '(2 3))", .unimplemented);
-    try expectError(&e, "(make-array 3 :fill-pointer 0)", .unimplemented);
+    // displaced な配列は未実装（equalp のハッシュ表・多次元の配列・fill-pointer は Phase 21 で実装した）
+    try expectError(&e, "(make-array 3 :displaced-to (make-array 5))", .unimplemented);
     // CL の関数の setf 関数は定義できない
     try expectError(&e, "(defun (setf car) (v x) v)", .package_error);
 }
@@ -1266,6 +1264,177 @@ test "numeric tower: bignums, ratios and floats like SBCL 2.6.7 (Phase 20)" {
     try expectValue(&e, "(tagbody (go 2305843009213693952) 2305843009213693952)", "NIL");
     try expectError(&e, "(tagbody 2305843009213693952 2305843009213693952)", .program_error);
     try expectValue(&e, "(last (list 1 2) 2305843009213693952)", "(1 2)");
+}
+
+/// Phase 21：配列・文字・文字列・列・リスト・集合・equalp（SBCL 2.6.7 の結果）
+const sequence_cases = [_][2][]const u8{
+    .{ "(make-array '(2 3) :initial-contents '((1 2 3) (4 5 6)))", "#2A((1 2 3) (4 5 6))" },
+    .{ "(let ((a (make-array '(2 3) :initial-element 0))) (setf (aref a 1 2) 'x) a)", "#2A((0 0 0) (0 0 X))" },
+    .{ "(array-dimensions (make-array '(2 3 4)))", "(2 3 4)" },
+    .{ "(array-rank (make-array '(2 3 4)))", "3" },
+    .{ "(array-total-size (make-array '(2 3 4)))", "24" },
+    .{ "(array-dimension (make-array '(2 3 4)) 1)", "3" },
+    .{ "(array-row-major-index (make-array '(2 3 4)) 1 2 3)", "23" },
+    .{ "(row-major-aref (make-array '(2 2) :initial-contents '((a b) (c d))) 3)", "D" },
+    .{ "(let ((a (make-array '(2 2) :initial-element 0))) (setf (row-major-aref a 2) 'z) a)", "#2A((0 0) (Z 0))" },
+    .{ "(make-array 0)", "#()" },
+    .{ "(make-array '(0 3))", "#2A()" },
+    .{ "(make-array nil :initial-element 7)", "#0A7" },
+    .{ "(aref (make-array nil :initial-element 7))", "7" },
+    .{ "(make-array 3 :initial-element 'a)", "#(A A A)" },
+    .{ "(make-array 3 :element-type 'character :initial-element #\\x)", "\"xxx\"" },
+    .{ "(let ((v (make-array 3 :fill-pointer 0))) (vector-push 'a v) (vector-push 'b v) (list v (length v) (fill-pointer v)))", "(#(A B) 2 2)" },
+    .{ "(let ((v (make-array 2 :fill-pointer 0))) (list (vector-push 1 v) (vector-push 2 v) (vector-push 3 v) v))", "(0 1 NIL #(1 2))" },
+    .{ "(let ((v (make-array 1 :fill-pointer 0 :adjustable t))) (dotimes (i 10) (vector-push-extend i v)) (list v (length v)))", "(#(0 1 2 3 4 5 6 7 8 9) 10)" },
+    .{ "(let ((v (make-array 3 :fill-pointer t :initial-contents '(1 2 3)))) (list (vector-pop v) v (fill-pointer v)))", "(3 #(1 2) 2)" },
+    .{ "(let ((v (make-array 5 :fill-pointer 2 :initial-element 0))) (setf (fill-pointer v) 4) v)", "#(0 0 0 0)" },
+    .{ "(let ((s (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))) (vector-push-extend #\\a s) (vector-push-extend #\\b s) (list s (stringp s) (simple-string-p s) (length s)))", "(\"ab\" T NIL 2)" },
+    .{ "(let ((s (make-array 3 :element-type 'character :fill-pointer 2 :initial-contents \"abc\"))) (list s (string-upcase s) (equal s \"ab\") (reverse s) (copy-seq s)))", "(\"ab\" \"AB\" T \"ba\" \"ab\")" },
+    .{ "(adjust-array (make-array '(2 2) :initial-contents '((1 2) (3 4))) '(3 3) :initial-element 0)", "#2A((1 2 0) (3 4 0) (0 0 0))" },
+    .{ "(adjust-array (make-array 3 :initial-contents '(a b c)) 2)", "#(A B)" },
+    .{ "(let ((a (make-array 2 :adjustable t :initial-contents '(x y)))) (adjust-array a 4 :initial-element 'z) a)", "#(X Y Z Z)" },
+    .{ "(list (adjustable-array-p (make-array 3)) (adjustable-array-p (make-array 3 :adjustable t)))", "(NIL T)" },
+    .{ "(list (array-has-fill-pointer-p (make-array 3)) (array-has-fill-pointer-p (make-array 3 :fill-pointer 1)))", "(NIL T)" },
+    .{ "(list (array-element-type \"abc\") (array-element-type (make-array 2)))", "(CHARACTER T)" },
+    .{ "(list (array-in-bounds-p (make-array '(2 3)) 1 2) (array-in-bounds-p (make-array '(2 3)) 2 0))", "(T NIL)" },
+    .{ "(list (vectorp (make-array '(2 2))) (arrayp (make-array '(2 2))) (vectorp (make-array 3 :fill-pointer 0)))", "(NIL T T)" },
+    .{ "(make-array '(2 2 2) :initial-contents '(((1 2) (3 4)) ((5 6) (7 8))))", "#3A(((1 2) (3 4)) ((5 6) (7 8)))" },
+    .{ "(make-array '(2 2) :element-type 'character :initial-contents '(\"ab\" \"cd\"))", "#2A((#\\a #\\b) (#\\c #\\d))" },
+    .{ "(equalp (make-array '(2 2) :initial-contents '((1 2) (3 4))) (make-array '(2 2) :initial-contents '((1 2) (3 4))))", "T" },
+    .{ "(equal (make-array 2 :initial-element 1) (make-array 2 :initial-element 1))", "NIL" },
+    .{ "(vector-push-extend 1 (make-array 1 :fill-pointer 1))", "1" },
+    .{ "(list (char-code #\\a) (code-char 65) (char-upcase #\\a) (char-downcase #\\A) (char-upcase #\\1))", "(97 #\\A #\\A #\\a #\\1)" },
+    .{ "(list (upper-case-p #\\A) (upper-case-p #\\a) (lower-case-p #\\a) (both-case-p #\\1) (alpha-char-p #\\z) (alpha-char-p #\\5))", "(T NIL T NIL T NIL)" },
+    .{ "(list (alphanumericp #\\5) (alphanumericp #\\-) (graphic-char-p #\\Space) (graphic-char-p #\\Newline))", "(T NIL T NIL)" },
+    .{ "(list (digit-char-p #\\7) (digit-char-p #\\a) (digit-char-p #\\a 16) (digit-char-p #\\Z 36) (digit-char-p #\\8 8))", "(7 NIL 10 35 NIL)" },
+    .{ "(list (digit-char 7) (digit-char 11 16) (digit-char 10))", "(#\\7 #\\B NIL)" },
+    .{ "(list (char= #\\a #\\a) (char= #\\a #\\A) (char/= #\\a #\\b #\\a) (char< #\\a #\\b #\\c) (char> #\\c #\\b #\\b) (char<= #\\a #\\a #\\b) (char>= #\\b #\\a))", "(T NIL NIL T NIL T T)" },
+    .{ "(list (char-equal #\\a #\\A) (char-not-equal #\\a #\\A) (char-lessp #\\a #\\B) (char-greaterp #\\b #\\A) (char-not-greaterp #\\A #\\a) (char-not-lessp #\\a #\\B))", "(T NIL T T T NIL)" },
+    .{ "(list (characterp #\\a) (characterp \"a\") (standard-char-p #\\a) (standard-char-p #\\Tab))", "(T NIL T NIL)" },
+    .{ "(list (string 'abc) (string #\\x) (string \"s\"))", "(\"ABC\" \"x\" \"s\")" },
+    .{ "(list (string= \"abc\" \"abc\") (string= \"abc\" \"abd\") (string= \"abc\" \"xabcx\" :start2 1 :end2 4) (string= 'abc \"ABC\"))", "(T NIL T T)" },
+    .{ "(list (string/= \"abc\" \"abd\") (string< \"abc\" \"abd\") (string< \"abc\" \"ab\") (string< \"ab\" \"abc\") (string> \"b\" \"a\") (string<= \"abc\" \"abc\") (string>= \"abd\" \"abc\"))", "(2 2 NIL 2 0 3 2)" },
+    .{ "(list (string-equal \"Hello\" \"hELLO\") (string-lessp \"apple\" \"Banana\") (string-greaterp \"b\" \"A\") (string-not-equal \"a\" \"A\") (string-not-greaterp \"abc\" \"ABC\") (string-not-lessp \"b\" \"A\"))", "(T 0 0 NIL 3 0)" },
+    .{ "(list (string-upcase \"hello world\") (string-downcase \"HeLLo\") (string-capitalize \"hello WORLD foo-bar 1st\") (string-upcase \"abcdef\" :start 2 :end 4))", "(\"HELLO WORLD\" \"hello\" \"Hello World Foo-Bar 1st\" \"abCDef\")" },
+    .{ "(let ((s (copy-seq \"hello\"))) (list (nstring-upcase s) s (nstring-capitalize (copy-seq \"ab cd\")) (nstring-downcase (copy-seq \"ABC\") :start 1)))", "(\"HELLO\" \"HELLO\" \"Ab Cd\" \"Abc\")" },
+    .{ "(list (string-trim \" \" \"  abc  \") (string-left-trim \" \" \"  abc  \") (string-right-trim \" \" \"  abc  \") (string-trim '(#\\a #\\b) \"abcba\") (string-trim \"xyz\" \"\"))", "(\"abc\" \"abc  \" \"  abc\" \"c\" \"\")" },
+    .{ "(list (make-string 3 :initial-element #\\z) (length (make-string 2)))", "(\"zzz\" 2)" },
+    .{ "(multiple-value-list (parse-integer \"123\"))", "(123 3)" },
+    .{ "(multiple-value-list (parse-integer \"  -42  \"))", "(-42 7)" },
+    .{ "(multiple-value-list (parse-integer \"+7\"))", "(7 2)" },
+    .{ "(multiple-value-list (parse-integer \"ff\" :radix 16))", "(255 2)" },
+    .{ "(multiple-value-list (parse-integer \"12abc\" :junk-allowed t))", "(12 2)" },
+    .{ "(multiple-value-list (parse-integer \"abc\" :junk-allowed t))", "(NIL 0)" },
+    .{ "(multiple-value-list (parse-integer \"  abc\" :junk-allowed t))", "(NIL 2)" },
+    .{ "(multiple-value-list (parse-integer \"x123y\" :start 1 :end 4))", "(123 4)" },
+    .{ "(multiple-value-list (parse-integer \"123456789012345678901234567890\"))", "(123456789012345678901234567890 30)" },
+    .{ "(multiple-value-list (parse-integer \"-101\" :radix 2))", "(-5 4)" },
+    .{ "(multiple-value-list (parse-integer \"\" :junk-allowed t))", "(NIL 0)" },
+    .{ "(list (find 3 '(1 2 3 4)) (find 5 '(1 2 3)) (find #\\b \"abc\") (find 2 #(1 2 3)))", "(3 NIL #\\b 2)" },
+    .{ "(list (find-if #'evenp '(1 3 4 5 6)) (find-if #'evenp '(1 3 4 5 6) :from-end t) (find-if-not #'oddp '(1 3 4)))", "(4 6 4)" },
+    .{ "(list (find 'b '((a 1) (b 2)) :key #'car) (find \"b\" '(\"a\" \"b\") :test #'string=) (find 2 '(1 2 3) :test-not #'eql))", "((B 2) \"b\" 1)" },
+    .{ "(list (position 3 '(1 2 3 4 3)) (position 3 '(1 2 3 4 3) :from-end t) (position #\\c \"abcabc\" :start 3) (position 9 '(1 2)))", "(2 4 5 NIL)" },
+    .{ "(list (position-if #'evenp #(1 3 4 6)) (position-if #'evenp #(1 3 4 6) :from-end t) (position-if-not #'evenp '(2 4 5)))", "(2 3 2)" },
+    .{ "(list (count 1 '(1 2 1 3 1)) (count-if #'evenp '(1 2 3 4)) (count-if-not #'evenp #(1 2 3 4 5)) (count #\\a \"banana\" :start 2))", "(3 2 3 2)" },
+    .{ "(list (remove 1 '(1 2 1 3)) (remove 1 '(1 2 1 3) :count 1) (remove 1 '(1 2 1 3 1) :count 1 :from-end t) (remove #\\a \"banana\"))", "((2 3) (2 1 3) (1 2 1 3) \"bnn\")" },
+    .{ "(list (remove-if #'evenp '(1 2 3 4 5)) (remove-if-not #'evenp #(1 2 3 4 5)) (remove-if #'evenp '(1 2 3 4) :start 2))", "((1 3 5) #(2 4) (1 2 3))" },
+    .{ "(list (delete 1 (list 1 2 1 3)) (delete-if #'oddp (list 1 2 3 4)) (delete-if-not #'oddp (vector 1 2 3)))", "((2 3) (2 4) #(1 3))" },
+    .{ "(list (remove-duplicates '(1 2 1 3 2)) (remove-duplicates '(1 2 1 3 2) :from-end t) (remove-duplicates \"abracadabra\") (remove-duplicates '((a 1) (b 2) (a 3)) :key #'car))", "((1 3 2) (1 2 3) \"cdbra\" ((B 2) (A 3)))" },
+    .{ "(remove-duplicates '(\"a\" \"A\" \"b\") :test #'string-equal)", "(\"A\" \"b\")" },
+    .{ "(list (substitute 0 1 '(1 2 1 3)) (substitute-if 0 #'evenp '(1 2 3 4)) (substitute-if-not 0 #'evenp #(1 2 3)) (substitute #\\- #\\space \"a b c\"))", "((0 2 0 3) (1 0 3 0) #(0 2 0) \"a-b-c\")" },
+    .{ "(let ((l (list 1 2 1))) (list (nsubstitute 9 1 l) l))", "((9 2 9) (9 2 9))" },
+    .{ "(let ((v (vector 1 2 3))) (nsubstitute-if 0 #'oddp v) v)", "#(0 2 0)" },
+    .{ "(list (sort (list 3 1 2) #'<) (sort (vector 3 1 2) #'>) (sort (copy-seq \"hello\") #'char<) (stable-sort (list '(b 1) '(a 2) '(b 0) '(a 1)) #'string< :key #'car))", "((1 2 3) #(3 2 1) \"ehllo\" ((A 2) (A 1) (B 1) (B 0)))" },
+    .{ "(sort (list \"banana\" \"apple\" \"Cherry\") #'string-lessp)", "(\"apple\" \"banana\" \"Cherry\")" },
+    .{ "(let ((l (list 5 3 8 1 9 2 7 4 6 0 11 15 13 12 14 10))) (sort l #'<))", "(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)" },
+    .{ "(list (search \"bc\" \"abcabc\") (search \"bc\" \"abcabc\" :from-end t) (search '(2 3) '(1 2 3 4)) (search \"x\" \"abc\") (search \"\" \"abc\"))", "(1 4 1 NIL 0)" },
+    .{ "(list (mismatch \"abcd\" \"abxd\") (mismatch \"abc\" \"abc\") (mismatch \"ab\" \"abc\") (mismatch \"abc\" \"xbc\" :from-end t) (mismatch '(1 2 3) '(1 2 3 4) :from-end t))", "(2 NIL 2 1 3)" },
+    .{ "(list (elt '(a b c) 1) (elt \"abc\" 2) (elt #(1 2 3) 0))", "(B #\\c 1)" },
+    .{ "(let ((l (list 1 2 3)) (v (vector 1 2 3))) (setf (elt l 1) 'x) (setf (elt v 2) 'y) (list l v))", "((1 X 3) #(1 2 Y))" },
+    .{ "(list (subseq '(a b c d) 1 3) (subseq \"hello\" 1) (subseq #(1 2 3 4) 2) (subseq '(1 2) 2))", "((B C) \"ello\" #(3 4) NIL)" },
+    .{ "(let ((s (copy-seq \"hello\"))) (setf (subseq s 1 3) \"XYZ\") s)", "\"hXYlo\"" },
+    .{ "(list (fill (list 1 2 3) 0) (fill (make-string 3 :initial-element #\\a) #\\z :start 1) (fill (vector 1 2 3 4) 'x :start 1 :end 3))", "((0 0 0) \"azz\" #(1 X X 4))" },
+    .{ "(list (replace (list 1 2 3 4) '(a b)) (replace (copy-seq \"abcdef\") \"XY\" :start1 2) (replace (vector 1 2 3 4 5) #(a b c) :start1 1 :start2 1))", "((A B 3 4) \"abXYef\" #(1 B C 4 5))" },
+    .{ "(let ((v (vector 1 2 3 4 5))) (replace v v :start1 1) v)", "#(1 1 2 3 4)" },
+    .{ "(list (concatenate 'string \"ab\" \"cd\" '(#\\e)) (concatenate 'list '(1 2) #(3 4) \"ab\") (concatenate 'vector '(1) #(2)) (concatenate 'simple-vector) (concatenate '(vector character) \"x\" \"y\"))", "(\"abcde\" (1 2 3 4 #\\a #\\b) #(1 2) #() \"xy\")" },
+    .{ "(list (coerce '(1 2 3) 'vector) (coerce #(1 2) 'list) (coerce \"abc\" 'list) (coerce '(#\\a #\\b) 'string) (coerce 1 'float) (coerce 1/2 'double-float) (coerce \"x\" 'character) (coerce 'a 'character))", "(#(1 2 3) (1 2) (#\\a #\\b #\\c) \"ab\" 1.0 0.5d0 #\\x #\\A)" },
+    .{ "(list (coerce 3 'single-float) (coerce 2.5 'float) (coerce 7 'integer) (coerce '(1) t))", "(3.0 2.5 7 (1))" },
+    .{ "(list (coerce \"abc\" 'vector) (coerce \"abc\" 'array) (coerce #(1 2) 'simple-vector) (coerce \"ab\" 'sequence) (coerce (make-array 2 :fill-pointer 1 :initial-contents '(1 2)) 'vector) (coerce (make-array 2 :fill-pointer 1 :initial-contents '(1 2)) 'simple-vector) (let ((s \"x\")) (eq s (coerce s 'vector))) (coerce '(1 2) 'sequence))", "(\"abc\" \"abc\" #(1 2) \"ab\" #(1) #(1) T (1 2))" },
+    .{ "(list (make-sequence 'list 3 :initial-element 'a) (make-sequence 'string 2 :initial-element #\\q) (make-sequence 'vector 2 :initial-element 0))", "((A A A) \"qq\" #(0 0))" },
+    .{ "(list (map 'list #'+ '(1 2 3) '(10 20 30)) (map 'vector #'char-upcase \"abc\") (map 'string #'char-upcase '(#\\a #\\b)) (map nil #'identity '(1 2)) (map 'list #'list '(1 2 3) #(a b)))", "((11 22 33) #(#\\A #\\B #\\C) \"AB\" NIL ((1 A) (2 B)))" },
+    .{ "(let ((a (list 1 2 3))) (map-into a #'1+ a) a)", "(2 3 4)" },
+    .{ "(let ((v (make-array 5 :fill-pointer 2 :initial-element 0))) (map-into v #'identity '(a b c)) (list v (fill-pointer v)))", "(#(A B C) 3)" },
+    .{ "(list (some #'evenp '(1 3 4)) (some #'evenp '(1 3)) (every #'evenp '(2 4)) (every #'evenp '(2 3)) (notany #'evenp '(1 3)) (notevery #'evenp '(2 3)))", "(T NIL T NIL T T)" },
+    .{ "(list (some #'> '(1 5) '(2 3)) (every #'char= \"abc\" \"abd\") (some (lambda (x) (and (> x 2) x)) #(1 2 3 4)))", "(T NIL 3)" },
+    .{ "(list (reduce #'+ #(1 2 3 4)) (reduce #'list '(1 2 3) :from-end t) (reduce #'+ \"\" :key #'char-code) (reduce #'max '(3 1 4 1 5) :start 1 :end 3))", "(10 (1 (2 3)) 0 4)" },
+    .{ "(list (length (make-array 5 :fill-pointer 3)) (reverse #(1 2 3)) (nreverse (vector 1 2 3)) (reverse \"abc\") (nreverse (copy-seq \"xyz\")))", "(3 #(3 2 1) #(3 2 1) \"cba\" \"zyx\")" },
+    .{ "(list (member 2 '(1 2 3)) (member 5 '(1 2)) (member '(1) '((1) (2)) :test #'equal) (member 2 '((1) (2)) :key #'car) (member-if #'evenp '(1 2 3)) (member-if-not #'oddp '(1 3 4 5)))", "((2 3) NIL ((1) (2)) ((2)) (2 3) (4 5))" },
+    .{ "(list (assoc 'b '((a . 1) (b . 2))) (assoc \"b\" '((\"a\" . 1) (\"b\" . 2)) :test #'string=) (assoc 'x '((a . 1))) (assoc 'b '(nil (b . 2))) (assoc-if #'evenp '((1 . a) (2 . b))) (assoc-if-not #'oddp '((1 . a) (2 . b))))", "((B . 2) (\"b\" . 2) NIL (B . 2) (2 . B) (2 . B))" },
+    .{ "(list (rassoc 2 '((a . 1) (b . 2))) (rassoc-if #'stringp '((a . 1) (b . \"s\"))) (rassoc 'x '((a . y))))", "((B . 2) (B . \"s\") NIL)" },
+    .{ "(list (acons 'a 1 nil) (pairlis '(a b c) '(1 2 3)) (pairlis '(x) '(9) '((y . 8))))", "(((A . 1)) ((C . 3) (B . 2) (A . 1)) ((X . 9) (Y . 8)))" },
+    .{ "(list (butlast '(1 2 3 4)) (butlast '(1 2 3) 2) (butlast '(1) 5) (nbutlast (list 1 2 3)) (nbutlast (list 1 2) 5))", "((1 2 3) (1) NIL (1 2) NIL)" },
+    .{ "(let ((l (list 1 2 3 4))) (list (ldiff l (cddr l)) (tailp (cddr l) l) (tailp '(3 4) l) (ldiff l nil) (tailp nil l)))", "((1 2) T NIL (1 2 3 4) T)" },
+    .{ "(list (revappend '(1 2) '(3 4)) (nreconc (list 1 2) '(3)) (copy-alist '((a . 1) (b . 2))) (copy-tree '((1 2) (3 (4)))))", "((2 1 3 4) (2 1 3) ((A . 1) (B . 2)) ((1 2) (3 (4))))" },
+    .{ "(list (subst 'x 'a '(a b (a c) . a)) (subst 9 1 '(1 (1 2)) :test #'eql) (subst-if 0 #'numberp '(a 1 (b 2))) (subst-if-not 'z #'consp '(a (b))))", "((X B (X C) . X) (9 (9 2)) (A 0 (B 0)) (Z (Z . Z) . Z))" },
+    .{ "(list (sublis '((a . 1) (b . 2)) '(a b (c a))) (sublis '((\"x\" . 1)) '(\"x\" y) :test #'equal) (tree-equal '(1 (2 3)) '(1 (2 3))) (tree-equal '(1 2) '(1 3)) (tree-equal '(\"a\") '(\"a\") :test #'equal))", "((1 2 (C 1)) (1 Y) T NIL T)" },
+    .{ "(list (maplist #'identity '(1 2 3)) (maplist #'append '(1 2) '(a b)) (mapcon #'copy-list '(1 2 3)) (let ((r nil)) (mapl (lambda (x) (push (length x) r)) '(a b c)) r))", "(((1 2 3) (2 3) (3)) ((1 2 A B) (2 B)) (1 2 3 2 3 3) (1 2 3))" },
+    .{ "(list (union '(1 2 3) '(2 3 4)) (union '(a b) '(c)) (union nil '(1)) (union '((a 1) (b 2)) '((b 3)) :key #'car))", "((4 1 2 3) (B A C) (1) ((A 1) (B 3)))" },
+    .{ "(list (intersection '(1 2 3 4) '(2 4 6)) (intersection '(a b) nil) (intersection '(\"a\" \"b\") '(\"b\") :test #'string=))", "((4 2) NIL (\"b\"))" },
+    .{ "(list (set-difference '(1 2 3 4) '(2 4)) (set-difference '(1 2) nil) (set-exclusive-or '(1 2 3) '(2 3 4)) (subsetp '(1 2) '(2 1 3)) (subsetp '(1 5) '(1 2)))", "((3 1) (1 2) (4 1) T NIL)" },
+    .{ "(let ((l (list 1 2))) (pushnew 3 l) (pushnew 1 l) l)", "(3 1 2)" },
+    .{ "(let ((l (list (list 'a)))) (pushnew 'a (car l)) (pushnew 'b (car l)) l)", "((B A))" },
+    .{ "(let ((l (list '(a 1)))) (pushnew '(a 2) l :key #'car) l)", "((A 1))" },
+    .{ "(let ((p (list :a 1 :b 2 :c 3))) (list (remf p :b) p (remf p :z) (remf p :a) p))", "(T (:A 1 :C 3) NIL T (:C 3))" },
+    .{ "(merge 'list (list 1 3 5) (list 2 4 6) #'<)", "(1 2 3 4 5 6)" },
+    .{ "(merge 'vector (vector 1 4) (list 2 3) #'<)", "#(1 2 3 4)" },
+    .{ "(merge 'list (list '(a 1) '(b 2)) (list '(c 1)) #'< :key #'cadr)", "((A 1) (C 1) (B 2))" },
+    .{ "(list (funcall (complement #'evenp) 3) (funcall (constantly 5) 1 2) (identity 'x) (mapcar (constantly 0) '(1 2)))", "(T 5 X (0 0))" },
+    .{ "(list (equalp \"ABC\" \"abc\") (equalp 1 1.0) (equalp #\\a #\\A) (equalp '(1 \"A\") '(1.0 \"a\")) (equalp #(1 2) #(1 2)) (equalp 'a 'a) (equalp 1/2 0.5))", "(T T T T T T T)" },
+    .{ "(list (equalp \"ab\" (make-array 3 :element-type 'character :fill-pointer 2 :initial-contents \"abc\")) (equalp #(1 2) '(1 2)) (equalp (vector \"a\") (vector \"A\")))", "(T NIL T)" },
+    .{ "(let ((h1 (make-hash-table)) (h2 (make-hash-table))) (setf (gethash 1 h1) \"a\" (gethash 1 h2) \"A\") (equalp h1 h2))", "T" },
+    .{ "(let ((h (make-hash-table :test 'equalp))) (setf (gethash \"Key\" h) 1) (setf (gethash '(1 #\\a) h) 2) (setf (gethash 3 h) 3) (list (gethash \"KEY\" h) (gethash '(1.0 #\\A) h) (gethash 3.0 h) (gethash 1/2 h) (hash-table-count h)))", "(1 2 3 NIL 3)" },
+    .{ "(let ((h (make-hash-table :test #'equalp))) (setf (gethash #(1 2) h) 'v) (gethash (vector 1.0 2) h))", "V" },
+    .{ "(let ((h (make-hash-table :test 'equal))) (setf (gethash \"ab\" h) 1) (gethash (make-array 2 :element-type 'character :initial-contents \"ab\" :adjustable t) h))", "1" },
+};
+
+test "arrays, characters, strings, sequences, lists and equalp like SBCL 2.6.7 (Phase 21)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (sequence_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (sequence_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // 大きな列（並べ替え・重複の削除・vector-push-extend を GC stress で）
+    e.rt.heap.stress = true;
+    try expectValue(&e, "(let ((v (make-array 0 :fill-pointer 0 :adjustable t))) (dotimes (i 300) (vector-push-extend (list (mod (* i 37) 101)) v)) (let ((s (sort v #'< :key #'car))) (list (length s) (car (aref s 0)) (car (aref s 299)))))", "(300 0 100)");
+    try expectValue(&e, "(length (remove-duplicates (loop for i below 200 collect (format nil \"~D\" (mod i 50))) :test #'string=))", "50");
+    try expectValue(&e, "(let ((h (make-hash-table :test 'equalp))) (dotimes (i 200) (setf (gethash (format nil \"K~D\" i) h) i)) (list (hash-table-count h) (gethash \"k150\" h)))", "(200 150)");
+    e.rt.heap.stress = false;
+    // 循環リストの長さ・sxhash
+    try expectValue(&e, "(list-length (let ((l (list 1 2))) (setf (cddr l) l) l))", "NIL");
+    try expectValue(&e, "(list (= (sxhash \"abc\") (sxhash (copy-seq \"abc\"))) (= (sxhash '(1 2)) (sxhash (list 1 2))) (integerp (sxhash 'a)) (>= (sxhash 1.5) 0))", "(T T T T)");
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(aref (make-array '(2 2)) 2 0)", .type_error);
+    try expectError(&e, "(aref (make-array 3) 1 1)", .simple_error);
+    try expectError(&e, "(code-char -1)", .type_error);
+    try expectError(&e, "(char-code \"a\")", .type_error);
+    try expectError(&e, "(parse-integer \"12abc\")", .parse_error);
+    try expectError(&e, "(parse-integer \"\")", .parse_error);
+    try expectError(&e, "(parse-integer \" - \")", .parse_error);
+    try expectError(&e, "(elt '(a b) 5)", .type_error);
+    try expectError(&e, "(subseq '(1 2 3) 2 1)", .type_error);
+    try expectError(&e, "(coerce '(1 2) 'string)", .type_error);
+    try expectError(&e, "(adjoin 'a '((a 1)) :key #'car)", .type_error);
+    try expectError(&e, "(find 1 '(1 . 2) :start 1)", .type_error);
+    try expectError(&e, "(member 1 '(2 . 3))", .type_error);
+    try expectError(&e, "(remove 1 '(1 2) :test #'eql :test-not #'eql)", .program_error);
+    try expectError(&e, "(vector-pop (make-array 2 :fill-pointer 0))", .simple_error);
+    try expectError(&e, "(setf (fill-pointer (make-array 2 :fill-pointer 0)) 3)", .type_error);
+    try expectError(&e, "(fill-pointer (make-array 2))", .type_error);
+    // 未実装（明示的なエラー）
+    try expectError(&e, "(coerce 1 'complex)", .unimplemented);
+    try expectError(&e, "(concatenate 'hash-table '(1))", .unimplemented);
 }
 
 test "eval matches SBCL 2.6.7" {

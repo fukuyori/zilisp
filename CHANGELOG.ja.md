@@ -5,6 +5,18 @@
 ## Unreleased
 
 ### Added
+- Phase 21：一般の配列（多次元の配列・fill-pointer・adjustable な配列。添字がいくつでもよい `aref`、`row-major-aref`、
+  `array-dimensions` などの配列の問い合わせ、`vector-push`・`vector-push-extend`・`vector-pop`・`adjust-array`、`#2A(...)` の印字）、
+  `equalp`・`equalp` のハッシュ表・`sxhash`、文字の関数（`char-code`・`code-char`・`char-upcase`・`alpha-char-p`・`digit-char-p`、
+  `char<`・`char-equal` の仲間など）、文字列の関数（`string`、`string<`・`string-equal` の仲間、`string-capitalize`・
+  `nstring-upcase`・`string-trim`・`make-string`・`parse-integer`）、`:test`・`:test-not`・`:key`・`:start`・`:end`・`:from-end`・
+  `:count` を取る列の関数（`find`・`position`・`count`・`remove`・`delete`・`substitute`・`remove-duplicates`・`sort`・
+  `stable-sort`・`search`・`mismatch`・`subseq`・`elt`・`fill`・`replace`・`concatenate`・`coerce`・`map`・`map-into`・`some`・
+  `every`・`merge` など）、リスト・木・集合の関数（`member`・`assoc`・`rassoc`・`acons`・`pairlis`・`butlast`・`ldiff`・`maplist`・
+  `subst`・`sublis`・`union`・`intersection`・`set-difference`・`adjoin`・`pushnew`・`remf` など）。displaced な配列は未実装
+  （明示的なエラー）。文字の種類と大文字・小文字は ASCII の文字だけ。試験：SBCL 2.6.7 の結果と比べる127通り（GC stress でも
+  実行）、言語試験 `sequences.lisp`（データ処理のサンプル。gc-stress 版も）・`sequence-cases.lisp`（ネイティブでも一致）。
+  教材のブロックの一致は 362 から 421 に
 - README（英語・日本語）を加え、変更履歴を英語（`CHANGELOG.md`）と日本語（`CHANGELOG.ja.md`）に分けた
 - Phase 20：数の階層。bignum（limb をオブジェクトの中に置く。fixnum に収まる値はいつも fixnum）、比（約分済み）、浮動小数との
   混在（正確な比較、正しく丸める変換）、`floor`・`ceiling`・`truncate`・`round`（2つの値）、`mod`・`rem`・`gcd`・`lcm`・

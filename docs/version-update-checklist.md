@@ -8,17 +8,18 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 |---|---|
 | `build.zig.zon` | `.version` |
 | `src/version.zig` | `version`（`build.zig.zon` と同じ値にする） |
-| `CHANGELOG.md` | 新しいバージョンの見出しと変更点 |
+| `CHANGELOG.md`（英語）・`CHANGELOG.ja.md`（日本語） | 新しいバージョンの見出しと変更点（両方に同じ内容を書く） |
+| `README.md`・`README.ja.md` | 「Status」・「状況」の版と、実装した機能の一覧（機能が増えたとき） |
 | `installer/zilisp.iss` | 更新しない（`scripts/build-installer.ps1` が `build.zig.zon` の `.version` を読んで `AppVersion` として渡す。`src/version.zig` と違えば停止する） |
 
 確認：`zig build test` と `zig-out/bin/zilisp --version` の表示が新しいバージョンになっていること。
 
 リリースの手順（タグ・配布物）
-1. 上の表のファイルを更新し、`CHANGELOG.md` の `Unreleased` の内容を新しいバージョンの見出しに移す。
+1. 上の表のファイルを更新し、`CHANGELOG.md`・`CHANGELOG.ja.md` の `Unreleased` の内容を新しいバージョンの見出しに移す。
 2. 試験（`zig build test`、`lang-test`、`native-test`）を実行してコミットする。
 3. タグ（`v<バージョン>`）を作って push する。GitHub Actions（`.github/workflows/release.yml`）が、タグと
-   `build.zig.zon`・`src/version.zig`・`CHANGELOG.md` の見出しの一致を確かめ、3つの OS で試験してから、各ターゲットを
-   ビルドしてリリースを登録する（配布物は署名なし。リリースノートは `CHANGELOG.md` の該当バージョンの節）。
+   `build.zig.zon`・`src/version.zig`・`CHANGELOG.md`・`CHANGELOG.ja.md` の見出しの一致を確かめ、3つの OS で試験してから、
+   各ターゲットをビルドしてリリースを登録する（配布物は署名なし。リリースノートは、両方の変更履歴の該当バージョンの節）。
 4. 署名付きの Windows の配布物が必要なときは、利用者が `scripts/build-installer.ps1 -Sign` で作成し（Claude は作成しない）、
    リリースの同じ名前のファイルを差し替える（`gh release upload v<バージョン> <ファイル> --clobber`。SHA256SUMS.txt も作り直す）。
 

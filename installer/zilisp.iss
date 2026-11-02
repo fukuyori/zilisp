@@ -2,7 +2,7 @@
 ; scripts/build-installer.ps1 から ISCC.exe で作成する。直接 ISCC を実行する場合は、次の定義を渡すこと。
 ;   /DAppVersion=0.2.0          バージョン（build.zig.zon の .version。スクリプトが読んで渡す）
 ;   /DSourceDir=<dir>           zilisp.exe のあるディレクトリ（dist\x86_64-windows\bin）
-;   /DRepoDir=<dir>             リポジトリのディレクトリ（LICENSE・CHANGELOG.md を入れる）
+;   /DRepoDir=<dir>             リポジトリのディレクトリ（LICENSE・README・CHANGELOG を入れる）
 ;   /DOutputDir=<dir>           インストーラーの出力先
 ;   /DSign                      署名する（ISCC に /Szlsign=... を渡すこと。アンインストーラーにも署名する）
 
@@ -57,7 +57,10 @@ Name: "addtopath"; Description: "PATH に Zilisp の bin ディレクトリを�
 [Files]
 Source: "{#SourceDir}\zilisp.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "{#RepoDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoDir}\README.ja.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoDir}\CHANGELOG.ja.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Zilisp REPL"; Filename: "{app}\bin\zilisp.exe"

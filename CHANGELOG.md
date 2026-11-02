@@ -1,160 +1,176 @@
 # Changelog
 
+[日本語](CHANGELOG.ja.md)
+
 ## Unreleased
+
+### Added
+- README in English and Japanese; the changelog is split into English (`CHANGELOG.md`) and Japanese (`CHANGELOG.ja.md`)
 
 ## 0.2.0 - 2026-11-02
 
-最初の公開版。Reader・印字・GC・バイトコード VM・最小のネイティブバックエンドの上に、関数、マクロ、多値、
-動的束縛、非局所脱出（block・catch・unwind-protect）までを実装した（Phase 01〜18）。
-LOOP・DOLIST・FORMAT・DEFSTRUCT・CLOS・condition などは未実装（`compatibility/eval-status.md`）。
+First public release. On top of the reader, printer, GC, bytecode VM and a minimal native backend,
+it implements functions, macros, multiple values, dynamic binding and non-local exits
+(block, catch, unwind-protect) (Phases 01–18).
+LOOP, DOLIST, FORMAT, DEFSTRUCT, CLOS, conditions and more are not implemented yet (`compatibility/eval-status.md`).
 
 ### Added
-- リリース用のスクリプト：`scripts/build-installer.ps1`（Inno Setup による Windows 用インストーラーと、ターゲットごとの ZIP。
-  `-Sign` で、環境変数 `CODESIGN_CERT` の証明書により `zilisp.exe`・アンインストーラー・インストーラーに署名する）、
-  `installer/zilisp.iss`（利用者ごとのインストール、PATH への追加の選択）
-- GitHub Actions：push・pull request ごとに Linux・macOS・Windows で試験（`.github/workflows/test.yml`）。
-  タグ `v<バージョン>` の push で、試験の後に x86_64・aarch64 の Linux（musl）・macOS と x86_64 の Windows をビルドし、
-  GitHub のリリースを登録する（`.github/workflows/release.yml`。署名なし。SHA256SUMS.txt を添付）
-- 企画・基本設計書（v0.3）と詳細設計書（v0.2）
-- MIT ライセンス
-- Phase 01：`build.zig` / `build.zig.zon`（Zig 0.17.0）、CLI の骨組み（`--version` / `--help`）、
-  ベンチマークの実行器（`zig build bench`、`scripts/run-bench.ps1`）、
-  リリースビルドのスクリプト（`scripts/build-release.ps1`）、
-  バージョン更新チェックリスト、Zig 0.17.0 の std・言語機能の照合結果（`docs/zig-std-usage.md`）
-- Phase 02：言語試験の実行器（`zig build lang-test`）、教材のコードブロックの抽出（`zig build extract-samples`）、
-  SBCL による読み込みだけの分類（`tools/classify_samples/classify.lisp`）、
-  `scripts/curriculum-inventory.ps1`、`compatibility/curriculum-inventory.md`、`compatibility/manifest.toml`（初期版）
-- Phase 03：Reader の基本（`src/reader/`）。空白、コメント（`;`・`#| |#` の入れ子）、整数・比・浮動小数
-  （`*read-base*`・`*read-default-float-format*`・指数の記号）、シンボル（エスケープ、パッケージ修飾、
-  大文字への変換）、位置情報（行・列）。値を作る処理は Builder として差し替え可能（Value との接続は Phase 05）。
-  SBCL との処理系依存の違いを `tests/differential/impl-dependent.toml` に記録
-- Phase 04：Reader のマクロ文字。quote、文字列、リスト（ドット対）、`#'`、`#(`（`#n(` を含む）、`#\`（標準・準標準の名前、`U+XXXX`）、
-  `#:`、`#b #o #x #nR`、backquote（`zl-sys:quasiquote` など）、`#+` / `#-`（`*read-suppress*`、`*features*`）。
-  `#P #S #C #A #. #= ##` は後の Phase まで明示的な reader-error。
-  教材のブロックを Zilisp の Reader で読み SBCL と比べる道具（`zig build reader-check`）
-- Phase 05：8 バイトの Value（`enum(u64)`、下位ビットのタグ。`src/values/`）、オブジェクトの形（シンボル 64 バイト、
-  cons 16 バイト、文字列、単純ベクタ、double-float、パッケージ）、仮のヒープ（Phase 06 で置き換え）、
-  パッケージと intern（CL・CL-USER・KEYWORD・ZILISP・ZILISP-SYSTEM。CL の 978 シンボルは SBCL から生成：
-  `tools/gen_cl_symbols/gen.lisp`）、Reader を Value につなぐ Builder、印字（prin1 相当。SBCL 2.6.7 と同じ形）、
-  `zilisp --read FILE`、言語試験 `tests/language/reader/`（SBCL の出力と一致）、NIL の表現 A/B/C の計測（A を採用）
-- Phase 06：ページ単位のヒープ（`src/runtime/heap.zig`）。4 MiB のチャンク（4 MiB 境界）、32 KiB のページ、
-  cons 専用のページ、28 のサイズクラス、大きいオブジェクトの連続ページ、ページ外の使用中ビット・マークビット、
-  アドレスからオブジェクトの先頭を求める処理（途中を指すポインタを含む）、確保の統計。
-  明示的なルートと FFI handle（世代番号つき。`src/runtime/roots.zig`）。
-  Windows で大きな境界にそろえた確保を行う `src/support/os_memory.zig`（Zig 0.17.0 の page_allocator の問題の回避）。
-  確保のベンチマーク（`tests/bench/alloc.zig`）
-- Phase 07：mark-and-sweep GC（`src/runtime/gc.zig`）。マークスタック、正確なルート（パッケージ・NIL・明示的ルート・
-  FFI handle）と保守的なルート（ネイティブのスタックとレジスタ）、finalize 待ちの一覧（文字列のバッファの解放）、
-  大きいオブジェクトの即時回収、小さいページの遅延スイープ、空になったページの再利用、GC の契機
-  （max(8 MiB, 生存量 × 2)）、`--gc-stress`、回収した領域を 0xAA で埋める（Debug）、統計と `--gc-stats`。
-  言語試験 `tests/language/gc-stress/`、GC の停止時間のベンチマーク（`tests/bench/gc.zig`）
-- Phase 08：最小のコンパイラと VM、REPL。
-  Resolver（`src/compiler/resolver.zig`。`quote` `if` `progn` `let` `setq` `function` `lambda`、捕捉と代入の解析）、
-  Core IR（`ir.zig`）、バイトコードの生成（`codegen.zig`。捕捉され代入される変数は value_cell に入れる）と検証器（`src/vm/verify.zig`）、
-  スタック型の VM（`src/vm/vm.zig`。VM の closure どうしの呼び出しは同じ実行ループの中でフレームを積む、fixnum の高速経路、`WIDE`）、
-  関数オブジェクト（`src/runtime/function.zig`：code・closure・native_function）、スレッドの状態（`src/runtime/thread.zig`）、
-  プリミティブ（`src/primitives/`：`+ - * / 1+ 1- = /= < > <= >=`、`cons car cdr first rest list list* null not atom consp listp
-  symbolp numberp functionp eq eql`、`funcall apply`、`print prin1 terpri`）、
-  CLI（`zilisp`＝REPL、`zilisp FILE`・`--script FILE`、`--eval TEXT`、`--load FILE`）。
-  condition（Phase 25）ができるまでは、Lisp のエラーを型の名前と説明で報告する。
-  言語試験 `tests/language/eval/`（SBCL の出力と一致）、VM のベンチマーク（`tests/bench/vm.zig`）
-- Phase 09：`let*`（束縛を順に行う。同じ名前を2回束縛してよい。SBCL 2.6.7 と同じ）。
-  `let`・`let*` の束縛と shadowing の試験（SBCL 2.6.7 の結果と比べる20通り。GC stress でも実行）、
-  言語試験 `tests/language/eval/let.lisp`（と gc-stress 版）
-- Phase 10：`defun`（Zig で書いたブートストラップ用のマクロ。`zl-sys::%defun` に展開する。名前の付いた関数は
-  `#<FUNCTION 名前>` と印字する。COMMON-LISP パッケージのシンボルの関数の定義は package-error）、`fboundp`、`symbol-function`。
-  VM のフレームの上限を値スタックの 1/4（既定 262144）に。再帰・相互再帰・再定義・高階関数の試験（SBCL 2.6.7 の結果と比べる）、
-  言語試験 `tests/language/eval/functions.lisp`（と gc-stress 版）
-- Phase 11：`flet`・`labels`（局所関数）。関数の名前空間の束縛を Resolver の範囲に持ち、関数の値は名前の見えない局所変数に入れる。
-  `labels` の互いに参照する関数は value_cell に入れる。局所関数は大域の関数・マクロより優先し、`#'名前` でも参照できる。
-  COMMON-LISP パッケージのシンボルと特殊演算子の名前は局所関数にできない（SBCL 2.6.7 と同じく program-error）。
-  印字は `#<FUNCTION (FLET 名前) {アドレス}>`。flet・labels とクロージャの寿命の試験（SBCL 2.6.7 の結果と比べる20通り、
-  GC の後も closure と共有した変数が正しいこと）、言語試験 `tests/language/eval/local-functions.lisp`（と gc-stress 版）
-- Phase 12：IR の検証器（`src/compiler/verify_ir.zig`。デバッグビルドと試験でコンパイルのたびに実行）、
-  ネイティブバックエンドの最小実装（`src/native/emit.zig`・`src/native/rt.zig`。IR → Zig のソース → ランタイムと一緒に
-  コンパイル）、開発用のコマンド `zilisp --emit-zig FILE OUT.zig`、`zig build native-test`（言語試験をネイティブで実行し、
-  VM と同じ結果かを確かめる。8件すべて一致）、言語試験 `tests/language/eval/cases.lisp`（P08〜P11 の単体テストの式 160 あまり）。
-  計測：fib(30) で VM 約 34.9 ms、ネイティブ約 9.7 ms。`Value.unwind` の検査の費用は約12%
-- Phase 13：教材のブロックを VM と SBCL 2.6.7 で実行して比べる道具（`zig build eval-check`。結果は
-  `compatibility/eval-status.md` と `eval-check.tsv`）。955 件のうち一致 82、出力の違い 0、Zilisp だけがエラー 511（すべて未実装の機能。
-  多いのは defparameter・defmacro・defstruct・cond・loop・setf・dolist）。
-  エラーの報告に、VM のフレームの関数名の呼び出しの履歴を加えた（関数の中で起きたエラーのとき。16 件まで）。
-  CL の定数 `most-positive-fixnum`・`most-negative-fixnum`・`call-arguments-limit`・`lambda-parameters-limit`・
-  `multiple-values-limit`・`char-code-limit`・`pi` に値を設定。値のない CL の変数は「未実装です」と報告する
-- Phase 14：動的束縛（shallow binding。束縛のスタック、VM の命令 `BINDING_DEPTH`・`BIND_SPECIAL`・`UNBIND_TO`・`PROGV_BIND`）、
-  `special` 宣言（束縛の宣言と自由な宣言）、特殊変数の引数、`defvar`・`defparameter`（名前の特殊変数の宣言はコンパイルの時点）、
-  `progv`、`boundp`・`symbol-value`・`set`・`makunbound`。エラーで抜けるときは動的束縛を元に戻す。
-  ネイティブバックエンドも対応。試験：SBCL 2.6.7 の結果と比べる23通り（GC stress でも実行）、エラーの後の復元、
-  未束縛の変数の束縛と復元、深い束縛と溢れ、言語試験 `tests/language/eval/special.lisp`（と gc-stress 版。ネイティブでも一致）。
-  教材のブロックの一致は 82 から 100 に
-- Codex による Phase 09〜14 のレビューの指摘6件
-  - `progv` の深さを置く局所変数の番号が、シンボル・値の式の中の `let` と重なっていた
-  - ネイティブのプログラムで、エラーで抜けたときに動的束縛を戻していなかった（トップレベルのフォームごとに戻す）
-  - 実行されない `defvar`・`defparameter` も、コンパイルの時点で特殊変数と宣言していた（トップレベルのフォームだけを
-    コンパイルの時点で宣言し、どちらの場合も実行した時点で宣言する）
-  - 値を捨てる位置の `let`・`progv` から生成した Zig のコードに、使われない変数が残っていた
-  - 検証器が、添字・個数のオペランドを持たない命令の前の `WIDE` を受け付けていた
-  - 生成したネイティブのプログラムを GC stress で試験していなかった（`--gc-stress`。`native-test` は通常と両方で実行）
-- Phase 15：マクロ展開器（Resolver。トップレベルの展開結果もトップレベル）、`defmacro`（トップレベルならコンパイルの時点でも定義）、
-  分解束縛（必須・`&optional`・`&rest`・`&body`・`&key`・`&allow-other-keys`・`&aux`・`&whole`・`&environment`・入れ子）と
-  `destructuring-bind`、backquote の展開（`,`・`,@`・`,.`・ベクタ・入れ子）、`macroexpand-1`・`macroexpand`・`macro-function`・`gensym`・
-  `append`・`vector`。Lisp で書く標準ライブラリ `src/lisp/boot.lisp`（`when`・`unless`・`cond`・`and`・`or`・`case`・`prog1`・`prog2`、
-  変数の場所の `incf`・`decf`・`push`・`pop`）を起動時に読み込む。試験：SBCL 2.6.7 の結果と比べる57通り（GC stress でも実行）、
-  言語試験 `tests/language/eval/macros.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 100 から 179 に
-- Phase 16：`setf`（複数の組）と場所の展開（Lisp で書く。`defsetf` の短い形・長い形、`(defun (setf 名前) …)`、`#'(setf 名前)`）、
-  場所：変数・`car`・`cdr`・`first`〜`tenth`・`cXXr`・`nth`・`aref`・`svref`・`char`・`schar`・`gethash`・`getf`・`get`・`symbol-value`・
-  `symbol-function`・`fdefinition`。展開を共有する `incf`・`decf`・`push`・`pop`。`eval-when`。VM の eval はトップレベルの
-  `progn`・マクロの展開結果・`eval-when` の中のフォームを1つずつ評価する。ハッシュ表（`make-hash-table` の `:test` は `eq`・`eql`・`equal`、
-  `gethash`・`remhash`・`clrhash`・`maphash`・`hash-table-count`・`hash-table-p`）、1次元の配列（`make-array`・`aref`・`svref`・`char`・
-  `length`・`copy-seq` など）、`equal`・`rplaca`・`rplacd`・`nth`・`nthcdr`・`getf`・`get`・`symbol-plist`・`fdefinition`。
-  試験：SBCL 2.6.7 の結果と比べる48通り（GC stress でも実行）、言語試験 `tests/language/eval/setf.lisp`（と gc-stress 版。ネイティブでも一致）。
-  教材のブロックの一致は 179 から 223 に
-- Phase 17：多値（`values`・`values-list`・`multiple-value-bind`・`multiple-value-list`・`multiple-value-prog1`・`multiple-value-call`・
-  `nth-value`・`multiple-value-setq`。ValueMode により、関数の本体の最後の式から値の個数を伝える。VM の命令 `VALUES`・`SINGLE`・
-  `MV_LIST`・`MV_PUSH_N`・`MV_RESTORE`。ネイティブバックエンドも対応）、REPL はすべての値を印字する。
-  関数の `&optional`（既定値・供給の変数）・`&rest`・`&key`（`((:k v) …)`・`&allow-other-keys`・`:allow-other-keys t`）・`&aux`。
-  `get-setf-expansion`・`define-setf-expander`。試験：SBCL 2.6.7 の結果と比べる50通り（GC stress でも実行）、言語試験
-  `tests/language/eval/values.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 223 から 244 に
-- Phase 18：`block`・`return-from`・`return`・`catch`・`throw`・`unwind-protect`（詳細設計 §6.4）。制御スタックと処理途中の脱出のスタック、
-  同じ関数の中の return-from はジャンプ（横切る動的束縛・エントリを戻す）、それ以外は実行時の脱出。多値を運ぶ。
-  unwind-protect の cleanup は、脱出・エラーのどちらで抜けるときも、入った時点の動的環境で実行する。cleanup の中の脱出
-  （cleanup の外へ出るものだけが、進行中の脱出を取り消す）。`defun`・`flet`・`labels`・`defmacro` の本体の暗黙の block。
-  VM の命令 `BLOCK_ENTER`・`CATCH_ENTER`・`UWP_ENTER`・`CONTROL_POP`・`UWP_SAVE`・`UWP_END`・`RETURN_FROM_NL`・`THROW`・`SLIDE`。
-  ネイティブバックエンドも対応。試験：SBCL 2.6.7 の結果と比べる63通り（GC stress でも実行）、言語試験 `exits.lisp`
-  （と gc-stress 版）・`exit-cases.lisp`・`error-cleanup.lisp`。非局所脱出の方式2（レジスタの保存と復元。インラインアセンブリ）の
-  試作と比較の計測（`zig build bench -- nonlocal`）。方式1を続ける（詳細設計 §6.4）
+- Release scripts: `scripts/build-installer.ps1` (Windows installer built with Inno Setup and per-target ZIPs;
+  `-Sign` signs `zilisp.exe`, the uninstaller and the installer with the certificate named by the `CODESIGN_CERT`
+  environment variable) and `installer/zilisp.iss` (per-user installation, optional addition to `PATH`)
+- GitHub Actions: tests on Linux, macOS and Windows for every push and pull request (`.github/workflows/test.yml`).
+  Pushing a tag `v<version>` runs the tests, builds Linux (musl) and macOS for x86_64 and aarch64 and Windows for
+  x86_64, and publishes a GitHub release (`.github/workflows/release.yml`; unsigned, with SHA256SUMS.txt)
+- Project plan and basic design (v0.3) and detailed design (v0.2) documents
+- MIT license
+- Phase 01: `build.zig` / `build.zig.zon` (Zig 0.17.0), CLI skeleton (`--version` / `--help`),
+  benchmark runner (`zig build bench`, `scripts/run-bench.ps1`),
+  release build script (`scripts/build-release.ps1`),
+  version update checklist, and a check of the Zig 0.17.0 standard library and language features (`docs/zig-std-usage.md`)
+- Phase 02: language test runner (`zig build lang-test`), extraction of the curriculum code blocks (`zig build extract-samples`),
+  read-only classification with SBCL (`tools/classify_samples/classify.lisp`),
+  `scripts/curriculum-inventory.ps1`, `compatibility/curriculum-inventory.md`, `compatibility/manifest.toml` (initial version)
+- Phase 03: reader basics (`src/reader/`): whitespace, comments (`;` and nested `#| |#`), integers, ratios and floats
+  (`*read-base*`, `*read-default-float-format*`, exponent markers), symbols (escapes, package prefixes,
+  upcasing) and source locations (line and column). Value construction is a replaceable Builder (connected to Value in Phase 05).
+  Implementation-dependent differences from SBCL are recorded in `tests/differential/impl-dependent.toml`
+- Phase 04: reader macro characters: quote, strings, lists (dotted pairs), `#'`, `#(` (including `#n(`), `#\` (standard and
+  semi-standard names, `U+XXXX`), `#:`, `#b #o #x #nR`, backquote (`zl-sys:quasiquote` and friends), `#+` / `#-`
+  (`*read-suppress*`, `*features*`). `#P #S #C #A #. #= ##` signal an explicit reader-error until a later phase.
+  A tool that reads the curriculum blocks with the Zilisp reader and compares the result with SBCL (`zig build reader-check`)
+- Phase 05: 8-byte Value (`enum(u64)` with low-bit tags, `src/values/`), object layouts (64-byte symbols, 16-byte conses,
+  strings, simple vectors, double-floats, packages), a provisional heap (replaced in Phase 06),
+  packages and interning (CL, CL-USER, KEYWORD, ZILISP, ZILISP-SYSTEM; the 978 CL symbols are generated from SBCL by
+  `tools/gen_cl_symbols/gen.lisp`), a Builder connecting the reader to Value, the printer (like prin1, same output as SBCL 2.6.7),
+  `zilisp --read FILE`, language tests `tests/language/reader/` (matching SBCL), and a measurement of NIL representations
+  A/B/C (A adopted)
+- Phase 06: page-based heap (`src/runtime/heap.zig`): 4 MiB chunks (4 MiB aligned), 32 KiB pages,
+  cons-only pages, 28 size classes, contiguous pages for large objects, out-of-page allocation and mark bits,
+  finding the start of an object from any address (including interior pointers), and allocation statistics.
+  Explicit roots and FFI handles (with generation numbers, `src/runtime/roots.zig`).
+  `src/support/os_memory.zig` for large-alignment allocation on Windows (working around a Zig 0.17.0 page_allocator issue).
+  Allocation benchmarks (`tests/bench/alloc.zig`)
+- Phase 07: mark-and-sweep GC (`src/runtime/gc.zig`): mark stack, precise roots (packages, NIL, explicit roots,
+  FFI handles) and conservative roots (native stack and registers), a finalization list (freeing string buffers),
+  immediate reclamation of large objects, lazy sweeping of small pages, reuse of empty pages, the collection trigger
+  (max(8 MiB, live × 2)), `--gc-stress`, filling reclaimed memory with 0xAA (Debug), statistics and `--gc-stats`.
+  Language tests `tests/language/gc-stress/` and a GC pause benchmark (`tests/bench/gc.zig`)
+- Phase 08: a minimal compiler and VM, and the REPL.
+  Resolver (`src/compiler/resolver.zig`: `quote` `if` `progn` `let` `setq` `function` `lambda`, capture and assignment analysis),
+  Core IR (`ir.zig`), bytecode generation (`codegen.zig`; captured and assigned variables live in value cells) and a verifier (`src/vm/verify.zig`),
+  a stack-based VM (`src/vm/vm.zig`; calls between VM closures push frames inside the same dispatch loop, fixnum fast paths, `WIDE`),
+  function objects (`src/runtime/function.zig`: code, closure, native_function), thread state (`src/runtime/thread.zig`),
+  primitives (`src/primitives/`: `+ - * / 1+ 1- = /= < > <= >=`, `cons car cdr first rest list list* null not atom consp listp
+  symbolp numberp functionp eq eql`, `funcall apply`, `print prin1 terpri`),
+  CLI (`zilisp` = REPL, `zilisp FILE` / `--script FILE`, `--eval TEXT`, `--load FILE`).
+  Until conditions are implemented (Phase 25), Lisp errors are reported by type name and description.
+  Language tests `tests/language/eval/` (matching SBCL) and VM benchmarks (`tests/bench/vm.zig`)
+- Phase 09: `let*` (sequential binding; the same name may be bound twice, as in SBCL 2.6.7).
+  Tests of `let` / `let*` binding and shadowing (20 cases compared with SBCL 2.6.7, also under GC stress),
+  language test `tests/language/eval/let.lisp` (and a gc-stress version)
+- Phase 10: `defun` (a bootstrap macro written in Zig, expanding to `zl-sys::%defun`; named functions print as
+  `#<FUNCTION name>`; defining functions on COMMON-LISP symbols signals package-error), `fboundp`, `symbol-function`.
+  The VM frame limit is a quarter of the value stack (262144 by default). Tests of recursion, mutual recursion, redefinition
+  and higher-order functions (compared with SBCL 2.6.7), language test `tests/language/eval/functions.lisp` (and a gc-stress version)
+- Phase 11: `flet` and `labels` (local functions). Function-namespace bindings are kept in resolver scopes and function values
+  in hidden local variables. Mutually referencing `labels` functions are stored in value cells. Local functions take precedence over
+  global functions and macros and can be referenced with `#'name`. COMMON-LISP symbols and special operator names cannot be local
+  function names (program-error, as in SBCL 2.6.7). Printed as `#<FUNCTION (FLET name) {address}>`. Tests of flet/labels and closure
+  lifetimes (20 cases compared with SBCL 2.6.7; closures and shared variables stay correct after GC), language test
+  `tests/language/eval/local-functions.lisp` (and a gc-stress version)
+- Phase 12: IR verifier (`src/compiler/verify_ir.zig`, run on every compilation in debug builds and tests),
+  a minimal native backend (`src/native/emit.zig`, `src/native/rt.zig`: IR → Zig source → compiled together with the runtime),
+  the development command `zilisp --emit-zig FILE OUT.zig`, `zig build native-test` (runs the language tests natively and checks that
+  the results match the VM; all 8 matched), language test `tests/language/eval/cases.lisp` (about 160 expressions from the P08–P11 unit tests).
+  Measurement: fib(30) takes about 34.9 ms on the VM and about 9.7 ms natively; checking for `Value.unwind` costs about 12%
+- Phase 13: a tool that runs the curriculum blocks on the VM and SBCL 2.6.7 and compares them (`zig build eval-check`; results in
+  `compatibility/eval-status.md` and `eval-check.tsv`). Of 955 blocks, 82 matched, 0 differed in output and 511 failed only on Zilisp
+  (all unimplemented features, mostly defparameter, defmacro, defstruct, cond, loop, setf and dolist).
+  Error reports include a call history of VM frame function names (for errors inside functions, up to 16 entries).
+  The CL constants `most-positive-fixnum`, `most-negative-fixnum`, `call-arguments-limit`, `lambda-parameters-limit`,
+  `multiple-values-limit`, `char-code-limit` and `pi` have values. CL variables without a value are reported as unimplemented
+- Phase 14: dynamic binding (shallow binding; a binding stack and the VM instructions `BINDING_DEPTH`, `BIND_SPECIAL`, `UNBIND_TO`,
+  `PROGV_BIND`), `special` declarations (bound and free), special parameters, `defvar` and `defparameter` (names are proclaimed special
+  at compile time), `progv`, `boundp`, `symbol-value`, `set`, `makunbound`. Dynamic bindings are restored when exiting with an error.
+  Supported by the native backend. Tests: 23 cases compared with SBCL 2.6.7 (also under GC stress), restoration after errors,
+  binding and restoring unbound variables, deep bindings and overflow, language test `tests/language/eval/special.lisp`
+  (and a gc-stress version; matches natively too). Curriculum blocks matching went from 82 to 100
+- Six issues from Codex's review of Phases 09–14
+  - The local slot holding the `progv` depth overlapped with `let` inside the symbol and value forms
+  - Native programs did not restore dynamic bindings when exiting with an error (now restored per top-level form)
+  - `defvar` and `defparameter` that are never executed were also proclaimed special at compile time (only top-level forms are
+    proclaimed at compile time; both cases are proclaimed when executed)
+  - Zig code generated for `let` and `progv` in value-discarding positions left unused variables
+  - The verifier accepted `WIDE` before instructions that have no index or count operand
+  - Generated native programs were not tested under GC stress (`--gc-stress`; `native-test` now runs both ways)
+- Phase 15: macro expander (in the resolver; expansions of top-level forms are top-level), `defmacro` (also defined at compile time
+  when at top level), destructuring (required, `&optional`, `&rest`, `&body`, `&key`, `&allow-other-keys`, `&aux`, `&whole`,
+  `&environment`, nesting) and `destructuring-bind`, backquote expansion (`,`, `,@`, `,.`, vectors, nesting), `macroexpand-1`,
+  `macroexpand`, `macro-function`, `gensym`, `append`, `vector`. A standard library written in Lisp, `src/lisp/boot.lisp`
+  (`when`, `unless`, `cond`, `and`, `or`, `case`, `prog1`, `prog2`, and `incf`, `decf`, `push`, `pop` on variables), loaded at startup.
+  Tests: 57 cases compared with SBCL 2.6.7 (also under GC stress), language test `tests/language/eval/macros.lisp`
+  (and a gc-stress version; matches natively too). Curriculum blocks matching went from 100 to 179
+- Phase 16: `setf` (multiple pairs) and place expansion (written in Lisp: short and long `defsetf`, `(defun (setf name) …)`,
+  `#'(setf name)`). Places: variables, `car`, `cdr`, `first`–`tenth`, `cXXr`, `nth`, `aref`, `svref`, `char`, `schar`, `gethash`, `getf`,
+  `get`, `symbol-value`, `symbol-function`, `fdefinition`. `incf`, `decf`, `push` and `pop` share the expansion. `eval-when`. The VM's
+  eval evaluates the forms inside top-level `progn`, macro expansions and `eval-when` one at a time. Hash tables (`make-hash-table` with
+  `:test` `eq`, `eql` or `equal`, `gethash`, `remhash`, `clrhash`, `maphash`, `hash-table-count`, `hash-table-p`), one-dimensional
+  arrays (`make-array`, `aref`, `svref`, `char`, `length`, `copy-seq` and others), `equal`, `rplaca`, `rplacd`, `nth`, `nthcdr`, `getf`, `get`,
+  `symbol-plist`, `fdefinition`. Tests: 48 cases compared with SBCL 2.6.7 (also under GC stress), language test
+  `tests/language/eval/setf.lisp` (and a gc-stress version; matches natively too). Curriculum blocks matching went from 179 to 223
+- Phase 17: multiple values (`values`, `values-list`, `multiple-value-bind`, `multiple-value-list`, `multiple-value-prog1`,
+  `multiple-value-call`, `nth-value`, `multiple-value-setq`; ValueMode passes the value count from the last form of a function body;
+  VM instructions `VALUES`, `SINGLE`, `MV_LIST`, `MV_PUSH_N`, `MV_RESTORE`; supported by the native backend); the REPL prints all values.
+  Function lambda lists with `&optional` (defaults and supplied-p variables), `&rest`, `&key` (`((:k v) …)`, `&allow-other-keys`,
+  `:allow-other-keys t`) and `&aux`. `get-setf-expansion`, `define-setf-expander`. Tests: 50 cases compared with SBCL 2.6.7
+  (also under GC stress), language test `tests/language/eval/values.lisp` (and a gc-stress version; matches natively too).
+  Curriculum blocks matching went from 223 to 244
+- Phase 18: `block`, `return-from`, `return`, `catch`, `throw`, `unwind-protect` (detailed design §6.4). A control stack and a stack of
+  in-progress exits; `return-from` within the same function is a jump (undoing crossed dynamic bindings and entries), otherwise a
+  run-time exit. Exits carry multiple values. Cleanup forms of unwind-protect run in the dynamic environment at entry, both for exits and
+  errors. Exits inside cleanup forms (only exits that leave the cleanup cancel the exit in progress). Implicit blocks around the bodies of
+  `defun`, `flet`, `labels` and `defmacro`. VM instructions `BLOCK_ENTER`, `CATCH_ENTER`, `UWP_ENTER`, `CONTROL_POP`, `UWP_SAVE`,
+  `UWP_END`, `RETURN_FROM_NL`, `THROW`, `SLIDE`. Supported by the native backend. Tests: 63 cases compared with SBCL 2.6.7 (also under
+  GC stress), language tests `exits.lisp` (and a gc-stress version), `exit-cases.lisp` and `error-cleanup.lisp`. A prototype of a
+  second non-local exit method (saving and restoring registers with inline assembly) and a comparative benchmark
+  (`zig build bench -- nonlocal`); the first method is kept (detailed design §6.4)
 
 ### Changed
-- VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。
-  fib(25) が 5.08 ms から 2.97 ms に（約41%短縮）。実行ループと関係のない変更で速さが揺れる問題もなくなった
+- VM instruction dispatch was rewritten with a labeled `switch` and `continue` (detailed design §7.1).
+  fib(25) went from 5.08 ms to 2.97 ms (about 41% faster), and speed no longer fluctuated with changes unrelated to the dispatch loop
 
 ### Fixed
-- Codex による Phase 07 のレビューの指摘10件
-  - `readAll` が読んだ値を GC が走査しない Zig の配列に溜めていた（Lisp のリストで返し、読んでいる間は明示的なルートに登録する）
-  - ベクタを作るときに要素を Zig の配列に写していた（ベクタを確保してからリストから直接埋める）
-  - レジスタの退避をコンパイラ任せにしていた（callee-saved レジスタの値を直接読み、現在のスタックポインタから走査する）。
-    レジスタにだけ参照がある場合の試験を追加
-  - シンボルの表への登録とパッケージの作成で、確保に失敗すると表・一覧が壊れていた（確保を先に済ませる）。
-    確保をすべての位置で失敗させる試験を追加
-  - 大きいオブジェクトの大きさを u32 で持っていたため、4 GiB を超えると途中のポインタを認識できなかった
-  - 大きいオブジェクトの再利用で、空きページの一覧に同じページが重なって増え続けた
-  - `1||` が整数に、`:||` がエラーになっていた（空のエスケープ `||` もエスケープとして扱う。SBCL 2.6.7 と同じ）
-  - 読み飛ばしの最中の `#n=` が、続くオブジェクトを読み飛ばしていなかった
-  - GC のベンチマークが、値を持つ関数自身の `@frameAddress()` を走査の上端にしていた
-- Codex による Phase 08 のレビューの指摘6件
-  - Zig の関数どうしの呼び出し（apply から apply など）が、入れ子の深さの上限を通らなかった（プリミティブの呼び出しも Thread.call で数える）
-  - VM の値スタックの使い終わった枠に残った値まで GC のルートにしていた（[0, sp) だけを走査する）
-  - REPL で、フォームの途中で入力が終わっても何も報告せず、終了コード 0 で終わっていた（END-OF-FILE を報告し、終了コード 1）
-  - `notinline` の宣言を無視して、高速経路の命令にしていた
-  - 本体の先頭の説明文字列を何個でも読み飛ばしていた（1つまで。2つ目の文字列の後の declare はエラー）
-  - 検証器が、到達しない命令のジャンプ先が命令の途中を指すものを見逃していた
-- Codex・agy のレビュー（Phase 18）：暗黙の block がラムダリストの初期値の式まで囲んでいた（本体だけにした）、
-  `defmacro` のコンパイル時の定義に暗黙の block がなかった、エラーの cleanup が入れ子になると処理途中の脱出の記録が
-  溢れた（制御スタックとの和で上限を確かめ、`storage-condition` にした）、cleanup の中で受け止めたエラーが元のエラーの
-  内容を上書きした（内容と呼び出しの履歴を退避する）、検証器が制御スタックの不正な操作を受け付けた（エントリの並びを
-  位置ごとに検査する。実行時にも確かめる）。方式2の試作：浮動小数の制御の状態を保存していなかった、方式1の比較で
-  タグの探索の結果を使っていなかった（直して再計測。分かれ目は約12段ではなく約25段）
-- Linux・macOS で単体テストが panic した（GC の保守的走査のスタックの先頭を、Linux は /proc/self/maps、macOS は
-  pthread_get_stackaddr_np から得る）。Linux の Debug ビルドで、ヒープのチャンクが 0 で埋まっていなかった
-  （`Allocator.alignedAlloc` が未定義の印で埋めるので、`rawAlloc` で OS の領域をそのまま使う）。
-  方式2の試作は、大域のアセンブリを出力しない Zig 自前のコード生成器では対象にしない
+- Ten issues from Codex's review of Phase 07
+  - `readAll` accumulated read values in a Zig array that the GC does not scan (now returns a Lisp list registered as an explicit root while reading)
+  - Building a vector copied the elements into a Zig array (the vector is allocated first and filled directly from the list)
+  - Saving registers was left to the compiler (the values of callee-saved registers are read directly and the scan starts at the current stack pointer).
+    Added a test where a reference exists only in a register
+  - Registering a symbol and creating a package corrupted the tables when an allocation failed (allocations are done first).
+    Added a test that fails every allocation site
+  - The size of large objects was a u32, so interior pointers beyond 4 GiB were not recognized
+  - Reusing large objects kept adding the same pages to the free page list
+  - `1||` read as an integer and `:||` was an error (an empty escape `||` counts as an escape, as in SBCL 2.6.7)
+  - `#n=` while skipping did not skip the following object
+  - The GC benchmark used `@frameAddress()` of the function holding the values as the top of the scan
+- Six issues from Codex's review of Phase 08
+  - Calls between Zig functions (such as apply calling apply) were not subject to the nesting depth limit (primitive calls are also counted in Thread.call)
+  - Values left in unused VM value-stack slots were treated as GC roots (only [0, sp) is scanned)
+  - The REPL ended with exit code 0 without any report when input ended in the middle of a form (reports END-OF-FILE with exit code 1)
+  - `notinline` declarations were ignored and fast-path instructions were used
+  - Any number of documentation strings at the start of a body were skipped (only one; a declare after a second string is an error)
+  - The verifier missed jump targets in unreachable instructions that point into the middle of an instruction
+- Codex and agy review (Phase 18): the implicit block also enclosed lambda-list init forms (now only the body);
+  the compile-time definition of `defmacro` had no implicit block; nested error cleanups overflowed the record of in-progress exits
+  (the limit is now checked against the sum with the control stack, signaling `storage-condition`); an error caught inside a cleanup
+  overwrote the details of the original error (the details and call history are saved); the verifier accepted invalid control-stack
+  operations (the sequence of entries is checked per position, and also at run time). Method-2 prototype: the floating-point control
+  state was not saved, and the method-1 comparison did not use the tag search result (fixed and re-measured; the break-even point is
+  about 25 frames, not about 12)
+- Unit tests panicked on Linux and macOS (the top of the stack for conservative GC scanning now comes from /proc/self/maps on Linux and
+  pthread_get_stackaddr_np on macOS). In Linux debug builds, heap chunks were not zero-filled (`Allocator.alignedAlloc` fills memory with
+  an undefined marker, so `rawAlloc` is used to keep the OS-provided memory). The method-2 prototype is skipped with Zig's own code
+  generator, which does not emit global assembly
+- Issues found by the GitHub Actions tests: in a GC test, an object that should have been collected was kept conservatively by a stale
+  value left on the stack (Linux with AVX2 builds; the test helper that clears the stack now works in two levels and garbage is created
+  in a deeper frame). The Windows runner checked files out with CRLF and `zig fmt --check` failed (`.gitattributes` fixes LF, CRLF for
+  `.ps1` and `.iss`)

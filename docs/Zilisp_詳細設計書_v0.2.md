@@ -1388,12 +1388,12 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
   2. アンインストーラー（Inno Setup の `SignTool` / `SignedUninstaller` の指定で署名する。`ISCC.exe` に `/Szlsign=$q<signtool>$q sign /n $q<CODESIGN_CERT>$q /fd sha256 /tr <タイムスタンプ> /td sha256 $f` と `/DSign` を渡す。0.2.0 で作成。実際に署名できるかは、利用者の `-Sign` の実行で確認する）
   3. インストーラー本体
 - 署名に使う証明書は、環境変数 `CODESIGN_CERT` の値で指定する。値は証明書のサブジェクト名で、現在の利用者の証明書ストアから `signtool sign /n` で選ぶ（開発機で、ストアの証明書と一致することを確認した）。未設定で `-Sign` を指定した場合は、エラーで停止する。タイムスタンプは RFC 3161（既定 `http://timestamp.digicert.com`。`-TimestampUrl` で変更できる）。
-- 配布物は `dist/release/` に出力する：`zilisp-<版>-x86_64-windows-setup.exe` と、ターゲットごとの `zilisp-<版>-<target>.zip`（`bin/` の実行ファイル、`LICENSE`、`CHANGELOG.md`）。インストーラーは利用者ごとのインストール（管理者権限は不要。選べば全利用者）で、PATH への追加を選べる。
+- 配布物は `dist/release/` に出力する：`zilisp-<版>-x86_64-windows-setup.exe` と、ターゲットごとの `zilisp-<版>-<target>.zip`（`bin/` の実行ファイル、`LICENSE`、`README.md`・`README.ja.md`、`CHANGELOG.md`・`CHANGELOG.ja.md`）。インストーラーは利用者ごとのインストール（管理者権限は不要。選べば全利用者）で、PATH への追加を選べる。
 - **配布物（ZIP、インストーラー）の作成は利用者（レモン）が `-Sign` を付けて行う。** Claude は配布物を作成しない。
 
 ### 18.3 バージョン更新のチェックリスト
 
-`docs/version-update-checklist.md` に、バージョンを変更するときに更新するファイルを列挙する（`build.zig.zon` の `version`、`src/version.zig`、`installer/zilisp.iss` の `AppVersion`、`CHANGELOG.md`、`.zfasl` の `format_version`（IR・バイトコードを変更した場合のみ）等）。Phase 01 で作成する。
+`docs/version-update-checklist.md` に、バージョンを変更するときに更新するファイルを列挙する（`build.zig.zon` の `version`、`src/version.zig`、`installer/zilisp.iss` の `AppVersion`、`CHANGELOG.md`（英語）・`CHANGELOG.ja.md`（日本語）、`.zfasl` の `format_version`（IR・バイトコードを変更した場合のみ）等）。Phase 01 で作成する。
 
 
 ### 18.4 GitHub Actions（0.2.0 で追加）
@@ -1401,7 +1401,7 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 | ワークフロー | 起動 | 内容 |
 |---|---|---|
 | `.github/workflows/test.yml` | `main` への push、pull request、`release.yml` からの呼び出し | Linux・macOS（arm64）・Windows で `zig fmt --check`、`zig build test`、`lang-test`、`native-test` |
-| `.github/workflows/release.yml` | タグ `v*` の push | ①タグと `build.zig.zon`・`src/version.zig` のバージョン、`CHANGELOG.md` の見出しの一致を確かめる ②試験（`test.yml`） ③ビルド：x86_64・aarch64 の Linux（musl）と macOS は ReleaseFast で `.tar.gz`（`bin/zilisp`・`LICENSE`・`CHANGELOG.md`）、x86_64 の Windows は `scripts/build-installer.ps1`（署名なし）でインストーラーと ZIP。実行できるもの（x86_64 Linux、aarch64 macOS、Windows）は `--version` と言語試験の1つで確かめる ④`SHA256SUMS.txt` を作り、`CHANGELOG.md` の該当バージョンの節をリリースノートにして、GitHub のリリースを登録する |
+| `.github/workflows/release.yml` | タグ `v*` の push | ①タグと `build.zig.zon`・`src/version.zig` のバージョン、`CHANGELOG.md`・`CHANGELOG.ja.md` の見出しの一致を確かめる ②試験（`test.yml`） ③ビルド：x86_64・aarch64 の Linux（musl）と macOS は ReleaseFast で `.tar.gz`（`bin/zilisp`・`LICENSE`・README と CHANGELOG の英語版・日本語版）、x86_64 の Windows は `scripts/build-installer.ps1`（署名なし）でインストーラーと ZIP。実行できるもの（x86_64 Linux、aarch64 macOS、Windows）は `--version` と言語試験の1つで確かめる ④`SHA256SUMS.txt` を作り、`CHANGELOG.md`（英語）と `CHANGELOG.ja.md`（日本語）の該当バージョンの節をリリースノートにして、GitHub のリリースを登録する |
 
 - Zig は `mlugg/setup-zig@v2` で 0.17.0 を入れる。
 - **CI の配布物には署名を付けない**（2026-11-02 決定：証明書は開発機の証明書ストアにあり、CI では使わない）。リリースノートに、署名がないこと（SmartScreen・Gatekeeper の警告）を書く。署名付きの Windows の配布物は、利用者が `-Sign` で作り、リリースのファイルを差し替える（`docs/version-update-checklist.md`）。§18.2 の「配布物は利用者が `-Sign` を付けて作る」は、署名付きの配布物についての規則とする。

@@ -28,10 +28,12 @@ jobs:
             echo "::error::タグ（$tag）と build.zig.zon（$zon）・src/version.zig（$src）のバージョンが一致しません"
             exit 1
           fi
-          if ! grep -q "^## $tag " CHANGELOG.md; then
-            echo "::error::CHANGELOG.md に「## $tag」の見出しがありません"
-            exit 1
-          fi
+          for f in CHANGELOG.md CHANGELOG.ja.md; do
+            if ! grep -q "^## $tag " "$f"; then
+              echo "::error::$f に「## $tag」の見出しがありません"
+              exit 1
+            fi
+          done
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
   test:
@@ -70,7 +72,7 @@ jobs:
           dir="zilisp-$VERSION-${{ matrix.name }}"
           mkdir -p "pkg/$dir/bin"
           cp out/bin/zilisp "pkg/$dir/bin/"
-          cp LICENSE CHANGELOG.md "pkg/$dir/"
+          cp LICENSE README.md README.ja.md CHANGELOG.md CHANGELOG.ja.md "pkg/$dir/"
           tar -C pkg -czf "$dir.tar.gz" "$dir"
       - uses: actions/upload-artifact@v4
         with:
@@ -128,18 +130,28 @@ jobs:
           cd assets
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      - name: release notes（CHANGELOG.md の該当バージョンの節）
+      - name: release notes（CHANGELOG.md・CHANGELOG.ja.md の該当バージョンの節）
         run: |
-          awk -v h="## $VERSION " '
-            index($0, h) == 1 { on = 1; next }
-            on && /^## / { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
+          section() {
+            awk -v h="## $VERSION " '
+              index($0, h) == 1 { on = 1; next }
+              on && /^## / { exit }
+              on { print }
+            ' "$1"
+          }
           {
+            section CHANGELOG.md
+            echo
+            echo "The release packages are not code-signed. Windows SmartScreen and macOS Gatekeeper may warn about them."
+            echo "SHA-256 checksums are in SHA256SUMS.txt."
             echo
             echo "---"
+            echo
+            echo "## 日本語"
+            section CHANGELOG.ja.md
+            echo
             echo "配布物には電子署名を付けていません。Windows では SmartScreen の警告が、macOS では Gatekeeper の警告が出ることがあります。"
             echo "各ファイルの SHA-256 は SHA256SUMS.txt にあります。"
-          } >> notes.md
+          } > notes.md
       - name: publish
         run: gh release create "$GITHUB_REF_NAME" assets/* --title "Zilisp $VERSION" --notes-file notes.md --verify-tag

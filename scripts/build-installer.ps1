@@ -7,7 +7,7 @@
   2. -Sign なら、zilisp.exe（x86_64-windows）に電子署名を付ける（インストーラーに入れる前）。
   3. Inno Setup（ISCC.exe）で installer/zilisp.iss からインストーラーを作成する。
      -Sign なら、アンインストーラーとインストーラー本体にも署名する（Inno Setup の SignTool・SignedUninstaller）。
-  4. ターゲットごとに ZIP を作成する（実行ファイル、LICENSE、CHANGELOG.md）。
+  4. ターゲットごとに ZIP を作成する（実行ファイル、LICENSE、README・CHANGELOG の英語版と日本語版）。
   5. -Sign なら、zilisp.exe とインストーラーの署名を確かめる。
 
   署名に使う証明書は、環境変数 CODESIGN_CERT（証明書のサブジェクト名。現在の利用者の証明書ストアから
@@ -140,7 +140,7 @@ try {
         if (Test-Path -LiteralPath $stage) { Remove-Item -Recurse -Force $stage }
         New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
         Copy-Item (Join-Path $bin '*') (Join-Path $stage 'bin')
-        Copy-Item (Join-Path $repo 'LICENSE'), (Join-Path $repo 'CHANGELOG.md') $stage
+        Copy-Item ('LICENSE', 'README.md', 'README.ja.md', 'CHANGELOG.md', 'CHANGELOG.ja.md' | ForEach-Object { Join-Path $repo $_ }) $stage
         $zip = "$stage.zip"
         if (Test-Path -LiteralPath $zip) { Remove-Item -Force $zip }
         Compress-Archive -Path $stage -DestinationPath $zip

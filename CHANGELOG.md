@@ -46,6 +46,9 @@
   CLI（`zilisp`＝REPL、`zilisp FILE`・`--script FILE`、`--eval TEXT`、`--load FILE`）。
   condition（Phase 25）ができるまでは、Lisp のエラーを型の名前と説明で報告する。
   言語試験 `tests/language/eval/`（SBCL の出力と一致）、VM のベンチマーク（`tests/bench/vm.zig`）
+- Phase 09：`let*`（束縛を順に行う。同じ名前を2回束縛してよい。SBCL 2.6.7 と同じ）。
+  `let`・`let*` の束縛と shadowing の試験（SBCL 2.6.7 の結果と比べる20通り。GC stress でも実行）、
+  言語試験 `tests/language/eval/let.lisp`（と gc-stress 版）
 
 ### Fixed
 - Codex による Phase 07 のレビューの指摘10件

@@ -23,6 +23,7 @@ pub const Syms = struct {
     @"if": Value,
     progn: Value,
     let: Value,
+    @"let*": Value,
     setq: Value,
     lambda: Value,
     function: Value,

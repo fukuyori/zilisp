@@ -436,6 +436,7 @@ pub const Node = union(enum) {
 // すべてのノードは、推論した型 `ty: TypeId` と SourceLoc を持つ
 ```
 
+- `let*` は、変数1つの `let_` を入れ子にして表す（Phase 09）。各初期値は、それより前の変数が見える範囲で解決する。`let` と違い、同じ名前の変数を2回束縛してよい（後の束縛が前を隠す。SBCL 2.6.7 で確認）。`let`・`let*` の変数の局所変数の番号は、本体を抜けた後で再利用する（closure は作った時点の値か value_cell を捕捉するので、番号の再利用の影響を受けない）。
 - `Var` は `captured` と `assigned` を持つ。両方が真の変数だけを `value_cell` に入れる（assignment conversion）。
 - `Var` と `Node` は推論した型（`TypeId`：fixnum、double-float、cons、simple-vector、`t` など）を持つ。ネイティブバックエンドは型に応じてボックス化と型検査を省く（§7A.3）。
 - `BlockInfo` / `TagbodyInfo` は `nonlocal`（内側のクロージャから脱出される）を持つ。偽の場合はジャンプにする。

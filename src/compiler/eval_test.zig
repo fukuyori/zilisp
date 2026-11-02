@@ -187,6 +187,44 @@ const value_cases = [_][2][]const u8{
     .{ "1.5d0", "1.5d0" },
 };
 
+/// Phase 09：let・let* の束縛と shadowing（SBCL 2.6.7 の結果）
+const let_cases = [_][2][]const u8{
+    .{ "(let* ((x 1) (y (+ x 1))) (list x y))", "(1 2)" },
+    .{ "(let* () 5)", "5" },
+    .{ "(let* (x (y)) (list x y))", "(NIL NIL)" },
+    .{ "(let* ((x 1) (x (+ x 10))) x)", "11" },
+    .{ "(let ((x 1)) (let* ((x (+ x 1)) (y x)) (list x y)))", "(2 2)" },
+    .{ "(let ((x 1)) (let ((x (+ x 1)) (y x)) (list x y)))", "(2 1)" },
+    .{ "(let ((x 1)) (list (let ((x 2)) (let ((x 3)) x)) x))", "(3 1)" },
+    .{ "(let ((x 1)) (let ((x 2)) (setq x 20)) x)", "1" },
+    .{ "(let ((x 1)) (let ((y 2)) (setq x 10)) x)", "10" },
+    .{ "(let* ((x 1) (f (lambda () x)) (x 2)) (list (funcall f) x))", "(1 2)" },
+    .{ "(let ((fs (list))) (let ((x 1)) (setq fs (cons (lambda () x) fs))) (let ((x 2)) (setq fs (cons (lambda () x) fs))) (list (funcall (car fs)) (funcall (car (cdr fs)))))", "(2 1)" },
+    .{ "(let ((a 1)) (let ((b 2)) (let ((a 3) (c a)) (list a b c))))", "(3 2 1)" },
+    .{ "(funcall (lambda (x) (let ((x (* x 2))) x)) 5)", "10" },
+    .{ "(funcall (lambda (x) (let* ((y x) (x 100)) (list x y))) 5)", "(100 5)" },
+    .{ "(let* ((x 1) (g (lambda () (setq x (+ x 1)) x))) (funcall g) (funcall g) x)", "3" },
+    .{ "(let ((x 'a)) (declare (ignorable x)) (let* ((x 'b) (y x)) (declare (ignore y)) x))", "B" },
+    .{ "(let* ((n 3) (f (lambda (k) (* n k)))) (setq n 4) (funcall f 10))", "40" },
+    .{ "(let* ((x 1) (y (let ((x 10)) (+ x 1))) (z x)) (list x y z))", "(1 11 1)" },
+    .{ "(let ((x 1) (y 2)) (let ((x y) (y x)) (list x y)))", "(2 1)" },
+    .{ "(let* ((x 1) (y 2)) (let* ((x y) (y x)) (list x y)))", "(2 2)" },
+    .{ "(let* ((x)) x)", "NIL" },
+};
+
+test "let and let* bind and shadow like SBCL 2.6.7 (Phase 09)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (let_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (let_cases) |c| try expectValue(&e, c[0], c[1]);
+    // SBCL 2.6.7 で program-error になるもの
+    for ([_][]const u8{ "(let* ((t 1)) t)", "(let* ((x 1 2)) x)", "(let* (1) 1)", "(let* x 1)", "(let*)" }) |t| {
+        try expectError(&e, t, .program_error);
+    }
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();

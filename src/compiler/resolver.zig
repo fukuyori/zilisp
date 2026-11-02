@@ -2,7 +2,7 @@
 //! 名前解決、捕捉（captured）と代入（assigned）の計算、特殊演算子の解釈を行う。
 //!
 //! Phase 08 の範囲
-//!   特殊演算子：quote if progn let setq function、および lambda（CL ではマクロ）
+//!   特殊演算子：quote if progn let let*（Phase 09）setq function、および lambda（CL ではマクロ）
 //!   関数の呼び出し、((lambda ...) ...)、CL の一部の関数の高速経路（ir.Prim）
 //! 範囲外のものは、明示的なエラーにする（基本設計 §3.1）。
 //!   ほかの特殊演算子・マクロ（Phase 09〜）、&optional などのラムダリストキーワード（Phase 17）、
@@ -228,6 +228,7 @@ pub const Resolver = struct {
                 return r.resolveBody(args, scope);
             }
             if (head == y.let) return r.resolveLet(form, args, scope);
+            if (head == y.@"let*") return r.resolveLetStar(form, args, scope);
             if (head == y.setq) return r.resolveSetq(form, args, scope);
             if (head == y.function) return r.resolveFunction(form, args, scope);
             if (head == y.lambda) return r.node(.{ .lambda = try r.resolveLambda(form, scope) });
@@ -330,21 +331,31 @@ pub const Resolver = struct {
         return l;
     }
 
+    const Binding = struct { name: Value, init_form: Value };
+
+    /// 束縛の1つ（var、(var)、(var init)）を読む
+    fn parseBinding(r: *Resolver, b: Value) Error!Binding {
+        var name = b;
+        var init_form = Value.nil;
+        if (b.isCons()) {
+            const parts = try r.listItems(b, "LET の束縛の形が正しくありません");
+            if (parts.len > 2) return r.fail(.program_error, "LET の束縛の形が正しくありません", b);
+            name = parts[0];
+            if (parts.len == 2) init_form = parts[1];
+        }
+        try r.checkBindable(name);
+        return .{ .name = name, .init_form = init_form };
+    }
+
     fn resolveLet(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
         if (args.len < 1) return r.fail(.program_error, "LET には束縛の並びが必要です", form);
         const bindings = try r.listItems(args[0], "LET の束縛の並びがドット対で終わっています");
         const names = try r.arena.alloc(Value, bindings.len);
         const inits = try r.arena.alloc(*Node, bindings.len);
         for (bindings, 0..) |b, i| {
-            var name = b;
-            var init_form = Value.nil;
-            if (b.isCons()) {
-                const parts = try r.listItems(b, "LET の束縛の形が正しくありません");
-                if (parts.len > 2) return r.fail(.program_error, "LET の束縛の形が正しくありません", b);
-                name = parts[0];
-                if (parts.len == 2) init_form = parts[1];
-            }
-            try r.checkBindable(name);
+            const parsed = try r.parseBinding(b);
+            const name = parsed.name;
+            const init_form = parsed.init_form;
             for (names[0..i]) |q| {
                 if (q == name) return r.fail(.program_error, "LET に同じ変数が2回あります", name);
             }
@@ -366,6 +377,40 @@ pub const Resolver = struct {
         const body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         l.next_slot = saved;
         return r.node(.{ .let_ = .{ .vars = vars, .inits = inits, .body = body_node } });
+    }
+
+    /// let*：束縛を順に行う。各初期値は、それより前の変数が見える範囲で評価する。
+    /// 同じ名前の変数を2回束縛してよい（後の束縛が前の束縛を隠す。SBCL 2.6.7 と同じ）。
+    /// IR は、変数1つの let_ を入れ子にしたものにする
+    fn resolveLetStar(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len < 1) return r.fail(.program_error, "LET* には束縛の並びが必要です", form);
+        const bindings = try r.listItems(args[0], "LET* の束縛の並びがドット対で終わっています");
+        const l = scope.lambda;
+        const saved = l.next_slot;
+        const vars = try r.arena.alloc(*Var, bindings.len);
+        const inits = try r.arena.alloc(*Node, bindings.len);
+        var cur: *const Scope = scope;
+        for (bindings, 0..) |b, i| {
+            const parsed = try r.parseBinding(b);
+            // 初期値は、前の変数の局所変数の番号を確保した後で解決する（初期値の中の let が前の変数の番号を使わないように）
+            inits[i] = try r.resolve(parsed.init_form, cur);
+            const v = try r.arena.create(Var);
+            v.* = .{ .name = parsed.name, .owner = l, .slot = l.newSlot() };
+            vars[i] = v;
+            const sc = try r.arena.create(Scope);
+            sc.* = .{ .parent = cur, .lambda = l, .vars = vars[i .. i + 1] };
+            cur = sc;
+        }
+        var decls: std.ArrayList(InlineDecl) = .empty;
+        const body = try r.parseBody(args[1..], false, &decls);
+        const inner: Scope = .{ .parent = cur, .lambda = l, .vars = &.{}, .inline_decls = decls.items };
+        var result = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
+        l.next_slot = saved;
+        var i = bindings.len;
+        while (i > 0) : (i -= 1) {
+            result = try r.node(.{ .let_ = .{ .vars = vars[i - 1 .. i], .inits = inits[i - 1 .. i], .body = result } });
+        }
+        return result;
     }
 
     fn resolveSetq(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {

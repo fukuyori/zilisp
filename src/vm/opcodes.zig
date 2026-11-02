@@ -68,6 +68,17 @@ pub const Op = enum(u8) {
     numeq2,
     add1,
     sub1,
+    // 多値（Phase 17。§6.3）
+    /// [v1 ... vn] → [v1]：n 個の値を多値にする（th.mv_count = n）
+    values,
+    /// 単値にする（th.mv_count = 1）
+    single,
+    /// [主値] → [全部の値のリスト]
+    mv_list,
+    /// [主値] → [v1 ... vn]：値を n 個だけ積む（足りない分は NIL）
+    mv_push_n,
+    /// [リスト] → [主値]：リストの要素を多値にする（mv_list の逆）
+    mv_restore,
     /// 次の命令の k・i・n を 32 ビットにする
     wide,
 };
@@ -80,7 +91,7 @@ pub fn operands(op: Op) []const Operand {
         .load_local, .store_local, .load_captured => &.{.i},
         .smallint => &.{.s16},
         .make_closure, .call_global => &.{ .k, .n },
-        .call => &.{.n},
+        .call, .values, .mv_push_n => &.{.n},
         .jump, .jump_if_nil => &.{.rel},
         else => &.{},
     };
@@ -114,6 +125,9 @@ pub fn stackEffect(op: Op, n: u32) i64 {
         .car, .cdr, .not, .add1, .sub1 => 0,
         .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2 => -1,
         .make_closure => 1 - ni,
+        .values => 1 - ni,
+        .mv_push_n => ni - 1,
+        .single, .mv_list, .mv_restore => 0,
         .call => -ni,
         .call_global => 1 - ni,
     };

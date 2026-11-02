@@ -240,3 +240,37 @@
           `(let* (,@(zl-sys::%zip temps vals) (,g ,access) (,(car stores) (cdr ,g)))
              ,store-form
              (car ,g))))))
+
+;;; ---------------------------------------------------------------------------
+;;; 多値（Phase 17。CLHS 5.3）
+
+(defmacro nth-value (n form)
+  `(nth ,n (multiple-value-list ,form)))
+
+;; (multiple-value-setq (変数...) フォーム)：変数に値を順に代入し、主値を返す
+(defmacro multiple-value-setq (vars form)
+  (let ((temps (zl-sys::%map-gensyms vars)))
+    `(multiple-value-bind ,temps ,form
+       ,@(zl-sys::%mvsetq-assignments vars temps)
+       ,(if temps (car temps) nil))))
+
+(defun zl-sys::%mvsetq-assignments (vars temps)
+  (if (null vars)
+      nil
+      (cons `(setq ,(car vars) ,(car temps))
+            (zl-sys::%mvsetq-assignments (cdr vars) (cdr temps)))))
+
+;; get-setf-expansion：場所の展開の5つの値（Phase 16 の zl-sys::%setf-expansion のリストを多値にする）
+(defun get-setf-expansion (place &optional environment)
+  (declare (ignore environment))
+  (values-list (zl-sys::%setf-expansion place)))
+
+;; (define-setf-expander 読み出し ラムダリスト 本体...)：本体が5つの値を返す（CLHS define-setf-expander）
+(defmacro define-setf-expander (access lambda-list &body body)
+  (let ((place (gensym)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (zl-sys::%put ',access 'zl-sys::setf-expander
+                     (lambda (,place)
+                       (multiple-value-list
+                        (destructuring-bind ,lambda-list (cdr ,place) ,@body))))
+       ',access)))

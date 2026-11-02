@@ -1,0 +1,42 @@
+;; 多値と &optional・&rest・&key（Phase 17）
+;; 多値
+(defun div-mod (a b)
+  "a を b で割った商と余り（正の数だけ）"
+  (labels ((loop-div (q r) (if (< r b) (values q r) (loop-div (+ q 1) (- r b)))))
+    (loop-div 0 a)))
+(print (multiple-value-list (div-mod 17 5)))
+(multiple-value-bind (q r) (div-mod 20 6)
+  (print (list q r)))
+(print (multiple-value-list (values)))
+(print (nth-value 1 (div-mod 7 2)))
+(let ((q 0) (r 0))
+  (multiple-value-setq (q r) (div-mod 9 4))
+  (print (list q r)))
+(print (multiple-value-call #'list (div-mod 7 3) (values 'x 'y)))
+(print (multiple-value-list (multiple-value-prog1 (div-mod 8 3) (print 'side-effect))))
+;; 多値は、関数の末尾の呼び出しを通して伝わる
+(defun pass-through (a b) (div-mod a b))
+(print (multiple-value-list (pass-through 10 3)))
+;; 単値の位置では主値だけを使う
+(print (list (div-mod 10 3) (+ (div-mod 10 3) 100)))
+
+;; &optional・&rest・&key・&aux
+(defun greet (name &optional (greeting "Hello") (punct "!" punct-p))
+  (list greeting name punct punct-p))
+(print (greet "Alice"))
+(print (greet "Bob" "Hi" "?"))
+(defun total (&rest numbers) (apply #'+ numbers))
+(print (list (total) (total 1 2 3 4)))
+(defun make-point (&key (x 0) (y 0) (label 'none label-p))
+  (list x y label label-p))
+(print (make-point))
+(print (make-point :y 5 :label 'p))
+(defun area (&key ((:width w) 1) ((:height h) 1) &aux (a (* w h)))
+  a)
+(print (area :width 3 :height 4))
+(defun tagged (tag &rest items &key (sep '-) &allow-other-keys)
+  (list tag sep items))
+(print (tagged 'a :sep '+ :other 1))
+(print (funcall #'make-point :x 1))
+(print (apply #'greet '("Carol" "Hey")))
+(terpri)

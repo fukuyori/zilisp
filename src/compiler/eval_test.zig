@@ -615,6 +615,84 @@ test "setf, places, hash tables and arrays like SBCL 2.6.7 (Phase 16)" {
     try expectError(&e, "(defun (setf car) (v x) v)", .package_error);
 }
 
+/// Phase 17：多値と &optional・&rest・&key（SBCL 2.6.7 の結果）
+const mv_cases = [_][2][]const u8{
+    .{ "(multiple-value-list (values 1 2 3))", "(1 2 3)" },
+    .{ "(multiple-value-list (values))", "NIL" },
+    .{ "(multiple-value-list 1)", "(1)" },
+    .{ "(multiple-value-list (car '(1)))", "(1)" },
+    .{ "(multiple-value-list (gethash 'x (make-hash-table)))", "(NIL NIL)" },
+    .{ "(multiple-value-list (if t (values 1 2) 3))", "(1 2)" },
+    .{ "(multiple-value-list (if nil (values 1 2) 3))", "(3)" },
+    .{ "(multiple-value-list (progn 1 (values 2 3)))", "(2 3)" },
+    .{ "(multiple-value-list (let ((x 1)) (values x 2)))", "(1 2)" },
+    .{ "(progn (defun p17-two () (values 1 2)) (multiple-value-list (p17-two)))", "(1 2)" },
+    .{ "(progn (defun p17-two () (values 1 2)) (defun p17-pass () (p17-two)) (multiple-value-list (p17-pass)))", "(1 2)" },
+    .{ "(progn (defun p17-two () (values 1 2)) (defun p17-notail () (let ((r (p17-two))) r)) (multiple-value-list (p17-notail)))", "(1)" },
+    .{ "(progn (defun p17-two () (values 1 2)) (list (multiple-value-list (funcall #'p17-two)) (multiple-value-list (apply #'p17-two nil))))", "((1 2) (1 2))" },
+    .{ "(multiple-value-bind (a b c) (values 1 2) (list a b c))", "(1 2 NIL)" },
+    .{ "(multiple-value-bind (a) (values 1 2) a)", "1" },
+    .{ "(multiple-value-bind () (values 1 2) 'none)", "NONE" },
+    .{ "(progn (defvar *p17-s* 0) (defun p17-gs () *p17-s*) (multiple-value-bind (*p17-s* b) (values 5 6) (list (p17-gs) b)))", "(5 6)" },
+    .{ "(multiple-value-list (multiple-value-prog1 (values 1 2) 3))", "(1 2)" },
+    .{ "(multiple-value-prog1 1 2)", "1" },
+    .{ "(multiple-value-call #'list (values 1 2) 3 (values))", "(1 2 3)" },
+    .{ "(multiple-value-call #'+ (values 1 2) (values 3 4))", "10" },
+    .{ "(nth-value 1 (values 'a 'b))", "B" },
+    .{ "(nth-value 5 (values 'a 'b))", "NIL" },
+    .{ "(let ((x 0) (y 0)) (list (multiple-value-setq (x y) (values 1 2)) x y))", "(1 1 2)" },
+    .{ "(multiple-value-list (values-list '(1 2 3)))", "(1 2 3)" },
+    .{ "(multiple-value-list (values-list nil))", "NIL" },
+    .{ "(+ (values 1 2) 3)", "4" },
+    .{ "(list (values 1 2) (values))", "(1 NIL)" },
+    .{ "(let ((x 0)) (multiple-value-list (setq x (values 1 2))))", "(1)" },
+    .{ "(flet ((f () (values 'a 'b))) (multiple-value-list (f)))", "(A B)" },
+    .{ "(labels ((f (n) (if (= n 0) (values 'done n) (f (- n 1))))) (multiple-value-list (f 3)))", "(DONE 0)" },
+    .{ "(multiple-value-list (funcall (lambda () (values 1 2 3))))", "(1 2 3)" },
+    .{ "(length (multiple-value-list (get-setf-expansion 'x)))", "5" },
+    .{ "(multiple-value-bind (temps vals stores store access) (get-setf-expansion '(car x)) (list (length temps) vals (length stores) (consp store) (consp access)))", "(1 (X) 1 T T)" },
+    .{ "(progn (define-setf-expander p17-hd (x) (let ((tmp (gensym)) (s (gensym))) (values (list tmp) (list x) (list s) `(progn (rplaca ,tmp ,s) ,s) `(car ,tmp)))) (let ((l (list 1 2))) (setf (p17-hd l) 'z) l))", "(Z 2)" },
+    .{ "(progn (defun p17-f (a &optional b (c 3) (d 4 d-p)) (list a b c d d-p)) (list (p17-f 1) (p17-f 1 2 30 40)))", "((1 NIL 3 4 NIL) (1 2 30 40 T))" },
+    .{ "(progn (defun p17-g (a &rest r) (list a r)) (list (p17-g 1) (p17-g 1 2 3)))", "((1 NIL) (1 (2 3)))" },
+    .{ "(progn (defun p17-h (&key a (b 2) ((:cee c) 3) (d nil d-p)) (list a b c d d-p)) (list (p17-h) (p17-h :a 1 :cee 5 :d nil)))", "((NIL 2 3 NIL NIL) (1 2 5 NIL T))" },
+    .{ "(progn (defun p17-k (&key a &allow-other-keys) a) (p17-k :b 1 :a 2))", "2" },
+    .{ "(progn (defun p17-h2 (&key a) a) (p17-h2 :allow-other-keys t :zz 1))", "NIL" },
+    .{ "(progn (defun p17-rk (&rest all &key a) (list all a)) (p17-rk :a 1))", "((:A 1) 1)" },
+    .{ "(progn (defun p17-ax (a &aux (b (* a 2))) b) (p17-ax 5))", "10" },
+    .{ "(progn (defun p17-od (a &optional (b (+ a 1))) b) (list (p17-od 1) (p17-od 1 10)))", "(2 10)" },
+    .{ "((lambda (&optional (x 5)) x))", "5" },
+    .{ "(progn (defun p17-h3 (&key a (b 2)) (list a b)) (apply #'p17-h3 '(:a 9)))", "(9 2)" },
+    .{ "(flet ((sum (&rest xs) (apply #'+ xs))) (sum 1 2 3))", "6" },
+    .{ "(progn (defvar *p17-ov* 'global) (defun p17-get-ov () *p17-ov*) (defun p17-op (&optional (*p17-ov* 'bound)) (p17-get-ov)) (list (p17-op) (p17-op 'given) *p17-ov*))", "(BOUND GIVEN GLOBAL)" },
+    .{ "(progn (defun p17-kk (&key (x 1 x-p)) (list x x-p)) (list (p17-kk) (p17-kk :x 1)))", "((1 NIL) (1 T))" },
+    .{ "(progn (defun p17-dup (&key a) a) (p17-dup :a 1 :a 2))", "1" },
+    .{ "(multiple-value-bind (q r) (values 7 1) (+ q r))", "8" },
+};
+
+test "multiple values and lambda list keywords like SBCL 2.6.7 (Phase 17)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (mv_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (mv_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // SBCL 2.6.7 で program-error になるもの
+    for ([_][]const u8{
+        "(progn (defun p17-f2 (a &optional b) (list a b)) (p17-f2))",
+        "(p17-f2 1 2 3)",
+        "(progn (defun p17-g2 (a &rest r) (list a r)) (p17-g2))",
+        "(progn (defun p17-h4 (&key a) a) (p17-h4 :z 1))",
+        "(p17-h4 :a)",
+        "(progn (defun p17-sq (x) (* x x)) (p17-sq 1 2))",
+        "(lambda (a &whole w) a)",
+    }) |t| try expectError(&e, t, .program_error);
+    // 値の個数は呼び出しをまたいで伝わり、使い終わった多値は残らない
+    try expectValue(&e, "(progn (defun p17-v3 () (values 1 2 3)) (multiple-value-list (let ((x (p17-v3))) x)))", "(1)");
+    try expectValue(&e, "(multiple-value-list (maphash (lambda (k v) (values k v)) (let ((h (make-hash-table))) (setf (gethash 1 h) 2) h)))", "(NIL)");
+    // 引数の多い呼び出し（&rest に 1000 個）
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -678,7 +756,7 @@ test "errors" {
         .{ "(setq x)", .program_error },
         .{ "(progv '(1) '(2) 3)", .type_error },
         .{ "(defvar)", .program_error },
-        .{ "(lambda (&optional x) x)", .unimplemented },
+        .{ "((lambda (&optional) 1) 2)", .program_error },
         .{ "(lambda (x x) x)", .program_error },
         .{ "(funcall 1)", .type_error },
         .{ "(apply #'+ 1 2)", .type_error },

@@ -215,3 +215,19 @@ pub fn sysSetFdefinition(th: *Thread, args: []const Value) Value {
     cell.* = args[1];
     return args[1];
 }
+
+// ---------------------------------------------------------------------------
+// 多値（Phase 17。§6.3）
+
+/// values：引数を多値にする（関数として呼ばれた場合。(values ...) のフォームはコンパイラが直接の命令にする）
+pub fn values(th: *Thread, args: []const Value) Value {
+    return @import("../native/rt.zig").values(th, args);
+}
+
+/// values-list：リストの要素を多値にする
+pub fn valuesList(th: *Thread, args: []const Value) Value {
+    var x = args[0];
+    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {}
+    if (x != Value.nil) return th.typeError(args[0], th.rt.syms.list);
+    return th.listToValues(args[0]);
+}

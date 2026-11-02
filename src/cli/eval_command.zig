@@ -97,8 +97,11 @@ fn evalText(
             continue;
         }
         if (interactive) {
-            try printer.prin1(s.rt, stdout, value);
-            try stdout.writeByte('\n');
+            const count = s.th.mv_count;
+            for (0..count) |i| {
+                try printer.prin1(s.rt, stdout, if (i == 0) value else s.th.mv[i]);
+                try stdout.writeByte('\n');
+            }
         }
     }
     consumed.* = text.len;
@@ -265,6 +268,12 @@ test "repl evaluates forms, waits for unfinished forms, and keeps going after er
             "<repl>:1:1: TYPE-ERROR: 値 1 は型 LIST ではありません\n",
         got,
     );
+}
+
+test "repl prints all values (SBCL 2.6.7 style)" {
+    const t = try replTranscript("(values 1 2)\n(values)\n(floor-dummy-not-called)\n");
+    defer testing.allocator.free(t.text);
+    try testing.expect(std.mem.startsWith(u8, t.text, "* 1\n2\n* * "));
 }
 
 test "errors inside functions report the call history" {

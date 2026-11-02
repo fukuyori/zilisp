@@ -197,6 +197,9 @@ fn writeZigString(w: *std.Io.Writer, s: []const u8) Error!void {
     try w.writeByte('"');
 }
 
+/// 式の値の受け取り方（§5.5 の ValueMode）
+const Mode = enum { value, discard, multi };
+
 /// 1つの lambda の Zig の関数を生成する
 const FnGen = struct {
     e: *Emitter,
@@ -252,21 +255,36 @@ const FnGen = struct {
         var body_out: std.Io.Writer.Allocating = .init(e.gpa);
         defer body_out.deinit();
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
-        const result = try f.gen(l.body);
-        try f.w().print("    th.mv_count = 1;\n    return {s};\n}}\n\n", .{result.s()});
+        // 本体の最後の式は多値の位置（値の個数は genM が書く：§6.2）
+        const result = try f.genM(l.body);
+        try f.w().print("    return {s};\n}}\n\n", .{result.s()});
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
 
         try f.w().print("fn @\"{s}\"(th: *Thread, self: Value, args: [*]const Value, nargs: u32) callconv(.c) Value {{\n", .{info.fn_name});
         if (l.params.len == 0) try f.w().writeAll("    _ = args;\n");
-        try f.w().print("    if (nargs != {d}) return N.argCountError(th, self, nargs);\n", .{l.params.len});
+        const required = l.params.len - @intFromBool(l.rest_param);
+        if (l.rest_param) {
+            try f.w().print("    if (nargs < {d}) return N.argCountError(th, self, nargs);\n", .{required});
+        } else {
+            try f.w().print("    if (nargs != {d}) return N.argCountError(th, self, nargs);\n", .{required});
+        }
         try f.w().writeAll("    if (!N.stackOk()) return N.stackOverflow(th);\n");
         for (l.params, 0..) |p, i| {
             const id = try e.varId(p);
+            // 必須の引数の後ろの引数は、リストにまとめる（Phase 17）
+            var value_buf: [32]u8 = undefined;
+            var value: []const u8 = undefined;
+            if (l.rest_param and i == required) {
+                try f.w().print("    const r{d} = N.restList(th, args, {d}, nargs);\n    if (r{d} == Value.unwind) return r{d};\n", .{ id, required, id, id });
+                value = std.fmt.bufPrint(&value_buf, "r{d}", .{id}) catch unreachable;
+            } else {
+                value = std.fmt.bufPrint(&value_buf, "args[{d}]", .{i}) catch unreachable;
+            }
             if (p.boxed()) {
-                try f.w().print("    const v{d} = N.makeCell(th, args[{d}]);\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, i, id, id });
+                try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, value, id, id });
             } else {
                 const kw = if (p.assigned) "var" else "const";
-                try f.w().print("    {s} v{d} = args[{d}];\n", .{ kw, id, i });
+                try f.w().print("    {s} v{d} = {s};\n", .{ kw, id, value });
             }
             if (!f.used.contains(id)) try f.w().print("    _ = &v{d};\n", .{id});
         }
@@ -304,8 +322,14 @@ const FnGen = struct {
                 try f.w().writeAll("    }\n");
             },
             .progn => |forms| for (forms) |x| try f.genDiscard(x),
-            .let_ => |b| _ = try f.genLet(b, true),
-            .progv => |p| _ = try f.genProgv(p, true),
+            .let_ => |b| _ = try f.genLet(b, .discard),
+            .progv => |p| _ = try f.genProgv(p, .discard),
+            .mv_bind => |b| _ = try f.genMvBind(b, .discard),
+            .values => |args| for (args) |x| try f.genDiscard(x),
+            .mv_prog1 => |p| {
+                try f.genDiscard(p.first);
+                for (p.rest) |x| try f.genDiscard(x);
+            },
             else => _ = try f.gen(n),
         }
     }
@@ -325,19 +349,35 @@ const FnGen = struct {
     }
 
     /// let（discard なら本体の値を捨てる。値を捨てる位置では、本体の最後の式も値を捨てる位置になる）
-    fn genLet(f: *FnGen, b: anytype, discard: bool) Error!?Expr {
-        const e = f.e;
+    fn genLet(f: *FnGen, b: anytype, mode: Mode) Error!?Expr {
         var inits: std.ArrayList(Expr) = .empty;
-        defer inits.deinit(e.gpa);
-        for (b.inits) |i| try inits.append(e.gpa, try f.gen(i));
+        defer inits.deinit(f.e.gpa);
+        for (b.inits) |i| try inits.append(f.e.gpa, try f.gen(i));
+        return f.genBound(b.vars, inits.items, b.body, mode);
+    }
+
+    /// multiple-value-bind：フォームの値を変数の数だけ取り出して束縛する（足りない分は NIL）
+    fn genMvBind(f: *FnGen, b: anytype, mode: Mode) Error!?Expr {
+        const primary = try f.genM(b.form);
+        var inits: std.ArrayList(Expr) = .empty;
+        defer inits.deinit(f.e.gpa);
+        for (0..b.vars.len) |i| {
+            const t = f.temp();
+            try f.w().print("    const t{d} = N.mvValue(th, {s}, {d});\n", .{ t, primary.s(), i });
+            try inits.append(f.e.gpa, Expr.of("t{d}", .{t}));
+        }
+        return f.genBound(b.vars, inits.items, b.body, mode);
+    }
+
+    /// 値 init_exprs を vars に束縛して本体を生成する（let・multiple-value-bind）
+    fn genBound(f: *FnGen, vars: []*Var, init_exprs: []const Expr, body_node: *Node, mode: Mode) Error!?Expr {
+        const e = f.e;
+        const b = .{ .vars = vars, .body = body_node };
         // 本体を先に生成し、使われた変数が分かってから宣言を書く
         var body_out: std.Io.Writer.Allocating = .init(e.gpa);
         defer body_out.deinit();
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
-        const result: ?Expr = if (discard) blk: {
-            try f.genDiscard(b.body);
-            break :blk null;
-        } else try f.gen(b.body);
+        const result: ?Expr = try f.genBody(b.body, mode);
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
         const special = ir.hasSpecial(b.vars);
         var depth: u32 = 0;
@@ -345,7 +385,7 @@ const FnGen = struct {
             depth = f.temp();
             try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
         }
-        for (b.vars, inits.items) |v, init| {
+        for (b.vars, init_exprs) |v, init| {
             if (v.special) {
                 try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) return Value.unwind;\n", .{ try e.constant(v.name), init.s() });
                 continue;
@@ -365,18 +405,68 @@ const FnGen = struct {
     }
 
     /// progv（discard なら本体の値を捨てる）
-    fn genProgv(f: *FnGen, p: anytype, discard: bool) Error!?Expr {
+    fn genProgv(f: *FnGen, p: anytype, mode: Mode) Error!?Expr {
         const depth = f.temp();
         try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
         const syms = try f.gen(p.syms);
         const vals = try f.gen(p.vals);
         try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) return Value.unwind;\n", .{ syms.s(), vals.s() });
-        const result: ?Expr = if (discard) blk: {
-            try f.genDiscard(p.body);
-            break :blk null;
-        } else try f.gen(p.body);
+        const result: ?Expr = try f.genBody(p.body, mode);
         try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
         return result;
+    }
+
+    fn genBody(f: *FnGen, n: *Node, mode: Mode) Error!?Expr {
+        return switch (mode) {
+            .discard => blk: {
+                try f.genDiscard(n);
+                break :blk null;
+            },
+            .value => try f.gen(n),
+            .multi => try f.genM(n),
+        };
+    }
+
+    /// 多値の位置の式（§5.5 の multiple）：主値を返し、全部の値を th.mv_count・th.mv に置くコードを生成する。
+    /// 関数の呼び出しは、呼んだ関数が個数を書くので、そのまま使う。単値の式なら個数を 1 にする
+    fn genM(f: *FnGen, n: *Node) Error!Expr {
+        switch (n.kind) {
+            .call, .call_global => return f.gen(n),
+            .values => |args| {
+                const a = try f.genArgs(args);
+                return f.checked("N.values(th, {s})", .{a.s()});
+            },
+            .if_ => |x| {
+                const c = try f.gen(x.cond);
+                const r = f.temp();
+                try f.w().print("    var t{d}: Value = undefined;\n    if ({s} != Value.nil) {{\n", .{ r, c.s() });
+                const a = try f.genM(x.then);
+                try f.w().print("    t{d} = {s};\n    }} else {{\n", .{ r, a.s() });
+                const b = try f.genM(x.else_);
+                try f.w().print("    t{d} = {s};\n    }}\n", .{ r, b.s() });
+                return Expr.of("t{d}", .{r});
+            },
+            .progn => |forms| {
+                for (forms[0 .. forms.len - 1]) |x| try f.genDiscard(x);
+                return f.genM(forms[forms.len - 1]);
+            },
+            .let_ => |b| return (try f.genLet(b, .multi)).?,
+            .progv => |p| return (try f.genProgv(p, .multi)).?,
+            .mv_bind => |b| return (try f.genMvBind(b, .multi)).?,
+            .mv_prog1 => |p| {
+                const first = try f.genM(p.first);
+                const saved = try f.checked("N.mvList(th, {s})", .{first.s()});
+                for (p.rest) |x| try f.genDiscard(x);
+                const t = f.temp();
+                try f.w().print("    const t{d} = N.mvRestore(th, {s});\n", .{ t, saved.s() });
+                return Expr.of("t{d}", .{t});
+            },
+            else => {
+                const r = try f.gen(n);
+                try f.w().writeAll("    th.mv_count = 1;\n");
+                return r;
+            },
+        }
     }
 
     fn gen(f: *FnGen, n: *Node) Error!Expr {
@@ -445,8 +535,29 @@ const FnGen = struct {
                 for (forms[0 .. forms.len - 1]) |x| try f.genDiscard(x);
                 return f.gen(forms[forms.len - 1]);
             },
-            .let_ => |b| return (try f.genLet(b, false)).?,
-            .progv => |p| return (try f.genProgv(p, false)).?,
+            .let_ => |b| return (try f.genLet(b, .value)).?,
+            .progv => |p| return (try f.genProgv(p, .value)).?,
+            .mv_bind => |b| return (try f.genMvBind(b, .value)).?,
+            .values => |args| {
+                if (args.len == 0) return Expr.of("Value.nil", .{});
+                const first = try f.gen(args[0]);
+                // 後で書き換わらないよう、主値をその時点で写しておく
+                const t = f.temp();
+                try f.w().print("    const t{d} = {s};\n", .{ t, first.s() });
+                for (args[1..]) |x| try f.genDiscard(x);
+                return Expr.of("t{d}", .{t});
+            },
+            .mv_list => |x| {
+                const p = try f.genM(x);
+                return f.checked("N.mvList(th, {s})", .{p.s()});
+            },
+            .mv_prog1 => |p| {
+                const first = try f.gen(p.first);
+                const t = f.temp();
+                try f.w().print("    const t{d} = {s};\n", .{ t, first.s() });
+                for (p.rest) |x| try f.genDiscard(x);
+                return Expr.of("t{d}", .{t});
+            },
             .lambda => |child| {
                 const id = try e.emitLambda(child);
                 if (child.captures.items.len == 0) return Expr.of("N.K[CLOSURE_BASE + {d}]", .{id});

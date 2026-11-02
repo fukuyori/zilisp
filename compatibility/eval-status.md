@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 223 |
+| match | 両方とも正常に終わり、標準出力が同じ | 244 |
 | both-error | 両方ともエラーで終わった | 362 |
 | output-diff | 両方とも正常に終わったが、標準出力が違う | 0 |
-| zilisp-error | Zilisp だけがエラー | 370 |
+| zilisp-error | Zilisp だけがエラー | 349 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -18,27 +18,25 @@
 
 | 最初のエラー | ブロック数 |
 |---|---|
-| 未実装：LOOP | 37 |
+| 未実装：LOOP | 39 |
 | 未実装：DEFSTRUCT | 31 |
-| 未実装：DOLIST | 27 |
-| 未実装の関数：FORMAT | 22 |
+| 未実装：DOLIST | 31 |
+| 未実装の関数：FORMAT | 24 |
+| 未実装：WITH-OPEN-FILE | 22 |
 | 未実装：DEFCLASS | 21 |
-| 未実装：&KEY | 19 |
-| 未実装：WITH-OPEN-FILE | 16 |
-| 未実装：&OPTIONAL | 11 |
-| 未実装：&REST | 9 |
 | 未実装：HANDLER-CASE | 9 |
 | 未実装の関数：MAPCAR | 8 |
 | 未実装：DEFPACKAGE | 8 |
+| 未実装の関数：REDUCE | 7 |
 | 未実装：DOTIMES | 7 |
+| 未実装の関数：ABS | 6 |
 | 未実装の関数：EVENP | 6 |
 | 未実装の関数：STRING= | 6 |
-| 未実装の関数：ABS | 5 |
 | 未実装の関数：EXPT | 5 |
-| 未実装の関数：REDUCE | 5 |
 | 未実装：ASSERT | 5 |
 | 未実装：DEFINE-CONDITION | 5 |
 | 未実装の関数：EVAL | 4 |
+| 未実装：WITH-OUTPUT-TO-STRING | 4 |
 | 未実装の関数：COPY-LIST | 3 |
 | 未実装の関数：FIND | 3 |
 | 未実装の関数：FLOOR | 3 |
@@ -46,7 +44,6 @@
 | 未実装の関数：REMOVE-IF-NOT | 3 |
 | 未実装の関数：ZEROP | 3 |
 | 未実装：TRACE | 3 |
-| 未実装：WITH-OUTPUT-TO-STRING | 3 |
 | 未実装の関数：ASSOC | 2 |
 | 未実装の関数：CONCATENATE | 2 |
 | 未実装の関数：ELT | 2 |
@@ -78,6 +75,7 @@
 | 未実装の関数：EQUALP | 1 |
 | 未実装の関数：FLOAT | 1 |
 | 未実装の関数：FLOATP | 1 |
+| 未実装の関数：GCD | 1 |
 | 未実装の関数：GET-INTERNAL-REAL-TIME | 1 |
 | 未実装の関数：INSPECT | 1 |
 | 未実装の関数：LOG | 1 |
@@ -109,7 +107,6 @@
 | 未実装：ECASE | 1 |
 | 未実装：HANDLER-BIND | 1 |
 | 未実装：IGNORE-ERRORS | 1 |
-| 未実装：MULTIPLE-VALUE-BIND | 1 |
 | 未実装：TIME | 1 |
 | 未実装：TYPECASE | 1 |
 | 未実装：UNWIND-PROTECT | 1 |

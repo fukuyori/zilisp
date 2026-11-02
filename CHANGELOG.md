@@ -97,6 +97,12 @@
   `length`・`copy-seq` など）、`equal`・`rplaca`・`rplacd`・`nth`・`nthcdr`・`getf`・`get`・`symbol-plist`・`fdefinition`。
   試験：SBCL 2.6.7 の結果と比べる48通り（GC stress でも実行）、言語試験 `tests/language/eval/setf.lisp`（と gc-stress 版。ネイティブでも一致）。
   教材のブロックの一致は 179 から 223 に
+- Phase 17：多値（`values`・`values-list`・`multiple-value-bind`・`multiple-value-list`・`multiple-value-prog1`・`multiple-value-call`・
+  `nth-value`・`multiple-value-setq`。ValueMode により、関数の本体の最後の式から値の個数を伝える。VM の命令 `VALUES`・`SINGLE`・
+  `MV_LIST`・`MV_PUSH_N`・`MV_RESTORE`。ネイティブバックエンドも対応）、REPL はすべての値を印字する。
+  関数の `&optional`（既定値・供給の変数）・`&rest`・`&key`（`((:k v) …)`・`&allow-other-keys`・`:allow-other-keys t`）・`&aux`。
+  `get-setf-expansion`・`define-setf-expander`。試験：SBCL 2.6.7 の結果と比べる50通り（GC stress でも実行）、言語試験
+  `tests/language/eval/values.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 223 から 244 に
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

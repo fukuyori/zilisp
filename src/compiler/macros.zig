@@ -371,6 +371,27 @@ fn destructuringLet(r: *Resolver, ll: Value, list_var: Value, whole: Value, env:
     return let_form;
 }
 
+/// 関数のラムダリストの、必須の引数より後ろ（&optional から）を、リスト rest_sym に対して分解する
+/// (let* (分解の束縛...) 本体...) を作る（Phase 17。&whole・&environment は書けない）
+pub fn lambdaListTail(r: *Resolver, tail: Value, rest_sym: Value, body: []const Value) Error!Value {
+    var p = tail;
+    while (p.isCons()) : (p = Runtime.consPtr(p).cdr) {
+        const e = Runtime.consPtr(p).car;
+        if (e == r.rt.syms.@"&whole" or e == r.rt.syms.@"&environment" or e == r.rt.syms.@"&body")
+            return r.failForm("関数のラムダリストには &whole・&environment・&body を書けません", e);
+    }
+    return destructuringLet(r, tail, rest_sym, rest_sym, null, body);
+}
+
+/// (multiple-value-call 関数 フォーム...) → (apply 関数 (append (multiple-value-list フォーム) ...))
+pub fn expandMvCall(r: *Resolver, args: []Value) Error!Value {
+    const b: Builder = .{ .r = r };
+    var parts: std.ArrayList(Value) = .empty;
+    try parts.append(r.arena, b.cl("APPEND"));
+    for (args[1..]) |f| try parts.append(r.arena, try b.list(&.{ r.rt.syms.@"multiple-value-list", f }));
+    return b.list(&.{ b.cl("APPLY"), args[0], try b.list(parts.items) });
+}
+
 /// (destructuring-bind ラムダリスト 式 本体...) → (let* ((#:src 式) ...) 本体...)
 pub fn expandDestructuringBind(r: *Resolver, form: Value, args: []Value) Error!Value {
     if (args.len < 2) return r.failForm("DESTRUCTURING-BIND にはラムダリストと式が必要です", form);

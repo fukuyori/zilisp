@@ -324,6 +324,19 @@ pub const Resolver = struct {
             if (head == y.progv) return r.resolveProgv(form, args, scope);
             if (head == y.defmacro) return r.resolveDefmacro(form, args, scope, toplevel_form);
             if (head == y.@"eval-when") return r.resolveEvalWhen(form, args, scope, toplevel_form);
+            if (head == y.@"multiple-value-bind") return r.resolveMvBind(form, args, scope);
+            if (head == y.@"multiple-value-list") {
+                if (args.len != 1) return r.failForm("MULTIPLE-VALUE-LIST の引数は1つです", form);
+                return r.node(.{ .mv_list = try r.resolve(args[0], scope) });
+            }
+            if (head == y.@"multiple-value-prog1") {
+                if (args.len < 1) return r.failForm("MULTIPLE-VALUE-PROG1 には引数が必要です", form);
+                return r.node(.{ .mv_prog1 = .{ .first = try r.resolve(args[0], scope), .rest = try r.resolveArgs(args[1..], scope) } });
+            }
+            if (head == y.@"multiple-value-call") {
+                if (args.len < 1) return r.failForm("MULTIPLE-VALUE-CALL には関数が必要です", form);
+                return r.resolve(try macros.expandMvCall(r, args), scope);
+            }
             if (head == y.@"destructuring-bind") return r.resolve(try macros.expandDestructuringBind(r, form, args), scope);
             if (head == r.rt.sys_quasiquote) {
                 if (args.len != 1) return r.failForm("QUASIQUOTE の引数は1つです", form);
@@ -398,6 +411,11 @@ pub const Resolver = struct {
     fn resolveCall(r: *Resolver, sym: Value, args: []const Value, scope: *const Scope) Error!*Node {
         const nodes = try r.resolveArgs(args, scope);
         if (r.primFor(sym, args.len, scope)) |op| return r.node(.{ .prim = .{ .op = op, .args = nodes } });
+        // (values a ...)：多値を作る（CL パッケージの関数なので、直接の命令にしてよい）
+        if (sym == r.rt.syms.values and !scope.isNotinline(sym)) {
+            if (nodes.len >= thread_mod.mv_limit) return r.failForm("値が多すぎます（multiple-values-limit を超えています）", Value.fromFixnum(@intCast(nodes.len)));
+            return r.node(.{ .values = nodes });
+        }
         // (funcall f a ...) は、関数の値を直接呼ぶ命令にする
         if (sym == r.rt.syms.funcall and nodes.len >= 1 and !scope.isNotinline(sym)) {
             return r.node(.{ .call = .{ .callee = nodes[0], .args = nodes[1..] } });
@@ -430,7 +448,46 @@ pub const Resolver = struct {
 
     /// parts = (ラムダリスト 本体...)。fn_name は defun などで付ける関数の名前（無名なら NIL）
     fn resolveLambdaParts(r: *Resolver, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope) Error!*Lambda {
-        const params = try r.listItems(parts[0], "ラムダリストがドット対で終わっています");
+        const all_params = try r.listItems(parts[0], "ラムダリストがドット対で終わっています");
+        // &optional・&rest・&key・&aux があれば（Phase 17）、必須の引数の後ろを、名前のない引数（リスト）で受け取り、
+        // 本体を (let* (分解の束縛...) 本体...) で囲む（分解束縛は defmacro・destructuring-bind と同じ：CLHS 3.4.1）。
+        // 省略可能な引数を省いた呼び出しでは、リストは NIL なので確保しない
+        var split: usize = all_params.len;
+        for (all_params, 0..) |p, i| {
+            if (r.isLambdaListKeyword(p)) {
+                split = i;
+                break;
+            }
+        }
+        var params = all_params;
+        var body_parts = parts;
+        var rest_sym = Value.nil;
+        if (split < all_params.len) {
+            const b: macros.Builder = .{ .r = r };
+            const tail = try b.list(all_params[split..]);
+            rest_sym = try b.gensym("ARGS");
+            var user_body = parts[1..];
+            // 説明文字列は外す。宣言は、分解の let* の本体と、lambda の本体の両方に置く（必須の引数への宣言のため）
+            if (user_body.len > 1 and user_body[0].isOther() and Runtime.kindOf(user_body[0]) == .string) user_body = user_body[1..];
+            var decl_count: usize = 0;
+            while (decl_count < user_body.len and user_body[decl_count].isCons() and Runtime.consPtr(user_body[decl_count]).car == r.rt.syms.declare) decl_count += 1;
+            const let_form = try macros.lambdaListTail(r, tail, rest_sym, user_body);
+            var new_parts: std.ArrayList(Value) = .empty;
+            try new_parts.append(r.arena, parts[0]);
+            try new_parts.appendSlice(r.arena, user_body[0..decl_count]);
+            try new_parts.append(r.arena, let_form);
+            body_parts = new_parts.items;
+            var req: std.ArrayList(Value) = .empty;
+            try req.appendSlice(r.arena, all_params[0..split]);
+            try req.append(r.arena, rest_sym);
+            params = req.items;
+        }
+        const result = try r.resolveLambdaRequired(params, body_parts, fn_name, fn_kind, scope);
+        result.rest_param = rest_sym != Value.nil;
+        return result;
+    }
+
+    fn resolveLambdaRequired(r: *Resolver, params: []Value, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope) Error!*Lambda {
         const l = try r.arena.create(Lambda);
         l.* = .{ .parent = scope.lambda, .name = parts[0], .fn_name = fn_name, .fn_kind = fn_kind };
         var decls: Decls = .{};
@@ -441,8 +498,7 @@ pub const Resolver = struct {
         var specials: std.ArrayList(*Var) = .empty;
         var special_inits: std.ArrayList(*Node) = .empty;
         for (params, 0..) |p, i| {
-            if (r.isLambdaListKeyword(p))
-                return r.fail(.unimplemented, "ラムダリストのキーワードは未実装です（Phase 17 で実装予定）", p);
+            if (r.isLambdaListKeyword(p)) return r.failForm("ラムダリストのキーワードの位置が正しくありません", p);
             try r.checkBindable(p);
             for (params[0..i]) |q| {
                 if (q == p) return r.fail(.program_error, "ラムダリストに同じ変数が2回あります", p);
@@ -695,6 +751,37 @@ pub const Resolver = struct {
             r.at_toplevel = false;
         }
         return if (nodes.len == 1) nodes[0] else r.node(.{ .progn = nodes });
+    }
+
+    /// multiple-value-bind（Phase 17）：(multiple-value-bind (変数...) フォーム 本体...)。
+    /// フォームの値を順に変数に束縛する（足りない分は NIL、余った値は捨てる）。束縛は let と同じ（特殊変数・宣言）
+    fn resolveMvBind(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len < 2) return r.failForm("MULTIPLE-VALUE-BIND には変数の並びとフォームが必要です", form);
+        const names = try r.listItems(args[0], "MULTIPLE-VALUE-BIND の変数の並びが正しくありません");
+        for (names, 0..) |n, i| {
+            try r.checkBindable(n);
+            for (names[0..i]) |q| if (q == n) return r.failForm("MULTIPLE-VALUE-BIND に同じ変数が2回あります", n);
+        }
+        const value_form = try r.resolve(args[1], scope);
+        const l = scope.lambda;
+        const saved = l.next_slot;
+        var decls: Decls = .{};
+        const body = try r.parseBody(args[2..], false, &decls);
+        const vars = try r.arena.alloc(*Var, names.len);
+        for (names, 0..) |name, i| {
+            if (r.bindsSpecially(name, &decls)) {
+                vars[i] = try r.specialVar(name, l);
+            } else {
+                const v = try r.arena.create(Var);
+                v.* = .{ .name = name, .owner = l, .slot = l.newSlot() };
+                vars[i] = v;
+            }
+        }
+        const depth_slot = if (ir.hasSpecial(vars)) l.newSlot() else ir.no_slot;
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = try r.scopeVars(vars, &decls, l), .inline_decls = decls.inlines.items };
+        const body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
+        l.next_slot = saved;
+        return r.node(.{ .mv_bind = .{ .vars = vars, .form = value_form, .body = body_node, .depth_slot = depth_slot } });
     }
 
     const Binding = struct { name: Value, init_form: Value };

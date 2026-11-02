@@ -105,6 +105,21 @@ fn node(l: *const Lambda, n: *const Node) IrError!void {
             if (ir.hasSpecial(b.vars) and b.depth_slot >= l.nlocals) return error.BadSlot;
             try node(l, b.body);
         },
+        .values => |args| for (args) |a| try node(l, a),
+        .mv_list => |f| try node(l, f),
+        .mv_prog1 => |p| {
+            try node(l, p.first);
+            for (p.rest) |f| try node(l, f);
+        },
+        .mv_bind => |b| {
+            try node(l, b.form);
+            for (b.vars) |v| {
+                if (v.owner != l) return error.BadOwner;
+                if (!v.special and v.slot >= l.nlocals) return error.BadSlot;
+            }
+            if (ir.hasSpecial(b.vars) and b.depth_slot >= l.nlocals) return error.BadSlot;
+            try node(l, b.body);
+        },
         .progv => |p| {
             if (p.depth_slot >= l.nlocals) return error.BadSlot;
             try node(l, p.syms);

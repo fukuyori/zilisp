@@ -86,7 +86,7 @@ fn stackOverflow(th: *Thread) Value {
 fn pushFrame(th: *Thread, closure: Value, base: usize, nargs: usize, ret_sp: usize) bool {
     const vm = &th.vm;
     const code = function.closurePtr(closure).codePtr();
-    if (nargs != code.nparams) {
+    if (if (code.rest) nargs < code.nparams else nargs != code.nparams) {
         _ = th.argCountError(closure, @intCast(nargs));
         return false;
     }
@@ -95,7 +95,23 @@ fn pushFrame(th: *Thread, closure: Value, base: usize, nargs: usize, ret_sp: usi
         _ = stackOverflow(th);
         return false;
     }
-    @memset(vm.stack[base + nargs .. base + code.nlocals], Value.nil);
+    var filled = nargs;
+    if (code.rest) {
+        // 必須の引数の後ろの引数を、リストにまとめて局所変数 nparams に置く（Phase 17）。
+        // 確保の間、引数は値スタックの上（vm.sp より下）にあるので GC から守られる
+        vm.sp = base + nargs;
+        var list = Value.nil;
+        var i = nargs;
+        while (i > code.nparams) : (i -= 1) {
+            list = th.rt.cons(vm.stack[base + i - 1], list) catch {
+                _ = th.outOfMemory();
+                return false;
+            };
+        }
+        vm.stack[base + code.nparams] = list;
+        filled = code.nparams + 1;
+    }
+    @memset(vm.stack[base + filled .. base + code.nlocals], Value.nil);
     vm.frames[vm.fp] = .{ .closure = closure, .ip = 0, .base = @intCast(base), .ret_sp = @intCast(ret_sp) };
     vm.fp += 1;
     vm.sp = base + code.nlocals;
@@ -367,8 +383,8 @@ fn execute(th: *Thread, entry_fp: usize) Value {
             vm.fp -= 1;
             sp = ret_sp;
             if (vm.fp == entry_fp) {
+                // 値の個数は、関数の本体が書いてある（§6.2）
                 vm.sp = sp;
-                th.mv_count = 1;
                 return result;
             }
             frame = &vm.frames[vm.fp - 1];
@@ -491,6 +507,48 @@ fn execute(th: *Thread, entry_fp: usize) Value {
             }
             sp -= 1;
             stack[sp - 1] = r;
+            continue :dispatch next(bc, &ip);
+        },
+        .values => {
+            const w = wide;
+            wide = false;
+            const n = readCount(bc, &ip, w);
+            // [v1 ... vn] → [v1]、残りは多値レジスタへ
+            if (n == 0) {
+                stack[sp] = Value.nil;
+                sp += 1;
+            } else {
+                const first = sp - n;
+                for (1..n) |i| th.mv[i] = stack[first + i];
+                sp = first + 1;
+            }
+            th.mv_count = n;
+            continue :dispatch next(bc, &ip);
+        },
+        .single => {
+            th.mv_count = 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .mv_list => {
+            vm.sp = sp;
+            stack[sp - 1] = th.valuesToList(stack[sp - 1]) catch return th.outOfMemory();
+            continue :dispatch next(bc, &ip);
+        },
+        .mv_push_n => {
+            const w = wide;
+            wide = false;
+            const n = readCount(bc, &ip, w);
+            const count = th.mv_count;
+            const primary = stack[sp - 1];
+            sp -= 1;
+            for (0..n) |i| {
+                stack[sp] = if (i >= count) Value.nil else if (i == 0) primary else th.mv[i];
+                sp += 1;
+            }
+            continue :dispatch next(bc, &ip);
+        },
+        .mv_restore => {
+            stack[sp - 1] = th.listToValues(stack[sp - 1]);
             continue :dispatch next(bc, &ip);
         },
         .wide => {

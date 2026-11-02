@@ -140,6 +140,9 @@ pub const table = [_]Entry{
     .{ .name = "VECTORP", .impl = arrays.vectorp, .min = 1, .max = 1 },
     .{ .name = "ARRAYP", .impl = arrays.arrayp, .min = 1, .max = 1 },
     .{ .name = "SIMPLE-VECTOR-P", .impl = arrays.simpleVectorP, .min = 1, .max = 1 },
+    // 多値（Phase 17）
+    .{ .name = "VALUES", .impl = functions.values, .min = 0, .max = any },
+    .{ .name = "VALUES-LIST", .impl = functions.valuesList, .min = 1, .max = 1 },
 };
 
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
@@ -189,9 +192,9 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_tombstone = try rt.intern(rt.sys, "%TOMBSTONE");
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
-    for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind", rt.syms.@"multiple-value-bind", rt.syms.@"multiple-value-list" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
     // Resolver が直接解釈する特殊演算子
-    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when" }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when", rt.syms.@"multiple-value-prog1", rt.syms.@"multiple-value-call" }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {

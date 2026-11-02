@@ -137,7 +137,7 @@ pub const Thread = struct {
     /// GC のルート（§3.3）：VM の値スタックとフレーム、多値レジスタ、エラーの値
     pub fn forEachRoot(th: *const Thread, ctx: anytype, comptime f: fn (@TypeOf(ctx), Value) void) void {
         th.vm.forEachRoot(ctx, f);
-        for (th.mv[1..@min(th.mv_count, mv_limit)]) |v| f(ctx, v);
+        if (th.mv_count > 1) for (th.mv[1..@min(th.mv_count, mv_limit)]) |v| f(ctx, v);
         f(ctx, th.err.datum);
         f(ctx, th.err.expected);
         f(ctx, th.err.detail);
@@ -253,6 +253,33 @@ pub const Thread = struct {
             try w.writeByte('\n');
         }
         if (th.backtrace_depth > th.backtrace_len) try w.print("    …ほか {d} 件\n", .{th.backtrace_depth - th.backtrace_len});
+    }
+
+    // ------------------------------------------------------------------
+    // 多値（§6.3）
+
+    /// 今の多値（主値 primary と th.mv）をリストにする。確保の間、多値レジスタは GC のルート
+    pub fn valuesToList(th: *Thread, primary: Value) error{OutOfMemory}!Value {
+        const n = th.mv_count;
+        if (n == 0) return Value.nil;
+        var list = Value.nil;
+        var i = n;
+        while (i > 1) : (i -= 1) list = try th.rt.cons(th.mv[i - 1], list);
+        return th.rt.cons(primary, list);
+    }
+
+    /// リストの要素を多値にする（主値を返す）。要素が multiple-values-limit を超える分は捨てる
+    pub fn listToValues(th: *Thread, list: Value) Value {
+        var x = list;
+        var n: u32 = 0;
+        var primary = Value.nil;
+        while (x.isCons() and n < mv_limit) : (x = Runtime.consPtr(x).cdr) {
+            const v = Runtime.consPtr(x).car;
+            if (n == 0) primary = v else th.mv[n] = v;
+            n += 1;
+        }
+        th.mv_count = n;
+        return primary;
     }
 
     // ------------------------------------------------------------------

@@ -250,6 +250,7 @@ pub fn maphash(th: *Thread, args: []const Value) Value {
         if (th.call(args[0], &argv) == Value.unwind) return Value.unwind;
     }
     std.mem.doNotOptimizeAway(vec);
+    th.mv_count = 1;
     return Value.nil;
 }
 

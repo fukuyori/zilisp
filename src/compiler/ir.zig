@@ -43,6 +43,8 @@ pub const Lambda = struct {
     fn_name: Value = Value.nil,
     /// 名前の付け方（印字用の名前：global は 名前、flet・labels は (FLET 名前)・(LABELS 名前)）
     fn_kind: FnKind = .none,
+    /// 最後の引数が、必須の引数の後ろの引数をまとめたリスト（&optional・&rest・&key・&aux があるとき。Phase 17）
+    rest_param: bool = false,
 
     pub const FnKind = enum { none, global, flet, labels, macro };
 
@@ -98,6 +100,14 @@ pub const Node = struct {
         let_: struct { vars: []*Var, inits: []*Node, body: *Node, depth_slot: u32 = no_slot },
         /// progv（Phase 14）：syms のシンボルを vals の値で動的に束縛して body を評価する
         progv: struct { syms: *Node, vals: *Node, body: *Node, depth_slot: u32 },
+        /// (values a ...)（Phase 17）
+        values: []*Node,
+        /// (multiple-value-list form)
+        mv_list: *Node,
+        /// (multiple-value-prog1 first rest...)
+        mv_prog1: struct { first: *Node, rest: []*Node },
+        /// (multiple-value-bind (vars...) form body...)。vars の束縛は let_ と同じ（特殊変数を含む）
+        mv_bind: struct { vars: []*Var, form: *Node, body: *Node, depth_slot: u32 = no_slot },
         lambda: *Lambda,
     };
 };

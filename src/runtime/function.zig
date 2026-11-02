@@ -45,6 +45,9 @@ pub const Code = extern struct {
     ncaptured: u32,
     /// 値スタックの最大の深さ（局所変数を除く）
     max_stack: u32,
+    /// 真なら、必須の引数（nparams 個）の後ろの引数をリストにまとめて、局所変数 nparams に置く（Phase 17）
+    rest: bool = false,
+    _pad: [7]u8 = @splat(0),
 
     pub fn code(c: *const Code) []const u8 {
         return c.bytecode[0..c.header.len];
@@ -122,6 +125,8 @@ pub fn codePtr(v: Value) *Code {
 pub fn nativeEntry(th: *Thread, self: Value, args: [*]const Value, nargs: u32) callconv(.c) Value {
     const n = nativePtr(self);
     if (nargs < n.min_args or nargs > n.max_args) return th.argCountError(self, nargs);
+    // 単値を返すのが普通なので、先に個数を 1 にしておく（多値を返すプリミティブは本体で書き直す：§6.2）
+    th.mv_count = 1;
     return n.implFn()(th, args[0..nargs]);
 }
 
@@ -147,6 +152,7 @@ pub const CodeSpec = struct {
     nlocals: u32,
     ncaptured: u32,
     max_stack: u32,
+    rest: bool = false,
 };
 
 /// Code を作る。spec.consts と spec.name は、呼び出し側が生かしておくこと（引数として生きている）
@@ -161,6 +167,7 @@ pub fn makeCode(rt: *Runtime, spec: CodeSpec) Error!Value {
         .nlocals = spec.nlocals,
         .ncaptured = spec.ncaptured,
         .max_stack = spec.max_stack,
+        .rest = spec.rest,
     };
     // バッファの確保は GC を起こさない（§3.2）。確保に失敗しても Code は空のまま回収される
     c.header.len = 0;

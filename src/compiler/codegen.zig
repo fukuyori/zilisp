@@ -224,43 +224,136 @@ const Gen = struct {
             },
             .let_ => |l| {
                 for (l.inits) |i| try g.gen(i);
-                const special = ir.hasSpecial(l.vars);
-                if (special) {
-                    // 束縛の前の深さを覚えておき、本体の後で戻す
-                    try g.op0(.binding_depth);
-                    try g.opIndex(.store_local, l.depth_slot);
-                    try g.op0(.pop);
-                }
-                var i = l.vars.len;
-                while (i > 0) : (i -= 1) {
-                    const v = l.vars[i - 1];
-                    if (v.special) {
-                        try g.opIndex(.bind_special, try g.constant(v.name));
-                        continue;
-                    }
-                    if (v.boxed()) try g.op0(.make_cell);
-                    try g.opIndex(.store_local, v.slot);
-                    try g.op0(.pop);
-                }
+                try g.bindVars(l.vars, l.depth_slot);
                 try g.gen(l.body);
-                if (special) {
-                    try g.opIndex(.load_local, l.depth_slot);
-                    try g.op0(.unbind_to);
-                }
+                try g.unbindVars(l.vars, l.depth_slot);
             },
             .progv => |p| {
-                try g.op0(.binding_depth);
-                try g.opIndex(.store_local, p.depth_slot);
-                try g.op0(.pop);
-                try g.gen(p.syms);
-                try g.gen(p.vals);
-                try g.op0(.progv_bind);
+                try g.progvEnter(p);
                 try g.gen(p.body);
                 try g.opIndex(.load_local, p.depth_slot);
                 try g.op0(.unbind_to);
             },
             .lambda => |child| try g.genLambda(child),
+            // 多値（Phase 17）。単値の位置では主値だけを使う
+            .values => |args| {
+                // 引数はすべて左から順に評価する。主値は最初の引数（なければ NIL）
+                if (args.len == 0) return g.op0(.nil);
+                try g.gen(args[0]);
+                for (args[1..]) |a| try g.genDiscard(a);
+            },
+            .mv_list => |f| {
+                try g.genMulti(f);
+                try g.op0(.mv_list);
+            },
+            .mv_prog1 => |p| {
+                try g.gen(p.first);
+                for (p.rest) |f| try g.genDiscard(f);
+            },
+            .mv_bind => |b| {
+                try g.mvBindEnter(b);
+                try g.gen(b.body);
+                try g.unbindVars(b.vars, b.depth_slot);
+            },
         }
+    }
+
+    /// 多値の位置の式：評価した後、主値をスタックに、全部の値を th.mv_count・th.mv に置く（§5.5 の multiple。§6.2）。
+    /// 関数の呼び出しは、呼んだ関数が個数を書くので、そのまま使う。単値の式なら個数を 1 にする
+    fn genMulti(g: *Gen, n: *Node) Error!void {
+        switch (n.kind) {
+            .call, .call_global => try g.gen(n),
+            .values => |args| {
+                for (args) |a| try g.gen(a);
+                try g.opCount(.values, @intCast(args.len));
+            },
+            .if_ => |f| {
+                try g.gen(f.cond);
+                const to_else = try g.jump(.jump_if_nil);
+                try g.genMulti(f.then);
+                const to_end = try g.jump(.jump);
+                g.adjust(-1);
+                g.patch(to_else);
+                try g.genMulti(f.else_);
+                g.patch(to_end);
+            },
+            .progn => |forms| {
+                for (forms[0 .. forms.len - 1]) |f| try g.genDiscard(f);
+                try g.genMulti(forms[forms.len - 1]);
+            },
+            .let_ => |l| {
+                for (l.inits) |i| try g.gen(i);
+                try g.bindVars(l.vars, l.depth_slot);
+                try g.genMulti(l.body);
+                try g.unbindVars(l.vars, l.depth_slot);
+            },
+            .progv => |p| {
+                try g.progvEnter(p);
+                try g.genMulti(p.body);
+                try g.opIndex(.load_local, p.depth_slot);
+                try g.op0(.unbind_to);
+            },
+            .mv_prog1 => |p| {
+                // 最初のフォームの全部の値をリストに退避し、残りを評価した後で戻す（§6.3）
+                try g.genMulti(p.first);
+                try g.op0(.mv_list);
+                for (p.rest) |f| try g.genDiscard(f);
+                try g.op0(.mv_restore);
+            },
+            .mv_bind => |b| {
+                try g.mvBindEnter(b);
+                try g.genMulti(b.body);
+                try g.unbindVars(b.vars, b.depth_slot);
+            },
+            else => {
+                try g.gen(n);
+                try g.op0(.single);
+            },
+        }
+    }
+
+    /// スタックの上の値（vars と同じ数）を、vars に束縛する（let・multiple-value-bind）
+    fn bindVars(g: *Gen, vars: []*Var, depth_slot: u32) Error!void {
+        if (ir.hasSpecial(vars)) {
+            // 束縛の前の深さを覚えておき、本体の後で戻す
+            try g.op0(.binding_depth);
+            try g.opIndex(.store_local, depth_slot);
+            try g.op0(.pop);
+        }
+        var i = vars.len;
+        while (i > 0) : (i -= 1) {
+            const v = vars[i - 1];
+            if (v.special) {
+                try g.opIndex(.bind_special, try g.constant(v.name));
+                continue;
+            }
+            if (v.boxed()) try g.op0(.make_cell);
+            try g.opIndex(.store_local, v.slot);
+            try g.op0(.pop);
+        }
+    }
+
+    fn unbindVars(g: *Gen, vars: []*Var, depth_slot: u32) Error!void {
+        if (ir.hasSpecial(vars)) {
+            try g.opIndex(.load_local, depth_slot);
+            try g.op0(.unbind_to);
+        }
+    }
+
+    fn progvEnter(g: *Gen, p: anytype) Error!void {
+        try g.op0(.binding_depth);
+        try g.opIndex(.store_local, p.depth_slot);
+        try g.op0(.pop);
+        try g.gen(p.syms);
+        try g.gen(p.vals);
+        try g.op0(.progv_bind);
+    }
+
+    /// multiple-value-bind：フォームの値を変数の数だけスタックに積み（足りない分は NIL）、束縛する
+    fn mvBindEnter(g: *Gen, b: anytype) Error!void {
+        try g.genMulti(b.form);
+        try g.opCount(.mv_push_n, @intCast(b.vars.len));
+        try g.bindVars(b.vars, b.depth_slot);
     }
 
     fn genLambda(g: *Gen, child: *Lambda) Error!void {
@@ -288,7 +381,8 @@ pub fn compileLambda(rt: *Runtime, gpa: std.mem.Allocator, pins: *Pins, l: *Lamb
             try g.op0(.pop);
         }
     }
-    try g.gen(l.body);
+    // 関数の本体の最後の式は多値の位置（値の個数を呼び出し側へ伝える：§6.2）
+    try g.genMulti(l.body);
     try g.op0(.@"return");
 
     const consts = if (g.consts.items.len == 0) Value.nil else try rt.makeVector(g.consts.items);
@@ -313,7 +407,8 @@ pub fn compileLambda(rt: *Runtime, gpa: std.mem.Allocator, pins: *Pins, l: *Lamb
         .bytecode = g.buf.items,
         .consts = consts,
         .name = name,
-        .nparams = @intCast(l.params.len),
+        .nparams = @intCast(l.params.len - @intFromBool(l.rest_param)),
+        .rest = l.rest_param,
         .nlocals = l.nlocals,
         .ncaptured = @intCast(l.captures.items.len),
         .max_stack = @intCast(g.max_depth),

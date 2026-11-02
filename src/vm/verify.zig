@@ -125,7 +125,8 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
             const pops: i64 = switch (insn.op) {
                 .call => insn.count + 1,
                 .call_global, .make_closure => insn.count,
-                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special => 1,
+                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special, .mv_list, .mv_push_n, .mv_restore => 1,
+                .values => insn.count,
                 .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind => 2,
                 else => 0,
             };

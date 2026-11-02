@@ -94,6 +94,40 @@ pub inline fn callGlobal(th: *Thread, sym: Value, args: []const Value) Value {
 }
 
 // ---------------------------------------------------------------------------
+// 多値と &rest（Phase 17）
+
+/// args[from..nargs] をリストにする（必須の引数の後ろの引数）
+pub fn restList(th: *Thread, args: [*]const Value, from: usize, nargs: u32) Value {
+    var list = Value.nil;
+    var i: usize = nargs;
+    while (i > from) : (i -= 1) list = th.rt.cons(args[i - 1], list) catch return th.outOfMemory();
+    return list;
+}
+
+/// (values a ...)：主値を返し、残りを多値レジスタに置く
+pub fn values(th: *Thread, args: []const Value) Value {
+    if (args.len >= thread_mod.mv_limit) return th.signal(.program_error, "値が多すぎます（multiple-values-limit を超えています）", Value.unbound, Value.unbound);
+    th.mv_count = @intCast(args.len);
+    if (args.len == 0) return Value.nil;
+    for (args[1..], 1..) |v, i| th.mv[i] = v;
+    return args[0];
+}
+
+/// 今の多値の i 番目（0 が主値）。なければ NIL
+pub inline fn mvValue(th: *Thread, primary: Value, i: usize) Value {
+    if (i >= th.mv_count) return Value.nil;
+    return if (i == 0) primary else th.mv[i];
+}
+
+pub fn mvList(th: *Thread, primary: Value) Value {
+    return th.valuesToList(primary) catch th.outOfMemory();
+}
+
+pub inline fn mvRestore(th: *Thread, list: Value) Value {
+    return th.listToValues(list);
+}
+
+// ---------------------------------------------------------------------------
 // 動的束縛（§6.5）
 
 pub inline fn bindingDepth(th: *Thread) usize {

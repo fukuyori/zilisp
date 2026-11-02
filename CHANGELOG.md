@@ -12,6 +12,9 @@ LOOP・DOLIST・FORMAT・DEFSTRUCT・CLOS・condition などは未実装（`comp
 - リリース用のスクリプト：`scripts/build-installer.ps1`（Inno Setup による Windows 用インストーラーと、ターゲットごとの ZIP。
   `-Sign` で、環境変数 `CODESIGN_CERT` の証明書により `zilisp.exe`・アンインストーラー・インストーラーに署名する）、
   `installer/zilisp.iss`（利用者ごとのインストール、PATH への追加の選択）
+- GitHub Actions：push・pull request ごとに Linux・macOS・Windows で試験（`.github/workflows/test.yml`）。
+  タグ `v<バージョン>` の push で、試験の後に x86_64・aarch64 の Linux（musl）・macOS と x86_64 の Windows をビルドし、
+  GitHub のリリースを登録する（`.github/workflows/release.yml`。署名なし。SHA256SUMS.txt を添付）
 - 企画・基本設計書（v0.3）と詳細設計書（v0.2）
 - MIT ライセンス
 - Phase 01：`build.zig` / `build.zig.zon`（Zig 0.17.0）、CLI の骨組み（`--version` / `--help`）、
@@ -151,3 +154,7 @@ LOOP・DOLIST・FORMAT・DEFSTRUCT・CLOS・condition などは未実装（`comp
   内容を上書きした（内容と呼び出しの履歴を退避する）、検証器が制御スタックの不正な操作を受け付けた（エントリの並びを
   位置ごとに検査する。実行時にも確かめる）。方式2の試作：浮動小数の制御の状態を保存していなかった、方式1の比較で
   タグの探索の結果を使っていなかった（直して再計測。分かれ目は約12段ではなく約25段）
+- Linux・macOS で単体テストが panic した（GC の保守的走査のスタックの先頭を、Linux は /proc/self/maps、macOS は
+  pthread_get_stackaddr_np から得る）。Linux の Debug ビルドで、ヒープのチャンクが 0 で埋まっていなかった
+  （`Allocator.alignedAlloc` が未定義の印で埋めるので、`rawAlloc` で OS の領域をそのまま使う）。
+  方式2の試作は、大域のアセンブリを出力しない Zig 自前のコード生成器では対象にしない

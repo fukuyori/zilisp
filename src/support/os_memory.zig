@@ -6,7 +6,7 @@
 //! （lib/std/heap/PageAllocator.zig 66〜107 行目。docs/zig-std-usage.md に記録）。
 //! そこで Windows では、大きめの範囲を予約（RESERVE）だけしておき、その中のそろった部分だけを確定する。
 //! 予約しただけの範囲はアドレス空間を使うだけで、メモリは消費しない。
-//! Windows 以外では page_allocator を使う（mmap で多めに取り、余りを返す方式）。
+//! Windows 以外では page_allocator を使う（mmap で多めに取り、余りを返す方式）。領域は OS が 0 で埋めたもの。
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -43,8 +43,10 @@ pub fn allocAligned(size: usize, comptime alignment: usize) error{OutOfMemory}!R
         const p: [*]u8 = @ptrFromInt(aligned);
         return .{ .mem = p[0..size], .reserve_base = @intFromPtr(reserve_base) };
     }
-    const mem = try std.heap.page_allocator.alignedAlloc(u8, .fromByteUnits(alignment), size);
-    return .{ .mem = mem, .reserve_base = 0 };
+    // alignedAlloc は Debug ビルドで領域を未定義の印（0xAA）で埋めるので、OS が 0 で埋めた領域をそのまま使えるよう
+    // rawAlloc で直接取る（Linux の試験で確認：CI を加えたとき）
+    const p = std.heap.page_allocator.rawAlloc(size, .fromByteUnits(alignment), @returnAddress()) orelse return error.OutOfMemory;
+    return .{ .mem = p[0..size], .reserve_base = 0 };
 }
 
 pub fn free(r: Region, comptime alignment: usize) void {
@@ -55,8 +57,7 @@ pub fn free(r: Region, comptime alignment: usize) void {
         _ = windows.ntdll.NtFreeVirtualMemory(windows.GetCurrentProcess(), @ptrCast(&b), &s, .{ .RELEASE = true });
         return;
     }
-    const p: [*]align(alignment) u8 = @alignCast(r.mem.ptr);
-    std.heap.page_allocator.free(p[0..r.mem.len]);
+    std.heap.page_allocator.rawFree(r.mem, .fromByteUnits(alignment), @returnAddress());
 }
 
 test "aligned regions are aligned, writable and zeroed" {

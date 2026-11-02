@@ -24,7 +24,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const UNWIND: u64 = 0x2F; // Value.unwind に相当する値
-const supported = builtin.cpu.arch == .x86_64;
+// 大域のアセンブリは、Zig 自前のコード生成器（x86_64-linux の Debug など）では出力されない（関数が未定義になる）ので、
+// LLVM でコンパイルするときだけ方式2を対象にする
+const supported = builtin.cpu.arch == .x86_64 and builtin.zig_backend == .stage2_llvm;
 const windows = builtin.os.tag == .windows;
 
 // ---------------------------------------------------------------------------
@@ -128,6 +130,20 @@ const asm_windows =
     \\movq %rdx, %rax
     \\addq $40, %rsp
     \\retq
+    \\.globl zl_get_mxcsr
+    \\zl_get_mxcsr:
+    \\subq $8, %rsp
+    \\stmxcsr (%rsp)
+    \\movl (%rsp), %eax
+    \\addq $8, %rsp
+    \\retq
+    \\.globl zl_set_mxcsr
+    \\zl_set_mxcsr:
+    \\subq $8, %rsp
+    \\movl %ecx, (%rsp)
+    \\ldmxcsr (%rsp)
+    \\addq $8, %rsp
+    \\retq
     \\
 ;
 
@@ -164,6 +180,16 @@ const asm_sysv =
     \\movq 64(%rdi), %rsp
     \\movq %rsi, %rax
     \\addq $8, %rsp
+    \\retq
+    \\.globl zl_get_mxcsr
+    \\zl_get_mxcsr:
+    \\stmxcsr -4(%rsp)
+    \\movl -4(%rsp), %eax
+    \\retq
+    \\.globl zl_set_mxcsr
+    \\zl_set_mxcsr:
+    \\movl %edi, -4(%rsp)
+    \\ldmxcsr -4(%rsp)
     \\retq
     \\
 ;
@@ -285,24 +311,16 @@ pub const deep_benchmarks = .{
     .{ "nonlocal/m2-exit-1000", bench(2, 1000, true) },
 };
 
+// MXCSR の読み書き（試験用）。インラインアセンブリのメモリのオペランドは、Zig 自前の x86_64 用コード生成器
+// （x86_64-linux の Debug）で使えないため、大域のアセンブリに書く（System V はレッドゾーンを使う）
+extern fn zl_get_mxcsr() callconv(.c) u32;
+extern fn zl_set_mxcsr(v: u32) callconv(.c) void;
+
 /// 丸めの方向を変えてから脱出する本体（zl_jump_to が MXCSR を戻すことの試験）
 fn changeRoundingAndJump(arg: u64) callconv(.c) u64 {
     _ = arg;
-    var m = readMxcsr() | 0x6000; // 0 への丸め
-    asm volatile ("ldmxcsr (%[p])"
-        :
-        : [p] "r" (&m),
-        : .{ .memory = true });
+    zl_set_mxcsr(zl_get_mxcsr() | 0x6000); // 0 への丸め
     zl_jump_to(control[findTag()].ctx.?, 9);
-}
-
-fn readMxcsr() u32 {
-    var m: u32 = 0;
-    asm volatile ("stmxcsr (%[p])"
-        :
-        : [p] "r" (&m),
-        : .{ .memory = true });
-    return m;
 }
 
 test "method 2 prototype returns normally and by jumping" {
@@ -319,10 +337,10 @@ test "method 2 prototype returns normally and by jumping" {
     try std.testing.expectEqual(@as(u64, 7), m1Catch(10));
     try std.testing.expectEqual(@as(usize, 0), control_depth);
     // 本体が変えた浮動小数の制御の状態は、脱出で元に戻る（Codex のレビュー P18 #6）
-    const before = readMxcsr();
+    const before = zl_get_mxcsr();
     var ctx: Ctx = .{};
     pushEntry(1, &ctx);
     try std.testing.expectEqual(@as(u64, 9), zl_catch_call(&ctx, &changeRoundingAndJump, 0));
     control_depth = 0;
-    try std.testing.expectEqual(before, readMxcsr());
+    try std.testing.expectEqual(before, zl_get_mxcsr());
 }

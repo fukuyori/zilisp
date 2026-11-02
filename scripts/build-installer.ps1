@@ -12,7 +12,8 @@
 
   署名に使う証明書は、環境変数 CODESIGN_CERT（証明書のサブジェクト名。現在の利用者の証明書ストアから
   signtool の /n で選ぶ）で指定する。-Sign を指定して CODESIGN_CERT が未設定なら、エラーで停止する。
-  配布物は利用者が -Sign を付けて作成する（Claude は配布物を作成しない）。
+  署名付きの配布物は利用者が -Sign を付けて作成する（Claude は配布物を作成しない）。
+  GitHub Actions のリリース（.github/workflows/release.yml）は、-Sign なしで実行して署名のない配布物を登録する。
 
 .PARAMETER Sign
   実行ファイル・アンインストーラー・インストーラーに電子署名を付ける。

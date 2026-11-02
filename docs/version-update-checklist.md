@@ -16,8 +16,11 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 リリースの手順（タグ・配布物）
 1. 上の表のファイルを更新し、`CHANGELOG.md` の `Unreleased` の内容を新しいバージョンの見出しに移す。
 2. 試験（`zig build test`、`lang-test`、`native-test`）を実行してコミットする。
-3. 利用者が `scripts/build-installer.ps1 -Sign` で配布物（`dist/release/`：インストーラーと ZIP）を作成する（Claude は作成しない）。
-4. タグ（`v<バージョン>`）を作って push し、GitHub のリリースに配布物を添付する。
+3. タグ（`v<バージョン>`）を作って push する。GitHub Actions（`.github/workflows/release.yml`）が、タグと
+   `build.zig.zon`・`src/version.zig`・`CHANGELOG.md` の見出しの一致を確かめ、3つの OS で試験してから、各ターゲットを
+   ビルドしてリリースを登録する（配布物は署名なし。リリースノートは `CHANGELOG.md` の該当バージョンの節）。
+4. 署名付きの Windows の配布物が必要なときは、利用者が `scripts/build-installer.ps1 -Sign` で作成し（Claude は作成しない）、
+   リリースの同じ名前のファイルを差し替える（`gh release upload v<バージョン> <ファイル> --clobber`。SHA256SUMS.txt も作り直す）。
 
 ## 2. 内部形式を変更したとき（該当する場合のみ）
 

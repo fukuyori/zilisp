@@ -1,0 +1,145 @@
+# リリース：タグ v<バージョン> の push で、試験 → 各 OS 向けのビルド → GitHub のリリースの登録を行う。
+# 配布物には電子署名を付けない（Windows の実行ファイル・インストーラー、macOS の実行ファイルとも。詳細設計 §18.4）
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: tag と build.zig.zon・src/version.zig のバージョンが一致すること
+        run: |
+          zon=$(sed -n 's/^[[:space:]]*\.version = "\(.*\)",.*/\1/p' build.zig.zon)
+          src=$(sed -n 's/^pub const version = "\(.*\)";.*/\1/p' src/version.zig)
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag=$tag build.zig.zon=$zon src/version.zig=$src"
+          if [ "$zon" != "$tag" ] || [ "$src" != "$tag" ]; then
+            echo "::error::タグ（$tag）と build.zig.zon（$zon）・src/version.zig（$src）のバージョンが一致しません"
+            exit 1
+          fi
+          if ! grep -q "^## $tag " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md に「## $tag」の見出しがありません"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: version
+    uses: ./.github/workflows/test.yml
+
+  build-unix:
+    name: build (${{ matrix.name }})
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-linux-musl, name: x86_64-linux, smoke: true }
+          - { os: ubuntu-latest, target: aarch64-linux-musl, name: aarch64-linux, smoke: false }
+          - { os: macos-latest, target: aarch64-macos, name: aarch64-macos, smoke: true }
+          - { os: macos-latest, target: x86_64-macos, name: x86_64-macos, smoke: false }
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: build
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast --prefix out
+      - name: smoke test
+        if: matrix.smoke
+        run: |
+          out/bin/zilisp --version
+          out/bin/zilisp --script tests/language/eval/exits.lisp > smoke.out
+          diff smoke.out tests/language/eval/exits.expected
+      - name: package
+        run: |
+          dir="zilisp-$VERSION-${{ matrix.name }}"
+          mkdir -p "pkg/$dir/bin"
+          cp out/bin/zilisp "pkg/$dir/bin/"
+          cp LICENSE CHANGELOG.md "pkg/$dir/"
+          tar -C pkg -czf "$dir.tar.gz" "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.name }}
+          path: zilisp-*.tar.gz
+
+  build-windows:
+    name: build (x86_64-windows)
+    needs: [version, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+      - name: build (installer and ZIP, unsigned)
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Targets x86_64-windows
+      - name: smoke test
+        shell: pwsh
+        run: |
+          ./dist/x86_64-windows/bin/zilisp.exe --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-x86_64-windows
+          path: |
+            dist/release/*.exe
+            dist/release/*.zip
+
+  release:
+    name: publish release
+    needs: [version, build-unix, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: assets
+          merge-multiple: true
+      - name: checksums
+        run: |
+          cd assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: release notes（CHANGELOG.md の該当バージョンの節）
+        run: |
+          awk -v h="## $VERSION " '
+            index($0, h) == 1 { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "---"
+            echo "配布物には電子署名を付けていません。Windows では SmartScreen の警告が、macOS では Gatekeeper の警告が出ることがあります。"
+            echo "各ファイルの SHA-256 は SHA256SUMS.txt にあります。"
+          } >> notes.md
+      - name: publish
+        run: gh release create "$GITHUB_REF_NAME" assets/* --title "Zilisp $VERSION" --notes-file notes.md --verify-tag

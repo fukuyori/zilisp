@@ -61,6 +61,9 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | 書き捨ての Writer | `std.Io.Writer.discarding` はない。`.fixed(&buf)` を使う（あふれると `error.WriteFailed`） | Phase 08 のベンチマーク |
 | naked の関数（`callconv(.naked)`） | 本体がアセンブリだけの関数は `noreturn` と宣言する。その関数を別の型の関数ポインタに `@ptrCast` して呼ぶと、ReleaseSafe・ReleaseFast の最適化が呼び出し先の `noreturn` を見て「戻らない呼び出し」とみなし、後ろのコードを消す（実行すると落ちる。Debug では起きない）。代わりに、モジュールの大域のアセンブリ（`comptime { asm (…); }`。レジスタは `%rbx` のように `%` 1つ）に関数を書き、`extern fn 名前(…) callconv(.c) …;` と宣言して直接呼ぶ（`tests/bench/nonlocal.zig`。x86_64-windows の Debug・ReleaseSafe・ReleaseFast で確認）。x86_64-linux の Debug（Zig 自前のコード生成器）で大域のアセンブリが使えるかは未確認 | §6.4（Phase 18 の方式2の試作） |
 | インラインアセンブリのメモリのオペランド | 出力 `[m] "=m" (m)` で `stmxcsr %[m]` と書くと、x86_64-windows の Debug で実行時にアクセス違反になった。ポインタをレジスタで渡す `stmxcsr (%[p])` と `[p] "r" (&m)`、clobber `.{ .memory = true }` にすると正しく動く | Phase 18 |
+| `Allocator.alignedAlloc` の中身 | Debug ビルドでは、確保した領域を未定義の印（0xAA）で埋める（`page_allocator` でも）。OS が 0 で埋めた領域をそのまま使いたいときは `allocator.rawAlloc(len, alignment, @returnAddress())`・`rawFree` を使う（Linux の試験で発見） | §3.1 |
+| 大域のアセンブリ（`comptime { asm (…); }`） | Zig 自前のコード生成器（x86_64-linux の Debug）では出力されず、そこで定義した関数が未定義のシンボルになる。LLVM（Windows の全モード、Linux の ReleaseFast）では使える。`builtin.zig_backend == .stage2_llvm` で分ける | Phase 18 |
+| Linux のスタックの範囲 | libc なしでは pthread の関数を使えないので、`std.os.linux.open`・`read` で `/proc/self/maps` を読み、今のフレームを含む行の終わりをスタックの先頭とする（メインスレッド）。macOS は libSystem の `pthread_get_stackaddr_np` | §3.4 |
 | `if (true) break :label 値;` | ラベル付きブロックの途中に書くと、後ろの文があってもコンパイルできる（「到達しないコード」のエラーにならない）。ネイティブバックエンドの return-from で使う | §6.4（Phase 18） |
 | enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
 

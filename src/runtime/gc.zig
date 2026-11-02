@@ -115,12 +115,74 @@ fn markValueCb(m: *Marker, v: Value) void {
     m.markValue(v);
 }
 
-/// スタックの先頭（最も高いアドレス）
+/// スタックの先頭（最も高いアドレス）。
+/// Windows はスレッド情報のブロック、Linux は /proc/self/maps の [stack]、macOS は pthread_get_stackaddr_np から得る
+/// （1.0 は単一スレッドで、メインスレッドで動く。§6.1）。main が記録した位置は、それができない OS のための予備
 fn stackTop(rt: *Runtime) usize {
     if (rt.stack_top != 0) return rt.stack_top;
-    if (builtin.os.tag == .windows) return @intFromPtr(std.os.windows.teb().NtTib.StackBase);
+    switch (builtin.os.tag) {
+        .windows => return @intFromPtr(std.os.windows.teb().NtTib.StackBase),
+        .linux => if (linuxStackTop()) |top| return top,
+        .macos => return @intFromPtr(pthread_get_stackaddr_np(std.c.pthread_self())),
+        else => {},
+    }
     if (@import("runtime.zig").main_stack_top != 0) return @import("runtime.zig").main_stack_top;
     @panic("zilisp: スタックの先頭が分かりません（Runtime.stack_top を設定してください）");
+}
+
+extern "c" fn pthread_get_stackaddr_np(thread: std.c.pthread_t) *anyopaque;
+
+/// Linux のメインスレッドのスタックの先頭（一度読んだら覚えておく。スタックの領域は動かない）
+var linux_stack_top: usize = 0;
+
+fn linuxStackTop() ?usize {
+    if (linux_stack_top != 0) return linux_stack_top;
+    const linux = std.os.linux;
+    const rc = linux.open("/proc/self/maps", .{ .ACCMODE = .RDONLY }, 0);
+    if (linux.errno(rc) != .SUCCESS) return null;
+    const fd: linux.fd_t = @intCast(rc);
+    defer _ = linux.close(fd);
+    // 1行ずつ調べる。行は "開始-終了 権限 ... [stack]"
+    var buf: [8192]u8 = undefined;
+    var len: usize = 0;
+    const here = @frameAddress();
+    while (true) {
+        const n = linux.read(fd, buf[len..].ptr, buf.len - len);
+        if (linux.errno(n) != .SUCCESS) return null;
+        len += n;
+        var start: usize = 0;
+        while (std.mem.indexOfScalarPos(u8, buf[0..len], start, '\n')) |nl| : (start = nl + 1) {
+            if (parseStackLine(buf[start..nl], here)) |top| {
+                linux_stack_top = top;
+                return top;
+            }
+        }
+        if (n == 0) return null;
+        // 残りの途中の行を先頭に寄せる（1行がバッファより長ければ捨てる）
+        if (start == 0 and len == buf.len) {
+            len = 0;
+        } else {
+            std.mem.copyForwards(u8, buf[0 .. len - start], buf[start..len]);
+            len -= start;
+        }
+    }
+}
+
+/// /proc/self/maps の1行が、今のフレームを含む領域なら、その終わりを返す。
+/// [stack] の行だけを見るのではなく、今のフレームのアドレスを含む行を選ぶ（[stack] の名前がない環境にも対応する）
+fn parseStackLine(line: []const u8, here: usize) ?usize {
+    const dash = std.mem.indexOfScalar(u8, line, '-') orelse return null;
+    const space = std.mem.indexOfScalarPos(u8, line, dash, ' ') orelse return null;
+    const lo = std.fmt.parseInt(usize, line[0..dash], 16) catch return null;
+    const hi = std.fmt.parseInt(usize, line[dash + 1 .. space], 16) catch return null;
+    if (here >= lo and here < hi) return hi;
+    return null;
+}
+
+test "parseStackLine picks the region that contains the frame" {
+    try std.testing.expectEqual(@as(?usize, 0x7ffd0000), parseStackLine("7ffc0000-7ffd0000 rw-p 00000000 00:00 0 [stack]", 0x7ffc1234));
+    try std.testing.expectEqual(@as(?usize, null), parseStackLine("7ffc0000-7ffd0000 rw-p 00000000 00:00 0 [stack]", 0x1000));
+    try std.testing.expectEqual(@as(?usize, null), parseStackLine("garbage", 0x1000));
 }
 
 /// 退避させるレジスタの数（64 ビットの語の数）。

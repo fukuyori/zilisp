@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記18） | 2026-11-02 | 0.2.0 のリリースの準備：インストーラーのスクリプト（§18.1・§18.2）、GitHub Actions による試験とリリース（§18.4）、Linux・macOS のスタックの先頭（§3.4） |
 | 0.2（追記17） | 2026-11-02 | Codex・agy のレビュー（Phase 18）を反映：暗黙の block は本体だけを囲む（defmacro のコンパイル時の定義にも付ける）、処理途中の脱出のスタックの大きさの不変条件、cleanup の間のエラーの内容の退避、検証器による制御スタックの検査、方式2の試作の修正（浮動小数の制御の状態の保存、直接呼び出し）と再計測（§6.4・§7.4） |
 | 0.2（追記16） | 2026-11-02 | Phase 18：block・return-from・catch・throw・unwind-protect の実装（制御スタック、Transfer、cleanup の中の脱出、VM の再開、ネイティブのラベル付きブロック）、defun・flet・labels・defmacro の暗黙の block、非局所脱出の方式2の試作と計測（方式1を継続。§6.4・§7.4） |
 | 0.2（追記15） | 2026-11-02 | Phase 17：多値の実装（ValueMode、VM の命令、関数の本体の多値の位置、REPL の印字）と、&optional・&rest・&key・&aux の実装（§5.5・§6.2・§6.3） |
@@ -1393,6 +1394,18 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 ### 18.3 バージョン更新のチェックリスト
 
 `docs/version-update-checklist.md` に、バージョンを変更するときに更新するファイルを列挙する（`build.zig.zon` の `version`、`src/version.zig`、`installer/zilisp.iss` の `AppVersion`、`CHANGELOG.md`、`.zfasl` の `format_version`（IR・バイトコードを変更した場合のみ）等）。Phase 01 で作成する。
+
+
+### 18.4 GitHub Actions（0.2.0 で追加）
+
+| ワークフロー | 起動 | 内容 |
+|---|---|---|
+| `.github/workflows/test.yml` | `main` への push、pull request、`release.yml` からの呼び出し | Linux・macOS（arm64）・Windows で `zig fmt --check`、`zig build test`、`lang-test`、`native-test` |
+| `.github/workflows/release.yml` | タグ `v*` の push | ①タグと `build.zig.zon`・`src/version.zig` のバージョン、`CHANGELOG.md` の見出しの一致を確かめる ②試験（`test.yml`） ③ビルド：x86_64・aarch64 の Linux（musl）と macOS は ReleaseFast で `.tar.gz`（`bin/zilisp`・`LICENSE`・`CHANGELOG.md`）、x86_64 の Windows は `scripts/build-installer.ps1`（署名なし）でインストーラーと ZIP。実行できるもの（x86_64 Linux、aarch64 macOS、Windows）は `--version` と言語試験の1つで確かめる ④`SHA256SUMS.txt` を作り、`CHANGELOG.md` の該当バージョンの節をリリースノートにして、GitHub のリリースを登録する |
+
+- Zig は `mlugg/setup-zig@v2` で 0.17.0 を入れる。
+- **CI の配布物には署名を付けない**（2026-11-02 決定：証明書は開発機の証明書ストアにあり、CI では使わない）。リリースノートに、署名がないこと（SmartScreen・Gatekeeper の警告）を書く。署名付きの Windows の配布物は、利用者が `-Sign` で作り、リリースのファイルを差し替える（`docs/version-update-checklist.md`）。§18.2 の「配布物は利用者が `-Sign` を付けて作る」は、署名付きの配布物についての規則とする。
+- 未確認：ワークフローの動作は、最初のタグの push（または `main` への push）で確かめる。
 
 ---
 

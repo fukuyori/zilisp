@@ -1,0 +1,33 @@
+# 試験（Linux・macOS・Windows）。push・pull request のたびに実行し、release.yml からも呼ぶ
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: zig fmt --check
+        run: zig fmt --check src tools tests build.zig
+      - name: unit tests
+        run: zig build test --summary all
+      - name: language tests (VM)
+        run: zig build lang-test
+      - name: native backend tests
+        run: zig build native-test

@@ -353,3 +353,121 @@ test "many constants and locals use WIDE operands" {
     try buf.writer.writeAll("))))");
     try expectValue(&e, buf.written(), "101000");
 }
+
+test "native call chains without the VM (apply of apply) stop at the depth limit" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // Codex のレビューの例：(apply 'apply (list 'apply ...)) の連鎖は VM を挟まない
+    try expectError(&e,
+        \\(setq f (lambda (n args) (if (= n 0) (apply 'apply args) (funcall f (1- n) (list 'apply args)))))
+        \\(funcall f 1100 (list '+ '(1 2)))
+    , .storage_condition);
+    try testing.expectEqual(@as(u32, 0), e.th.native_depth);
+    // 上限より浅ければ動く
+    try expectValue(&e, "(funcall f 100 (list '+ '(1 2)))", "3");
+}
+
+test "documentation strings and declarations in bodies (CLHS 3.4.11)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // 期待値は SBCL 2.6.7 の結果
+    try expectValue(&e, "((lambda () \"doc\" 42))", "42");
+    try expectValue(&e, "((lambda () (declare) \"doc\" 42))", "42");
+    try expectValue(&e, "((lambda () \"doc\" (declare) 42))", "42");
+    try expectValue(&e, "((lambda () \"a\" \"b\"))", "\"b\"");
+    try expectValue(&e, "((lambda () \"a\"))", "\"a\"");
+    // 2 つ目の文字列は本体のフォームなので、その後の declare は宣言の位置ではない
+    try expectError(&e, "((lambda () \"doc\" \"body\" (declare (ignore x)) 42))", .program_error);
+    // let の本体には説明文字列を書けない
+    try expectError(&e, "(let () \"s\" (declare) 1)", .program_error);
+}
+
+/// フォームをコンパイルし、トップレベルの関数のバイトコードに命令 op があるか
+fn compiledHas(e: *Env, text: []const u8, op: @import("../vm/opcodes.zig").Op) !bool {
+    var src = reader.Source.init(text, 0);
+    var b: vb.ValueBuilder = .{ .rt = e.rt };
+    var r = reader.Reader(vb.ValueBuilder).init(testing.allocator, &src, &b, .{});
+    defer r.deinit();
+    const form = (try r.read()).?;
+    const closure = eval_mod.compile(e.th, form);
+    try testing.expect(closure != Value.unwind);
+    const function = @import("../runtime/function.zig");
+    const code = function.closurePtr(closure).codePtr();
+    // 命令の境界をたどって調べる
+    const ops = @import("../vm/opcodes.zig");
+    const bc = code.code();
+    var at: usize = 0;
+    var wide = false;
+    while (at < bc.len) {
+        const o: ops.Op = @fromBackingInt(bc[at]);
+        if (o == op) return true;
+        at += ops.length(o, wide);
+        wide = o == .wide;
+    }
+    return false;
+}
+
+test "notinline declarations disable the fast path instructions (§5.3)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    try testing.expect(try compiledHas(&e, "(let ((x '(1))) (car x))", .car));
+    try testing.expect(!try compiledHas(&e, "(let ((x '(1))) (declare (notinline car)) (car x))", .car));
+    try testing.expect(try compiledHas(&e, "(let ((x '(1))) (declare (notinline car)) (car x))", .call_global));
+    // 内側で inline と宣言し直すと、高速経路に戻る
+    try testing.expect(try compiledHas(&e, "(let () (declare (notinline car)) (let () (declare (inline car)) (car '(1))))", .car));
+    // funcall の notinline は、関数 FUNCALL を呼ぶ
+    try testing.expect(!try compiledHas(&e, "(let () (declare (notinline funcall)) (funcall #'car '(1)))", .call));
+    // 意味は同じ
+    try expectValue(&e, "(let ((x '(1))) (declare (notinline car + funcall)) (funcall #'list (car x) (+ 1 2)))", "(1 3)");
+}
+
+/// 100 個の cons のリストを作って値スタックの枠 slot に置き、先頭のアドレスを反転して返す
+/// （このアドレスを保守的な走査が見つけないよう、反転して持つ。gc.zig の試験と同じ方法）
+noinline fn putListInVmSlot(th: *Thread, slot: usize) !usize {
+    var list = Value.nil;
+    for (0..100) |i| list = try th.rt.cons(Value.fromFixnum(@intCast(i)), list);
+    th.vm.stack[slot] = list;
+    return ~@intFromPtr(list.pointer());
+}
+
+noinline fn presentHidden(rt: *Runtime, hidden: usize) bool {
+    return rt.heap.findObject(~hidden) != null;
+}
+
+noinline fn clobberStack() void {
+    var buf: [16 * 1024]u8 = undefined;
+    @memset(&buf, 0);
+    std.mem.doNotOptimizeAway(&buf);
+}
+
+fn vmSlotBody(rt: *Runtime) !void {
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    const th = try Thread.create(rt, &out.writer, .{ .stack_size = 64, .frame_count = 4 });
+    defer th.destroy();
+    // sp より上の枠（使い終わった枠）にある値はルートではない
+    th.vm.sp = 3;
+    const dead = try putListInVmSlot(th, 10);
+    clobberStack();
+    rt.collect();
+    rt.heap.finishSweep();
+    try testing.expect(!presentHidden(rt, dead));
+    // sp より下の枠にある値はルート
+    const live = try putListInVmSlot(th, 2);
+    clobberStack();
+    rt.collect();
+    rt.heap.finishSweep();
+    try testing.expect(presentHidden(rt, live));
+    th.vm.sp = 0;
+}
+
+test "values left in VM stack slots above sp are not GC roots" {
+    const rt = try Runtime.create(testing.allocator);
+    defer rt.destroy();
+    // 走査の上端はこの関数のフレーム。値を扱う本体は inline 展開しない別の関数（gc.zig の withRuntime と同じ）
+    rt.stack_top = @frameAddress();
+    try @call(.never_inline, vmSlotBody, .{rt});
+}

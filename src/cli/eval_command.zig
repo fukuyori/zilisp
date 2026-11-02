@@ -143,8 +143,10 @@ pub fn runEval(gpa: std.mem.Allocator, io: Io, options: Options, text: []const u
 
 pub const prompt = "* ";
 
-/// REPL。in から1行ずつ読み、フォームが揃うたびに評価して値を印字する。入力が終われば終わる
-pub fn repl(s: *Session, gpa: std.mem.Allocator, in: *Io.Reader, stdout: *Io.Writer, stderr: *Io.Writer) Io.Writer.Error!void {
+/// REPL。in から1行ずつ読み、フォームが揃うたびに評価して値を印字する。入力が終われば終わる。
+/// 評価のエラーは報告して続ける（終了コードには影響しない。SBCL の REPL と同じ）。
+/// フォームの途中で入力が終わった場合・入力を読めない場合・メモリが足りない場合は failed を返す
+pub fn repl(s: *Session, gpa: std.mem.Allocator, in: *Io.Reader, stdout: *Io.Writer, stderr: *Io.Writer) Io.Writer.Error!Result {
     var pending: std.ArrayList(u8) = .empty;
     defer pending.deinit(gpa);
     while (true) {
@@ -160,15 +162,23 @@ pub fn repl(s: *Session, gpa: std.mem.Allocator, in: *Io.Reader, stdout: *Io.Wri
                 continue;
             },
             error.ReadFailed => {
+                try stdout.flush();
                 try stderr.writeAll("zilisp: 入力を読めません\n");
-                return;
+                try stderr.flush();
+                return .failed;
             },
         } orelse {
             try stdout.writeByte('\n');
-            return;
+            if (std.mem.trim(u8, pending.items, " \t\r\n").len != 0) {
+                // フォームの途中で入力が終わった：END-OF-FILE として報告する
+                var consumed: usize = 0;
+                _ = try evalText(s, gpa, pending.items, "<repl>", false, &consumed, stdout, stderr);
+                return .failed;
+            }
+            return .ok;
         };
-        pending.appendSlice(gpa, line) catch return;
-        pending.append(gpa, '\n') catch return;
+        pending.appendSlice(gpa, line) catch return outOfMemory(stderr);
+        pending.append(gpa, '\n') catch return outOfMemory(stderr);
         var consumed: usize = 0;
         const result = try evalText(s, gpa, pending.items, "<repl>", true, &consumed, stdout, stderr);
         if (result == .incomplete) {
@@ -197,15 +207,22 @@ pub fn runRepl(gpa: std.mem.Allocator, io: Io, options: Options, load: ?[]const 
     }
     var buf: [64 * 1024]u8 = undefined;
     var fr: Io.File.Reader = .init(.stdin(), io, &buf);
-    try repl(&s, gpa, &fr.interface, stdout, stderr);
-    return .ok;
+    return repl(&s, gpa, &fr.interface, stdout, stderr);
+}
+
+fn outOfMemory(stderr: *Io.Writer) Io.Writer.Error!Result {
+    try stderr.writeAll("zilisp: メモリが足りません\n");
+    try stderr.flush();
+    return .failed;
 }
 
 // ---------------------------------------------------------------------------
 
 const testing = std.testing;
 
-fn replTranscript(input: []const u8) ![]u8 {
+const Transcript = struct { text: []u8, result: Result };
+
+fn replTranscript(input: []const u8) !Transcript {
     var out: Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
     var err: Io.Writer.Allocating = .init(testing.allocator);
@@ -213,15 +230,34 @@ fn replTranscript(input: []const u8) ![]u8 {
     var s = try Session.create(testing.allocator, null, .{}, &out.writer);
     defer s.destroy(&err.writer);
     var in: Io.Reader = .fixed(input);
-    try repl(&s, testing.allocator, &in, &out.writer, &err.writer);
+    const result = try repl(&s, testing.allocator, &in, &out.writer, &err.writer);
     try out.writer.writeAll("--\n");
     try out.writer.writeAll(err.written());
-    return out.toOwnedSlice();
+    return .{ .text = try out.toOwnedSlice(), .result = result };
+}
+
+test "repl reports END-OF-FILE when input ends inside a form" {
+    for ([_][]const u8{ "(+ 1\n", "(+ 1 2) (list\n", "\"abc\n", "#| comment\n", "'\n" }) |input| {
+        const t = try replTranscript(input);
+        defer testing.allocator.free(t.text);
+        testing.expectEqual(Result.failed, t.result) catch |e| {
+            std.debug.print("input: {s}\n", .{input});
+            return e;
+        };
+        try testing.expect(std.mem.indexOf(u8, t.text, "END-OF-FILE") != null);
+    }
+    // 空白とコメントだけで終わるのは正常
+    const t = try replTranscript("(+ 1 2)\n  ; comment\n");
+    defer testing.allocator.free(t.text);
+    try testing.expectEqual(Result.ok, t.result);
 }
 
 test "repl evaluates forms, waits for unfinished forms, and keeps going after errors" {
-    const got = try replTranscript("(+ 1 2)\n(list 1\n 2 3) 'a\nundefined-var\n(car 1)\n(setq x 5)\nx\n");
-    defer testing.allocator.free(got);
+    const t = try replTranscript("(+ 1 2)\n(list 1\n 2 3) 'a\nundefined-var\n(car 1)\n(setq x 5)\nx\n");
+    defer testing.allocator.free(t.text);
+    // 評価のエラーは終了コードに影響しない
+    try testing.expectEqual(Result.ok, t.result);
+    const got = t.text;
     try testing.expectEqualStrings(
         "* 3\n* (1 2 3)\nA\n* * * 5\n* 5\n* \n--\n" ++
             "<repl>:1:1: UNBOUND-VARIABLE: 変数 UNDEFINED-VAR に値がありません\n" ++

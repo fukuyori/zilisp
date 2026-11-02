@@ -713,7 +713,8 @@ pub const VmFrame = struct {
 
 **Phase 08 で実装した命令**（`src/vm/opcodes.zig`）：`CONST` `NIL` `T` `SMALLINT` `POP` `LOAD_LOCAL` `STORE_LOCAL` `LOAD_CAPTURED` `MAKE_CELL` `CELL_REF` `CELL_SET` `LOAD_SPECIAL` `STORE_SPECIAL` `LOAD_FUNCTION` `MAKE_CLOSURE` `CALL` `CALL_GLOBAL` `RETURN` `JUMP` `JUMP_IF_NIL`、高速経路の `CONS` `CAR` `CDR` `EQ` `NOT`（`null` と `not`）`ADD2` `SUB2` `LT2` `GT2` `LE2` `GE2` `NUMEQ2` `ADD1` `SUB1`、`WIDE`。
 - `STORE_LOCAL`・`STORE_SPECIAL` は、書いた値をスタックに残す（`setq` の値になる）。値が要らない場所では、続けて `POP` を出す。
-- 値スタックのフレームの形：`[base, base+nlocals)` が局所変数（引数が先頭から並ぶ）、その上の `max_stack` 個が式の評価に使う領域。フレームには `extent`（`base + nlocals + max_stack`）を記録し、GC は値スタックを `max(sp, 最上位のフレームの extent)` まで正確に走査する（実行ループは `sp` を局所変数に持つため）。値スタックは起動時に NIL で埋める。
+- 値スタックのフレームの形：`[base, base+nlocals)` が局所変数（引数が先頭から並ぶ）、その上の `max_stack` 個が式の評価に使う領域。GC は値スタックの `[0, sp)` を正確に走査する（使い終わった枠に残った値は走査しない。Codex のレビュー P08 #2）。実行ループは `sp` を局所変数に持つので、**確保（GC が起きうる処理）と VM 以外の関数の呼び出しの前に、必ず `Vm.sp` に書き戻す**。書き戻しの漏れは `--gc-stress` の試験で検出する。値スタックは起動時に NIL で埋める。
+- Zig の関数から関数を呼ぶ経路（`funcall`・`apply` など）は、すべて `Thread.call` を通る。入れ子の深さは、VM の closure なら `vm.run` で、それ以外のプリミティブなら `Thread.call` で数える（二重には数えない。上限 1000。`apply` から `apply` を呼ぶ連鎖のように VM を挟まない場合も止める。P08 #1）。
 - 捕捉のない `lambda` の closure は、コンパイル時に1つだけ作って定数表に置く（実行時に確保しない）。
 - **`(funcall f …)` は `CALL` 命令にする**（関数の値を直接呼ぶ）。VM の closure を呼ぶ場合は、同じ実行ループの中でフレームを積む。
 

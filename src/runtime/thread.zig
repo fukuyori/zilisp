@@ -17,7 +17,7 @@ const printer = @import("../printer/printer.zig");
 pub const mv_limit = 1024;
 /// call-arguments-limit（§6.7）。CLHS では「引数の個数の上限（この値を含まない）」なので、渡せるのは 65535 個まで
 pub const call_arguments_limit = 65536;
-/// Zig の関数を挟んだ VM の入れ子の深さの上限（ネイティブのスタックを溢れさせないため）
+/// Zig の関数（funcall・apply など）から関数を呼ぶ入れ子の深さの上限（ネイティブのスタックを溢れさせないため）
 pub const max_native_depth = 1000;
 
 /// 戻り値が Value.unwind のときの理由（§6.6）
@@ -83,7 +83,7 @@ pub const Thread = struct {
     vm: vm_mod.Vm,
     /// *standard-output*（Phase 23 でストリームにする）
     out: *std.Io.Writer,
-    /// VM の実行を Zig の関数を挟んで入れ子にしている深さ
+    /// Zig の関数から関数を呼んでいる入れ子の深さ（Thread.call で数える）
     native_depth: u32 = 0,
     /// 多値レジスタ（mv[0] は使わない。主値は戻り値）
     mv: [mv_limit]Value = @splat(Value.nil),
@@ -197,10 +197,19 @@ pub const Thread = struct {
     // 関数の呼び出し（funcall の意味。§6.2）
 
     /// 関数指定子（関数、またはシンボル）を呼ぶ。args は GC のルートとして走査される領域にあること
+    /// Zig の関数から関数を呼ぶ経路は、すべてここを通る。入れ子の深さ（native_depth）は、
+    /// VM の closure なら vm.run が、それ以外（プリミティブ）ならここで数える（二重には数えない）。
+    /// apply から apply を呼ぶ連鎖のように VM を挟まない場合も、深さの上限で止める
     pub fn call(th: *Thread, f: Value, args: []const Value) Value {
         const fv = th.resolveFunction(f);
         if (fv == Value.unwind) return fv;
-        return function.functionHeader(fv).entry(th, fv, args.ptr, @intCast(args.len));
+        const entry = function.functionHeader(fv).entry;
+        if (entry == &vm_mod.closureEntry) return entry(th, fv, args.ptr, @intCast(args.len));
+        if (th.native_depth >= max_native_depth)
+            return th.signal(.storage_condition, "呼び出しが深すぎます（Zig の関数を挟んだ呼び出しの入れ子が上限を超えました）", Value.unbound, Value.unbound);
+        th.native_depth += 1;
+        defer th.native_depth -= 1;
+        return entry(th, fv, args.ptr, @intCast(args.len));
     }
 
     /// 関数指定子を関数オブジェクトにする（シンボルなら大域の関数）

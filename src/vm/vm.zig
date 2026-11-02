@@ -6,11 +6,10 @@
 //! VM の closure から VM の closure を呼ぶときは、Zig の関数を挟まずに同じ実行ループの中でフレームを積む（§6.2）。
 //! プリミティブなど VM 以外の関数は、汎用の入口（§6.2）で呼ぶ。
 //!
-//! GC との関係（§3.3）：値スタックは正確に走査する。範囲は「今のフレームの領域の上端」と sp の大きい方まで。
-//! 実行ループは sp を局所変数に持つので、VM 以外の関数を呼ぶ前と確保の前に Vm.sp へ書き戻す
-//! （走査の範囲はフレームの領域の上端で決まるので、書き戻しは走査の正しさには必要ないが、
-//! 呼ばれた関数が Vm.reserve や入れ子の実行で sp より上を使うために必要）。
-//! 値スタックは起動時に NIL で埋めておく（使っていない枠も、以前に置いた正しい値か NIL だけを持つ）。
+//! GC との関係（§3.3）：値スタックは [0, Vm.sp) を正確に走査する（使い終わった枠に残った値は走査しない）。
+//! 実行ループは sp を局所変数に持つので、**確保（GC が起きうる処理）と VM 以外の関数の呼び出しの前に、
+//! 必ず Vm.sp へ書き戻す**。書き戻しを忘れると、まだ使っている値が回収される（--gc-stress の試験で検出する）。
+//! 値スタックは起動時に NIL で埋めておく。
 
 const std = @import("std");
 const Value = @import("../values/value.zig").Value;
@@ -30,8 +29,6 @@ pub const Frame = struct {
     base: u32,
     /// 戻るときの sp（呼び出した側の、関数と引数を取り除いた位置）
     ret_sp: u32,
-    /// このフレームが使う領域の上端（base + nlocals + max_stack）
-    extent: u32,
 };
 
 pub const Vm = struct {
@@ -53,14 +50,8 @@ pub const Vm = struct {
         gpa.free(vm.frames);
     }
 
-    /// GC が走査する値スタックの範囲の上端
-    fn scanLimit(vm: *const Vm) usize {
-        const top: usize = if (vm.fp > 0) vm.frames[vm.fp - 1].extent else 0;
-        return @max(vm.sp, top);
-    }
-
     pub fn forEachRoot(vm: *const Vm, ctx: anytype, comptime f: fn (@TypeOf(ctx), Value) void) void {
-        for (vm.stack[0..vm.scanLimit()]) |v| f(ctx, v);
+        for (vm.stack[0..vm.sp]) |v| f(ctx, v);
         for (vm.frames[0..vm.fp]) |fr| f(ctx, fr.closure);
     }
 
@@ -105,7 +96,7 @@ fn pushFrame(th: *Thread, closure: Value, base: usize, nargs: usize, ret_sp: usi
         return false;
     }
     @memset(vm.stack[base + nargs .. base + code.nlocals], Value.nil);
-    vm.frames[vm.fp] = .{ .closure = closure, .ip = 0, .base = @intCast(base), .ret_sp = @intCast(ret_sp), .extent = @intCast(extent) };
+    vm.frames[vm.fp] = .{ .closure = closure, .ip = 0, .base = @intCast(base), .ret_sp = @intCast(ret_sp) };
     vm.fp += 1;
     vm.sp = base + code.nlocals;
     return true;
@@ -114,6 +105,7 @@ fn pushFrame(th: *Thread, closure: Value, base: usize, nargs: usize, ret_sp: usi
 /// VM の closure を、Zig の関数から呼ぶ
 pub fn run(th: *Thread, closure: Value, args: []const Value) Value {
     const vm = &th.vm;
+    // Zig の関数から VM に入る入れ子の深さ（VM の closure 以外の呼び出しは Thread.call で数える）
     if (th.native_depth >= thread_mod.max_native_depth) return stackOverflow(th);
     th.native_depth += 1;
     defer th.native_depth -= 1;

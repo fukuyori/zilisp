@@ -86,6 +86,15 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         }
         at = insn.next;
     }
+    // ジャンプ先は、到達するかどうかに関係なく、すべて命令の先頭でなければならない
+    at = 0;
+    while (at < bc.len) {
+        const insn = try decode(bc, at);
+        if (insn.target) |t| {
+            if (!is_start[t]) return error.BadJumpTarget;
+        }
+        at = insn.next;
+    }
 
     // スタックの深さ（-1 は未到達）
     const depth = try gpa.alloc(i64, bc.len);
@@ -154,6 +163,9 @@ test "verifier accepts a simple function and rejects bad code" {
     try std.testing.expectError(error.StackUnderflow, verify(std.testing.allocator, &underflow, 0, 0, 0, 1));
     const bad_return = [_]u8{ @backingInt(Op.nil), @backingInt(Op.nil), @backingInt(Op.@"return") };
     try std.testing.expectError(error.BadReturnDepth, verify(std.testing.allocator, &bad_return, 0, 0, 0, 2));
+    // 到達しない命令のジャンプ先が命令の途中（NIL; RETURN; JUMP -4 はジャンプ自身のオペランドを指す）
+    const unreachable_jump = [_]u8{ @backingInt(Op.nil), @backingInt(Op.@"return"), @backingInt(Op.jump), 0xFC, 0xFF, 0xFF, 0xFF };
+    try std.testing.expectError(error.BadJumpTarget, verify(std.testing.allocator, &unreachable_jump, 0, 0, 0, 1));
     const falls = [_]u8{@backingInt(Op.nil)};
     try std.testing.expectError(error.FallsOffEnd, verify(std.testing.allocator, &falls, 0, 0, 0, 1));
 }

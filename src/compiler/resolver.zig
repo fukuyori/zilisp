@@ -26,11 +26,28 @@ const Lambda = ir.Lambda;
 
 pub const Error = error{ LispError, OutOfMemory };
 
+/// inline・notinline の宣言（§5.3：尊重する）
+const InlineDecl = struct { sym: Value, notinline: bool };
+
 /// レキシカルな範囲（let・lambda ごとに1つ）
 const Scope = struct {
     parent: ?*const Scope,
     lambda: *Lambda,
     vars: []const *Var,
+    /// この範囲の本体の先頭で宣言された inline・notinline（後のものが優先）
+    inline_decls: []const InlineDecl = &.{},
+
+    /// 関数 sym が notinline と宣言されているか（内側の範囲の宣言が優先）
+    fn isNotinline(scope: *const Scope, sym: Value) bool {
+        var s: ?*const Scope = scope;
+        while (s) |sc| : (s = sc.parent) {
+            var i = sc.inline_decls.len;
+            while (i > 0) : (i -= 1) {
+                if (sc.inline_decls[i - 1].sym == sym) return sc.inline_decls[i - 1].notinline;
+            }
+        }
+        return false;
+    }
 };
 
 pub const Resolver = struct {
@@ -120,25 +137,40 @@ pub const Resolver = struct {
         return false;
     }
 
-    /// 本体の先頭の宣言（と、許す場合は説明文字列）を読み飛ばし、残りのフォームを返す（CLHS 3.4.11）
-    fn parseBody(r: *Resolver, forms: []Value, allow_doc: bool) Error![]Value {
+    /// 本体の先頭の宣言（と、許す場合は説明文字列1つ）を読み飛ばし、残りのフォームを返す（CLHS 3.4.11）。
+    /// 説明文字列は、後ろにフォームがある場合だけ説明文字列とみなす（最後のフォームなら値）。2つ目の文字列は本体のフォーム。
+    /// inline・notinline の宣言は decls に加える
+    fn parseBody(r: *Resolver, forms: []Value, allow_doc: bool, decls: *std.ArrayList(InlineDecl)) Error![]Value {
         var i: usize = 0;
+        var doc_seen = false;
         while (i < forms.len) : (i += 1) {
             const f = forms[i];
-            if (allow_doc and f.isOther() and Runtime.kindOf(f) == .string and i + 1 < forms.len) continue;
+            if (allow_doc and !doc_seen and f.isOther() and Runtime.kindOf(f) == .string and i + 1 < forms.len) {
+                doc_seen = true;
+                continue;
+            }
             if (!(f.isCons() and Runtime.consPtr(f).car == r.rt.syms.declare)) break;
             const specs = try r.listItems(Runtime.consPtr(f).cdr, "宣言の形が正しくありません");
-            for (specs) |spec| try r.checkDeclaration(spec);
+            for (specs) |spec| try r.checkDeclaration(spec, decls);
         }
         return forms[i..];
     }
 
-    fn checkDeclaration(r: *Resolver, spec: Value) Error!void {
+    fn checkDeclaration(r: *Resolver, spec: Value, decls: *std.ArrayList(InlineDecl)) Error!void {
         if (!spec.isCons()) return r.fail(.program_error, "宣言の形が正しくありません", spec);
+        const y = r.rt.syms;
         const id = Runtime.consPtr(spec).car;
-        if (id == r.rt.syms.special)
+        if (id == y.special)
             return r.fail(.unimplemented, "special 宣言は未実装です（Phase 14 で実装予定）", spec);
-        // ignore・ignorable・type・ftype・optimize・inline・notinline・dynamic-extent、型名による宣言は無視する
+        if (id == y.@"inline" or id == y.notinline) {
+            const names = try r.listItems(Runtime.consPtr(spec).cdr, "宣言の形が正しくありません");
+            for (names) |n| {
+                // (setf 名前) の関数は Phase 16 で扱う。今は高速経路の対象にならないので記録しない
+                if (isSymbol(n)) try decls.append(r.arena, .{ .sym = n, .notinline = id == y.notinline });
+            }
+        }
+        // ignore・ignorable・type・ftype・optimize・dynamic-extent、型名による宣言は無視する
+        // （CLHS 3.3.1：無視しても意味は変わらない）
     }
 
     // ------------------------------------------------------------------
@@ -227,8 +259,9 @@ pub const Resolver = struct {
     }
 
     /// CL の関数を高速経路にできるか（CL パッケージの関数の再定義は未定義の動作：CLHS 11.1.2.1.2）
-    fn primFor(r: *Resolver, sym: Value, nargs: usize) ?ir.Prim {
+    fn primFor(r: *Resolver, sym: Value, nargs: usize, scope: *const Scope) ?ir.Prim {
         const y = r.rt.syms;
+        if (scope.isNotinline(sym)) return null;
         if (nargs == 1) {
             if (sym == y.car) return .car;
             if (sym == y.cdr) return .cdr;
@@ -251,9 +284,9 @@ pub const Resolver = struct {
 
     fn resolveCall(r: *Resolver, sym: Value, args: []const Value, scope: *const Scope) Error!*Node {
         const nodes = try r.resolveArgs(args, scope);
-        if (r.primFor(sym, args.len)) |op| return r.node(.{ .prim = .{ .op = op, .args = nodes } });
+        if (r.primFor(sym, args.len, scope)) |op| return r.node(.{ .prim = .{ .op = op, .args = nodes } });
         // (funcall f a ...) は、関数の値を直接呼ぶ命令にする
-        if (sym == r.rt.syms.funcall and nodes.len >= 1) {
+        if (sym == r.rt.syms.funcall and nodes.len >= 1 and !scope.isNotinline(sym)) {
             return r.node(.{ .call = .{ .callee = nodes[0], .args = nodes[1..] } });
         }
         return r.node(.{ .call_global = .{ .sym = sym, .args = nodes } });
@@ -290,8 +323,9 @@ pub const Resolver = struct {
             vars[i] = v;
         }
         l.params = vars;
-        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars };
-        const body = try r.parseBody(parts[1..], true);
+        var decls: std.ArrayList(InlineDecl) = .empty;
+        const body = try r.parseBody(parts[1..], true, &decls);
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars, .inline_decls = decls.items };
         l.body = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         return l;
     }
@@ -326,8 +360,9 @@ pub const Resolver = struct {
             v.* = .{ .name = name, .owner = l, .slot = l.newSlot() };
             vars[i] = v;
         }
-        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars };
-        const body = try r.parseBody(args[1..], false);
+        var decls: std.ArrayList(InlineDecl) = .empty;
+        const body = try r.parseBody(args[1..], false, &decls);
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars, .inline_decls = decls.items };
         const body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         l.next_slot = saved;
         return r.node(.{ .let_ = .{ .vars = vars, .inits = inits, .body = body_node } });

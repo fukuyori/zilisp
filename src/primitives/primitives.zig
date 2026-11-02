@@ -61,6 +61,11 @@ pub const table = [_]Entry{
     // 関数の参照（Phase 10）
     .{ .name = "FBOUNDP", .impl = functions.fboundp, .min = 1, .max = 1 },
     .{ .name = "SYMBOL-FUNCTION", .impl = functions.symbolFunction, .min = 1, .max = 1 },
+    // 特殊変数の値（Phase 14）
+    .{ .name = "BOUNDP", .impl = functions.boundp, .min = 1, .max = 1 },
+    .{ .name = "SYMBOL-VALUE", .impl = functions.symbolValue, .min = 1, .max = 1 },
+    .{ .name = "SET", .impl = functions.set, .min = 2, .max = 2 },
+    .{ .name = "MAKUNBOUND", .impl = functions.makunbound, .min = 1, .max = 1 },
 };
 
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
@@ -84,7 +89,9 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_defun = rt.findSymbol(rt.sys, "%DEFUN").?.symbol;
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
-    rt.symbolPtr(rt.syms.defun).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
+    // Resolver が直接解釈する特殊演算子
+    rt.symbolPtr(rt.syms.progv).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {

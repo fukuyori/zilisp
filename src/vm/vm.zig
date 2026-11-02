@@ -111,6 +111,9 @@ pub fn run(th: *Thread, closure: Value, args: []const Value) Value {
     defer th.native_depth -= 1;
     const entry_fp = vm.fp;
     const entry_sp = vm.sp;
+    // エラーで抜けるときは、この実行の中で作った動的束縛を戻す（§6.5。handler・restart ができる Phase 25 までは
+    // エラーはトップレベルまで戻るので、途中で受け止められることはない）
+    const entry_binding = th.binding_depth;
     // 引数を値スタックの上に写す（args は呼び出し側の領域なので、後で上書きされても安全にする：§6.2 agy #9）
     if (vm.sp + args.len > vm.stack.len) return stackOverflow(th);
     const base = vm.sp;
@@ -124,6 +127,7 @@ pub fn run(th: *Thread, closure: Value, args: []const Value) Value {
     if (r == Value.unwind) {
         vm.fp = entry_fp;
         vm.sp = entry_sp;
+        th.unbindTo(entry_binding);
     }
     return r;
 }
@@ -257,6 +261,30 @@ fn execute(th: *Thread, entry_fp: usize) Value {
             const w = wide;
             wide = false;
             rt.symbolPtr(consts[readIndex(bc, &ip, w)]).value = stack[sp - 1];
+            continue :dispatch next(bc, &ip);
+        },
+        .binding_depth => {
+            stack[sp] = Value.fromFixnum(@intCast(th.binding_depth));
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .bind_special => {
+            const w = wide;
+            wide = false;
+            const sym = consts[readIndex(bc, &ip, w)];
+            if (th.bind(sym, stack[sp - 1]) == Value.unwind) return Value.unwind;
+            sp -= 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .unbind_to => {
+            th.unbindTo(@intCast(stack[sp - 1].asFixnum()));
+            sp -= 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .progv_bind => {
+            vm.sp = sp;
+            if (th.progvBind(stack[sp - 2], stack[sp - 1]) == Value.unwind) return Value.unwind;
+            sp -= 2;
             continue :dispatch next(bc, &ip);
         },
         .load_function => {

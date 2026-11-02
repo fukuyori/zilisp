@@ -52,6 +52,8 @@ pub fn verify(l: *const Lambda) IrError!void {
 }
 
 fn visible(l: *const Lambda, v: *const Var) IrError!void {
+    // 特殊変数は IR の参照にならない（global_ref・global_set になる）
+    if (v.special) return error.NotVisible;
     if (v.owner == l) {
         if (v.slot >= l.nlocals) return error.BadSlot;
         return;
@@ -98,9 +100,16 @@ fn node(l: *const Lambda, n: *const Node) IrError!void {
             for (b.inits) |i| try node(l, i);
             for (b.vars) |v| {
                 if (v.owner != l) return error.BadOwner;
-                if (v.slot >= l.nlocals) return error.BadSlot;
+                if (!v.special and v.slot >= l.nlocals) return error.BadSlot;
             }
+            if (ir.hasSpecial(b.vars) and b.depth_slot >= l.nlocals) return error.BadSlot;
             try node(l, b.body);
+        },
+        .progv => |p| {
+            if (p.depth_slot >= l.nlocals) return error.BadSlot;
+            try node(l, p.syms);
+            try node(l, p.vals);
+            try node(l, p.body);
         },
         .lambda => |child| {
             if (child.parent != l) return error.BadParent;

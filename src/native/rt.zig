@@ -90,6 +90,25 @@ pub inline fn callGlobal(th: *Thread, sym: Value, args: []const Value) Value {
 }
 
 // ---------------------------------------------------------------------------
+// 動的束縛（§6.5）
+
+pub inline fn bindingDepth(th: *Thread) usize {
+    return th.binding_depth;
+}
+
+pub inline fn bindSpecial(th: *Thread, sym: Value, v: Value) Value {
+    return th.bind(sym, v);
+}
+
+pub inline fn unbindTo(th: *Thread, depth: usize) void {
+    th.unbindTo(depth);
+}
+
+pub inline fn progvBind(th: *Thread, syms: Value, vals: Value) Value {
+    return th.progvBind(syms, vals);
+}
+
+// ---------------------------------------------------------------------------
 // 高速経路（VM の命令と同じ意味：§7.4）
 
 inline fn tagged(v: Value) i64 {

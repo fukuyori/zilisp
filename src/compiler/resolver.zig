@@ -5,8 +5,9 @@
 //!   特殊演算子：quote if progn let let*（Phase 09）setq function、および lambda（CL ではマクロ）
 //!   関数の呼び出し、((lambda ...) ...)、CL の一部の関数の高速経路（ir.Prim）
 //! 範囲外のものは、明示的なエラーにする（基本設計 §3.1）。
-//!   ほかの特殊演算子・マクロ（Phase 09〜）、&optional などのラムダリストキーワード（Phase 17）、
-//!   special 宣言と特殊変数の束縛（Phase 14）
+//!   ほかの特殊演算子・マクロ（Phase 15〜）、&optional などのラムダリストキーワード（Phase 17）
+//! 特殊変数（Phase 14）：defvar・defparameter で宣言したシンボル、special 宣言した変数の束縛は動的束縛にする。
+//!   範囲の中の特殊変数は、special の印の付いた Var で表し、参照・代入は global_ref・global_set にする
 //! 宣言は ignore・ignorable・type・ftype・optimize・inline・notinline・dynamic-extent と型名による宣言を
 //! 受け付けて無視する（CLHS 3.3.1：これらを無視しても意味は変わらない）。
 
@@ -28,6 +29,18 @@ pub const Error = error{ LispError, OutOfMemory };
 
 /// inline・notinline の宣言（§5.3：尊重する）
 const InlineDecl = struct { sym: Value, notinline: bool };
+
+/// 本体の先頭の宣言のうち、意味に影響するもの
+const Decls = struct {
+    inlines: std.ArrayList(InlineDecl) = .empty,
+    /// special 宣言した名前
+    specials: std.ArrayList(Value) = .empty,
+
+    fn isSpecial(d: *const Decls, name: Value) bool {
+        for (d.specials.items) |n| if (n == name) return true;
+        return false;
+    }
+};
 
 /// 局所関数（flet・labels）の束縛。関数の値は、名前の見えない局所変数 v に入れる
 const FnBinding = struct { name: Value, v: *Var };
@@ -140,10 +153,30 @@ pub const Resolver = struct {
     fn checkBindable(r: *Resolver, name: Value) Error!void {
         if (!isSymbol(name)) return r.fail(.program_error, "変数の名前はシンボルでなければなりません", name);
         const s = r.rt.symbolPtr(name);
-        if (s.hasFlag(SymbolFlags.constant) or s.hasFlag(SymbolFlags.keyword))
+        if (name == Value.nil or s.hasFlag(SymbolFlags.constant) or s.hasFlag(SymbolFlags.keyword))
             return r.fail(.program_error, "定数は束縛できません", name);
-        if (s.hasFlag(SymbolFlags.special))
-            return r.fail(.unimplemented, "特殊変数の束縛は未実装です（Phase 14 で実装予定）", name);
+    }
+
+    /// 束縛を動的束縛にするか（defvar などで特殊変数と宣言したシンボル、または束縛の special 宣言がある）
+    fn bindsSpecially(r: *Resolver, name: Value, decls: *const Decls) bool {
+        return r.rt.symbolPtr(name).hasFlag(SymbolFlags.special) or decls.isSpecial(name);
+    }
+
+    fn specialVar(r: *Resolver, name: Value, l: *Lambda) Error!*Var {
+        const v = try r.arena.create(Var);
+        v.* = .{ .name = name, .owner = l, .slot = 0, .special = true };
+        return v;
+    }
+
+    /// 範囲の変数の一覧：束縛した変数と、束縛しない名前の special 宣言（自由な宣言：その範囲で参照を特殊変数にする）
+    fn scopeVars(r: *Resolver, bound: []*Var, decls: *const Decls, l: *Lambda) Error![]*Var {
+        var list: std.ArrayList(*Var) = .empty;
+        try list.appendSlice(r.arena, bound);
+        outer: for (decls.specials.items) |name| {
+            for (bound) |v| if (v.name == name) continue :outer;
+            try list.append(r.arena, try r.specialVar(name, l));
+        }
+        return list.items;
     }
 
     fn isLambdaListKeyword(r: *Resolver, v: Value) bool {
@@ -157,7 +190,7 @@ pub const Resolver = struct {
     /// 本体の先頭の宣言（と、許す場合は説明文字列1つ）を読み飛ばし、残りのフォームを返す（CLHS 3.4.11）。
     /// 説明文字列は、後ろにフォームがある場合だけ説明文字列とみなす（最後のフォームなら値）。2つ目の文字列は本体のフォーム。
     /// inline・notinline の宣言は decls に加える
-    fn parseBody(r: *Resolver, forms: []Value, allow_doc: bool, decls: *std.ArrayList(InlineDecl)) Error![]Value {
+    fn parseBody(r: *Resolver, forms: []Value, allow_doc: bool, decls: *Decls) Error![]Value {
         var i: usize = 0;
         var doc_seen = false;
         while (i < forms.len) : (i += 1) {
@@ -173,17 +206,23 @@ pub const Resolver = struct {
         return forms[i..];
     }
 
-    fn checkDeclaration(r: *Resolver, spec: Value, decls: *std.ArrayList(InlineDecl)) Error!void {
+    fn checkDeclaration(r: *Resolver, spec: Value, decls: *Decls) Error!void {
         if (!spec.isCons()) return r.fail(.program_error, "宣言の形が正しくありません", spec);
         const y = r.rt.syms;
         const id = Runtime.consPtr(spec).car;
-        if (id == y.special)
-            return r.fail(.unimplemented, "special 宣言は未実装です（Phase 14 で実装予定）", spec);
+        if (id == y.special) {
+            const names = try r.listItems(Runtime.consPtr(spec).cdr, "宣言の形が正しくありません");
+            for (names) |n| {
+                try r.checkBindable(n);
+                try decls.specials.append(r.arena, n);
+            }
+            return;
+        }
         if (id == y.@"inline" or id == y.notinline) {
             const names = try r.listItems(Runtime.consPtr(spec).cdr, "宣言の形が正しくありません");
             for (names) |n| {
                 // (setf 名前) の関数は Phase 16 で扱う。今は高速経路の対象にならないので記録しない
-                if (isSymbol(n)) try decls.append(r.arena, .{ .sym = n, .notinline = id == y.notinline });
+                if (isSymbol(n)) try decls.inlines.append(r.arena, .{ .sym = n, .notinline = id == y.notinline });
             }
         }
         // ignore・ignorable・type・ftype・optimize・dynamic-extent、型名による宣言は無視する
@@ -207,11 +246,13 @@ pub const Resolver = struct {
         if (s.hasFlag(SymbolFlags.constant) and s.value != Value.unbound) return r.node(.{ .constant = s.value });
         if (!s.hasFlag(SymbolFlags.special)) {
             if (lookup(scope, sym)) |v| {
-                try r.reference(v, scope.lambda);
-                return r.node(.{ .lex_ref = v });
+                if (!v.special) {
+                    try r.reference(v, scope.lambda);
+                    return r.node(.{ .lex_ref = v });
+                }
             }
         }
-        // 特殊変数、または宣言のない自由変数（大域の値。SBCL と同じく特殊変数として参照する）
+        // 特殊変数（範囲の中の special 宣言を含む）、または宣言のない自由変数（大域の値。SBCL と同じく特殊変数として参照する）
         return r.node(.{ .global_ref = sym });
     }
 
@@ -251,6 +292,9 @@ pub const Resolver = struct {
             if (head == y.lambda) return r.node(.{ .lambda = try r.resolveLambda(form, scope) });
             if (head == y.declare) return r.fail(.program_error, "DECLARE はこの位置には書けません", form);
             if (head == y.defun) return r.resolveDefun(form, args, scope);
+            if (head == y.defvar) return r.resolveDefvar(form, args, scope, false);
+            if (head == y.defparameter) return r.resolveDefvar(form, args, scope, true);
+            if (head == y.progv) return r.resolveProgv(form, args, scope);
             if (head == y.flet) return r.resolveLocalFunctions(form, args, scope, false);
             if (head == y.labels) return r.resolveLocalFunctions(form, args, scope, true);
             // 局所関数の呼び出し（大域の関数・マクロより優先：CLHS 3.1.2.1.2.3）
@@ -348,7 +392,13 @@ pub const Resolver = struct {
         const params = try r.listItems(parts[0], "ラムダリストがドット対で終わっています");
         const l = try r.arena.create(Lambda);
         l.* = .{ .parent = scope.lambda, .name = parts[0], .fn_name = fn_name, .fn_kind = fn_kind };
-        const vars = try r.arena.alloc(*Var, params.len);
+        var decls: Decls = .{};
+        const body = try r.parseBody(parts[1..], true, &decls);
+        // 引数の変数。特殊変数の引数は、名前の見えない局所変数で受け取り、本体を (let ((*x* 引数)) ...) で囲む
+        const params_vars = try r.arena.alloc(*Var, params.len);
+        const scope_vars = try r.arena.alloc(*Var, params.len);
+        var specials: std.ArrayList(*Var) = .empty;
+        var special_inits: std.ArrayList(*Node) = .empty;
         for (params, 0..) |p, i| {
             if (r.isLambdaListKeyword(p))
                 return r.fail(.unimplemented, "ラムダリストのキーワードは未実装です（Phase 17 で実装予定）", p);
@@ -357,15 +407,71 @@ pub const Resolver = struct {
                 if (q == p) return r.fail(.program_error, "ラムダリストに同じ変数が2回あります", p);
             }
             const v = try r.arena.create(Var);
-            v.* = .{ .name = p, .owner = l, .slot = l.newSlot() };
-            vars[i] = v;
+            if (r.bindsSpecially(p, &decls)) {
+                v.* = .{ .name = Value.unbound, .owner = l, .slot = l.newSlot() };
+                const sv = try r.specialVar(p, l);
+                scope_vars[i] = sv;
+                try specials.append(r.arena, sv);
+                try special_inits.append(r.arena, try r.node(.{ .lex_ref = v }));
+            } else {
+                v.* = .{ .name = p, .owner = l, .slot = l.newSlot() };
+                scope_vars[i] = v;
+            }
+            params_vars[i] = v;
         }
-        l.params = vars;
-        var decls: std.ArrayList(InlineDecl) = .empty;
-        const body = try r.parseBody(parts[1..], true, &decls);
-        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars, .inline_decls = decls.items };
-        l.body = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
+        l.params = params_vars;
+        const depth_slot = if (specials.items.len > 0) l.newSlot() else ir.no_slot;
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = try r.scopeVars(scope_vars, &decls, l), .inline_decls = decls.inlines.items };
+        var body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
+        if (specials.items.len > 0) {
+            body_node = try r.node(.{ .let_ = .{ .vars = specials.items, .inits = special_inits.items, .body = body_node, .depth_slot = depth_slot } });
+        }
+        l.body = body_node;
         return l;
+    }
+
+    /// defvar・defparameter（Zig で書いたブートストラップ用のマクロ：§11.1 の 6。Phase 14）。
+    /// 名前を特殊変数と宣言する。この宣言はコンパイルの時点で行う（同じフォームの後ろの部分や、後のフォームの
+    /// コンパイルで、束縛が動的束縛になるように：CLHS defvar「the compiler must recognize that the name has been proclaimed special」）。
+    ///   (defparameter 名前 初期値 [説明])  → (progn (setq 名前 初期値) '名前)
+    ///   (defvar 名前 [初期値 [説明]])      → (progn (if (boundp '名前) nil (setq 名前 初期値)) '名前)
+    fn resolveDefvar(r: *Resolver, form: Value, args: []Value, scope: *const Scope, parameter: bool) Error!*Node {
+        const min: usize = if (parameter) 2 else 1;
+        if (args.len < min or args.len > 3) return r.fail(.program_error, "DEFVAR・DEFPARAMETER の引数の数が正しくありません", form);
+        const name = args[0];
+        try r.checkBindable(name);
+        const s = r.rt.symbolPtr(name);
+        s.header.flags |= SymbolFlags.special;
+        const name_node = try r.node(.{ .constant = name });
+        if (args.len == 1) return name_node;
+        const set = try r.node(.{ .global_set = .{ .sym = name, .value = try r.resolve(args[1], scope) } });
+        const forms = try r.arena.alloc(*Node, 2);
+        forms[1] = name_node;
+        if (parameter) {
+            forms[0] = set;
+        } else {
+            const call_args = try r.arena.alloc(*Node, 1);
+            call_args[0] = name_node;
+            forms[0] = try r.node(.{ .if_ = .{
+                .cond = try r.node(.{ .call_global = .{ .sym = r.rt.syms.boundp, .args = call_args } }),
+                .then = try r.node(.{ .constant = Value.nil }),
+                .else_ = set,
+            } });
+        }
+        return r.node(.{ .progn = forms });
+    }
+
+    /// progv（特殊演算子。Phase 14）：(progv シンボルのリスト 値のリスト 本体...)
+    fn resolveProgv(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len < 2) return r.fail(.program_error, "PROGV にはシンボルのリストと値のリストが必要です", form);
+        const l = scope.lambda;
+        const saved = l.next_slot;
+        const syms = try r.resolve(args[0], scope);
+        const vals = try r.resolve(args[1], scope);
+        const depth_slot = l.newSlot();
+        const body = if (args.len == 2) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(args[2..], scope);
+        l.next_slot = saved;
+        return r.node(.{ .progv = .{ .syms = syms, .vals = vals, .body = body, .depth_slot = depth_slot } });
     }
 
     /// defun（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
@@ -433,9 +539,9 @@ pub const Resolver = struct {
         if (labels) {
             for (bodies, 0..) |b, i| lambdas[i] = try r.resolveLambdaParts(b, names[i], kind, fn_scope);
         }
-        var decls: std.ArrayList(InlineDecl) = .empty;
+        var decls: Decls = .{};
         const body = try r.parseBody(args[1..], false, &decls);
-        const inner: Scope = .{ .parent = fn_scope, .lambda = l, .vars = &.{}, .inline_decls = decls.items };
+        const inner: Scope = .{ .parent = fn_scope, .lambda = l, .vars = try r.scopeVars(&.{}, &decls, l), .inline_decls = decls.inlines.items };
         const body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         l.next_slot = saved;
 
@@ -488,18 +594,23 @@ pub const Resolver = struct {
         }
         const l = scope.lambda;
         const saved = l.next_slot;
+        var decls: Decls = .{};
+        const body = try r.parseBody(args[1..], false, &decls);
         const vars = try r.arena.alloc(*Var, bindings.len);
         for (names, 0..) |name, i| {
-            const v = try r.arena.create(Var);
-            v.* = .{ .name = name, .owner = l, .slot = l.newSlot() };
-            vars[i] = v;
+            if (r.bindsSpecially(name, &decls)) {
+                vars[i] = try r.specialVar(name, l);
+            } else {
+                const v = try r.arena.create(Var);
+                v.* = .{ .name = name, .owner = l, .slot = l.newSlot() };
+                vars[i] = v;
+            }
         }
-        var decls: std.ArrayList(InlineDecl) = .empty;
-        const body = try r.parseBody(args[1..], false, &decls);
-        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars, .inline_decls = decls.items };
+        const depth_slot = if (ir.hasSpecial(vars)) l.newSlot() else ir.no_slot;
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = try r.scopeVars(vars, &decls, l), .inline_decls = decls.inlines.items };
         const body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         l.next_slot = saved;
-        return r.node(.{ .let_ = .{ .vars = vars, .inits = inits, .body = body_node } });
+        return r.node(.{ .let_ = .{ .vars = vars, .inits = inits, .body = body_node, .depth_slot = depth_slot } });
     }
 
     /// let*：束縛を順に行う。各初期値は、それより前の変数が見える範囲で評価する。
@@ -510,28 +621,35 @@ pub const Resolver = struct {
         const bindings = try r.listItems(args[0], "LET* の束縛の並びがドット対で終わっています");
         const l = scope.lambda;
         const saved = l.next_slot;
+        var decls: Decls = .{};
+        const body = try r.parseBody(args[1..], false, &decls);
         const vars = try r.arena.alloc(*Var, bindings.len);
         const inits = try r.arena.alloc(*Node, bindings.len);
+        const depth_slots = try r.arena.alloc(u32, bindings.len);
         var cur: *const Scope = scope;
         for (bindings, 0..) |b, i| {
             const parsed = try r.parseBinding(b);
             // 初期値は、前の変数の局所変数の番号を確保した後で解決する（初期値の中の let が前の変数の番号を使わないように）
             inits[i] = try r.resolve(parsed.init_form, cur);
-            const v = try r.arena.create(Var);
-            v.* = .{ .name = parsed.name, .owner = l, .slot = l.newSlot() };
-            vars[i] = v;
+            depth_slots[i] = ir.no_slot;
+            if (r.bindsSpecially(parsed.name, &decls)) {
+                vars[i] = try r.specialVar(parsed.name, l);
+                depth_slots[i] = l.newSlot();
+            } else {
+                const v = try r.arena.create(Var);
+                v.* = .{ .name = parsed.name, .owner = l, .slot = l.newSlot() };
+                vars[i] = v;
+            }
             const sc = try r.arena.create(Scope);
             sc.* = .{ .parent = cur, .lambda = l, .vars = vars[i .. i + 1] };
             cur = sc;
         }
-        var decls: std.ArrayList(InlineDecl) = .empty;
-        const body = try r.parseBody(args[1..], false, &decls);
-        const inner: Scope = .{ .parent = cur, .lambda = l, .vars = &.{}, .inline_decls = decls.items };
+        const inner: Scope = .{ .parent = cur, .lambda = l, .vars = try r.scopeVars(&.{}, &decls, l), .inline_decls = decls.inlines.items };
         var result = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         l.next_slot = saved;
         var i = bindings.len;
         while (i > 0) : (i -= 1) {
-            result = try r.node(.{ .let_ = .{ .vars = vars[i - 1 .. i], .inits = inits[i - 1 .. i], .body = result } });
+            result = try r.node(.{ .let_ = .{ .vars = vars[i - 1 .. i], .inits = inits[i - 1 .. i], .body = result, .depth_slot = depth_slots[i - 1] } });
         }
         return result;
     }
@@ -550,10 +668,12 @@ pub const Resolver = struct {
             const value = try r.resolve(args[i + 1], scope);
             if (!s.hasFlag(SymbolFlags.special)) {
                 if (lookup(scope, name)) |v| {
-                    try r.reference(v, scope.lambda);
-                    v.assigned = true;
-                    sets[i / 2] = try r.node(.{ .lex_set = .{ .v = v, .value = value } });
-                    continue;
+                    if (!v.special) {
+                        try r.reference(v, scope.lambda);
+                        v.assigned = true;
+                        sets[i / 2] = try r.node(.{ .lex_set = .{ .v = v, .value = value } });
+                        continue;
+                    }
                 }
             }
             sets[i / 2] = try r.node(.{ .global_set = .{ .sym = name, .value = value } });

@@ -31,6 +31,14 @@ pub const Op = enum(u8) {
     load_special,
     /// 値をスタックに残したまま書く
     store_special,
+    /// 束縛のスタックの深さ（fixnum）を積む（Phase 14）
+    binding_depth,
+    /// [値] → []：定数のシンボルを値で動的に束縛する
+    bind_special,
+    /// [値 深さ] → [値]：束縛のスタックを深さまで戻す
+    unbind_to,
+    /// [シンボルのリスト 値のリスト] → []：progv の束縛
+    progv_bind,
     // 関数
     load_function,
     make_closure,
@@ -66,7 +74,7 @@ pub const Operand = enum { k, i, n, rel, s16 };
 
 pub fn operands(op: Op) []const Operand {
     return switch (op) {
-        .@"const", .load_special, .store_special, .load_function => &.{.k},
+        .@"const", .load_special, .store_special, .load_function, .bind_special => &.{.k},
         .load_local, .store_local, .load_captured => &.{.i},
         .smallint => &.{.s16},
         .make_closure, .call_global => &.{ .k, .n },
@@ -97,7 +105,9 @@ pub fn stackEffect(op: Op, n: u32) i64 {
     const ni: i64 = n;
     return switch (op) {
         .@"const", .nil, .t, .smallint, .load_local, .load_captured, .load_special, .load_function => 1,
-        .pop, .cell_set, .jump_if_nil, .@"return" => -1,
+        .pop, .cell_set, .jump_if_nil, .@"return", .bind_special, .unbind_to => -1,
+        .binding_depth => 1,
+        .progv_bind => -2,
         .store_local, .store_special, .make_cell, .cell_ref, .jump, .wide => 0,
         .car, .cdr, .not, .add1, .sub1 => 0,
         .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2 => -1,

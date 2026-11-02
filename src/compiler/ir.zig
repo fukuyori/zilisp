@@ -17,6 +17,9 @@ pub const Var = struct {
     captured: bool = false,
     /// setq で代入される
     assigned: bool = false,
+    /// 特殊変数の束縛・宣言（Phase 14）。この変数の参照・代入は、シンボルの値（動的な値）に対して行う。
+    /// slot は使わない
+    special: bool = false,
 
     /// 箱（value_cell）に入れるか（捕捉され、かつ代入される変数だけ：§5.2 の assignment conversion）
     pub fn boxed(v: *const Var) bool {
@@ -58,6 +61,13 @@ pub const Lambda = struct {
     }
 };
 
+pub const no_slot = std.math.maxInt(u32);
+
+pub fn hasSpecial(vars: []const *Var) bool {
+    for (vars) |v| if (v.special) return true;
+    return false;
+}
+
 /// 高速経路にする CL の関数（§7.4。VM の命令に対応する）
 pub const Prim = enum { cons, car, cdr, eq, not, add2, sub2, lt2, gt2, le2, ge2, numeq2, add1, sub1 };
 
@@ -81,8 +91,11 @@ pub const Node = struct {
         prim: struct { op: Prim, args: []*Node },
         if_: struct { cond: *Node, then: *Node, else_: *Node },
         progn: []*Node,
-        /// 並列の束縛（let）。inits は外側の範囲で評価する
-        let_: struct { vars: []*Var, inits: []*Node, body: *Node },
+        /// 並列の束縛（let）。inits は外側の範囲で評価する。
+        /// vars に特殊変数（special）があれば、束縛の前の深さを局所変数 depth_slot に置き、本体の後で戻す
+        let_: struct { vars: []*Var, inits: []*Node, body: *Node, depth_slot: u32 = no_slot },
+        /// progv（Phase 14）：syms のシンボルを vals の値で動的に束縛して body を評価する
+        progv: struct { syms: *Node, vals: *Node, body: *Node, depth_slot: u32 },
         lambda: *Lambda,
     };
 };

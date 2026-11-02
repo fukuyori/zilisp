@@ -19,6 +19,9 @@ pub const mv_limit = 1024;
 pub const call_arguments_limit = 65536;
 /// Zig の関数（funcall・apply など）から関数を呼ぶ入れ子の深さの上限（ネイティブのスタックを溢れさせないため）
 pub const max_native_depth = 1000;
+/// 動的束縛のスタックの1要素（§6.5：shallow binding。旧値は未束縛のこともある）
+pub const Binding = struct { sym: Value, old: Value };
+
 /// エラーの報告に含める呼び出しの履歴の数
 pub const backtrace_max = 16;
 
@@ -89,6 +92,9 @@ pub const Thread = struct {
     out: *std.Io.Writer,
     /// Zig の関数から関数を呼んでいる入れ子の深さ（Thread.call で数える）
     native_depth: u32 = 0,
+    /// 動的束縛のスタック（§6.5）
+    bindings: []Binding,
+    binding_depth: usize = 0,
     /// 多値レジスタ（mv[0] は使わない。主値は戻り値）
     mv: [mv_limit]Value = @splat(Value.nil),
     /// エラーを記録した時点の呼び出しの履歴（VM のフレームの closure。新しい順）
@@ -102,12 +108,16 @@ pub const Thread = struct {
         stack_size: usize = 1 << 20,
         /// VM のフレームの数の上限（1 フレームは値スタックを 1 要素以上使うので、値スタックの 1/4 とする）
         frame_count: usize = 1 << 18,
+        /// 動的束縛の深さの上限
+        binding_count: usize = 1 << 16,
     };
 
     pub fn create(rt: *Runtime, out: *std.Io.Writer, options: Options) runtime.Error!*Thread {
         const th = try rt.gpa.create(Thread);
         errdefer rt.gpa.destroy(th);
-        th.* = .{ .rt = rt, .out = out, .vm = try vm_mod.Vm.init(rt.gpa, options.stack_size, options.frame_count) };
+        const bindings = try rt.gpa.alloc(Binding, options.binding_count);
+        errdefer rt.gpa.free(bindings);
+        th.* = .{ .rt = rt, .out = out, .vm = try vm_mod.Vm.init(rt.gpa, options.stack_size, options.frame_count), .bindings = bindings };
         rt.thread = th;
         return th;
     }
@@ -116,6 +126,7 @@ pub const Thread = struct {
         const rt = th.rt;
         if (rt.thread == th) rt.thread = null;
         th.vm.deinit(rt.gpa);
+        rt.gpa.free(th.bindings);
         rt.gpa.destroy(th);
     }
 
@@ -126,6 +137,10 @@ pub const Thread = struct {
         f(ctx, th.err.datum);
         f(ctx, th.err.expected);
         for (th.backtrace[0..th.backtrace_len]) |v| f(ctx, v);
+        for (th.bindings[0..th.binding_depth]) |b| {
+            f(ctx, b.sym);
+            f(ctx, b.old);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -231,6 +246,52 @@ pub const Thread = struct {
             try w.writeByte('\n');
         }
         if (th.backtrace_depth > th.backtrace_len) try w.print("    …ほか {d} 件\n", .{th.backtrace_depth - th.backtrace_len});
+    }
+
+    // ------------------------------------------------------------------
+    // 動的束縛（§6.5）
+
+    /// sym を v で動的に束縛する。束縛のスタックが溢れたら Value.unwind（それ以外は NIL）
+    pub fn bind(th: *Thread, sym: Value, v: Value) Value {
+        if (th.binding_depth >= th.bindings.len)
+            return th.signal(.storage_condition, "動的束縛が深すぎます", Value.unbound, Value.unbound);
+        const s = th.rt.symbolPtr(sym);
+        th.bindings[th.binding_depth] = .{ .sym = sym, .old = s.value };
+        th.binding_depth += 1;
+        s.value = v;
+        return Value.nil;
+    }
+
+    /// 束縛のスタックを depth まで戻す（新しい束縛から順に旧値を戻す）
+    pub fn unbindTo(th: *Thread, depth: usize) void {
+        while (th.binding_depth > depth) {
+            th.binding_depth -= 1;
+            const b = th.bindings[th.binding_depth];
+            th.rt.symbolPtr(b.sym).value = b.old;
+        }
+    }
+
+    /// progv：syms の各シンボルを vals の値で束縛する。値が足りなければ未束縛にする（CLHS progv）
+    pub fn progvBind(th: *Thread, syms: Value, vals: Value) Value {
+        const SF = @import("../values/object.zig").SymbolFlags;
+        var x = syms;
+        var y = vals;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const sym = Runtime.consPtr(x).car;
+            if (!(sym == Value.nil or (sym.isOther() and Runtime.kindOf(sym) == .symbol)))
+                return th.typeError(sym, th.rt.syms.symbol);
+            const s = th.rt.symbolPtr(sym);
+            if (sym == Value.nil or s.hasFlag(SF.constant) or s.hasFlag(SF.keyword))
+                return th.signal(.program_error, "定数は束縛できません", sym, Value.unbound);
+            var v = Value.unbound;
+            if (y.isCons()) {
+                v = Runtime.consPtr(y).car;
+                y = Runtime.consPtr(y).cdr;
+            }
+            if (th.bind(sym, v) == Value.unwind) return Value.unwind;
+        }
+        if (x != Value.nil) return th.typeError(syms, th.rt.syms.list);
+        return Value.nil;
     }
 
     // ------------------------------------------------------------------

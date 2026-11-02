@@ -29,6 +29,10 @@ pub const Syms = struct {
     function: Value,
     declare: Value,
     defun: Value,
+    defvar: Value,
+    defparameter: Value,
+    progv: Value,
+    boundp: Value,
     flet: Value,
     labels: Value,
     // ラムダリストのキーワード

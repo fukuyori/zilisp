@@ -69,6 +69,12 @@
   エラーの報告に、VM のフレームの関数名の呼び出しの履歴を加えた（関数の中で起きたエラーのとき。16 件まで）。
   CL の定数 `most-positive-fixnum`・`most-negative-fixnum`・`call-arguments-limit`・`lambda-parameters-limit`・
   `multiple-values-limit`・`char-code-limit`・`pi` に値を設定。値のない CL の変数は「未実装です」と報告する
+- Phase 14：動的束縛（shallow binding。束縛のスタック、VM の命令 `BINDING_DEPTH`・`BIND_SPECIAL`・`UNBIND_TO`・`PROGV_BIND`）、
+  `special` 宣言（束縛の宣言と自由な宣言）、特殊変数の引数、`defvar`・`defparameter`（名前の特殊変数の宣言はコンパイルの時点）、
+  `progv`、`boundp`・`symbol-value`・`set`・`makunbound`。エラーで抜けるときは動的束縛を元に戻す。
+  ネイティブバックエンドも対応。試験：SBCL 2.6.7 の結果と比べる23通り（GC stress でも実行）、エラーの後の復元、
+  未束縛の変数の束縛と復元、深い束縛と溢れ、言語試験 `tests/language/eval/special.lisp`（と gc-stress 版。ネイティブでも一致）。
+  教材のブロックの一致は 82 から 100 に
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

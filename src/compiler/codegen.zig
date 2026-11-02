@@ -223,14 +223,40 @@ const Gen = struct {
             },
             .let_ => |l| {
                 for (l.inits) |i| try g.gen(i);
+                const special = ir.hasSpecial(l.vars);
+                if (special) {
+                    // 束縛の前の深さを覚えておき、本体の後で戻す
+                    try g.op0(.binding_depth);
+                    try g.opIndex(.store_local, l.depth_slot);
+                    try g.op0(.pop);
+                }
                 var i = l.vars.len;
                 while (i > 0) : (i -= 1) {
                     const v = l.vars[i - 1];
+                    if (v.special) {
+                        try g.opIndex(.bind_special, try g.constant(v.name));
+                        continue;
+                    }
                     if (v.boxed()) try g.op0(.make_cell);
                     try g.opIndex(.store_local, v.slot);
                     try g.op0(.pop);
                 }
                 try g.gen(l.body);
+                if (special) {
+                    try g.opIndex(.load_local, l.depth_slot);
+                    try g.op0(.unbind_to);
+                }
+            },
+            .progv => |p| {
+                try g.op0(.binding_depth);
+                try g.opIndex(.store_local, p.depth_slot);
+                try g.op0(.pop);
+                try g.gen(p.syms);
+                try g.gen(p.vals);
+                try g.op0(.progv_bind);
+                try g.gen(p.body);
+                try g.opIndex(.load_local, p.depth_slot);
+                try g.op0(.unbind_to);
             },
             .lambda => |child| try g.genLambda(child),
         }

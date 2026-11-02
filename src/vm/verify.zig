@@ -79,7 +79,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         const insn = try decode(bc, at);
         is_start[at] = true;
         switch (insn.op) {
-            .@"const", .load_special, .store_special, .load_function, .make_closure, .call_global => if (insn.index >= nconsts) return error.BadConstIndex,
+            .@"const", .load_special, .store_special, .load_function, .make_closure, .call_global, .bind_special => if (insn.index >= nconsts) return error.BadConstIndex,
             .load_local, .store_local => if (insn.index >= nlocals) return error.BadLocalIndex,
             .load_captured => if (insn.index >= ncaptured) return error.BadCapturedIndex,
             else => {},
@@ -114,8 +114,8 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
             const pops: i64 = switch (insn.op) {
                 .call => insn.count + 1,
                 .call_global, .make_closure => insn.count,
-                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return" => 1,
-                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2 => 2,
+                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special => 1,
+                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind => 2,
                 else => 0,
             };
             if (d < pops) return error.StackUnderflow;

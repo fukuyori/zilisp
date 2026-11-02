@@ -396,7 +396,17 @@ const FnGen = struct {
                 std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
                 const result = try f.gen(b.body);
                 std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
+                const special = ir.hasSpecial(b.vars);
+                var depth: u32 = 0;
+                if (special) {
+                    depth = f.temp();
+                    try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
+                }
                 for (b.vars, inits.items) |v, init| {
+                    if (v.special) {
+                        try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) return Value.unwind;\n", .{ try e.constant(v.name), init.s() });
+                        continue;
+                    }
                     const id = try e.varId(v);
                     if (v.boxed()) {
                         try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, init.s(), id, id });
@@ -407,6 +417,17 @@ const FnGen = struct {
                     if (!f.used.contains(id)) try f.w().print("    _ = &v{d};\n", .{id});
                 }
                 try f.w().writeAll(body_out.written());
+                if (special) try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
+                return result;
+            },
+            .progv => |p| {
+                const depth = f.temp();
+                try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
+                const syms = try f.gen(p.syms);
+                const vals = try f.gen(p.vals);
+                try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) return Value.unwind;\n", .{ syms.s(), vals.s() });
+                const result = try f.gen(p.body);
+                try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
                 return result;
             },
             .lambda => |child| {

@@ -363,6 +363,61 @@ test "closures outlive their creators and survive collections (Phase 11)" {
     , "(3 2 1)");
 }
 
+/// Phase 14：動的束縛・special 宣言・defvar・defparameter・progv（SBCL 2.6.7 の結果）
+const special_cases = [_][2][]const u8{
+    .{ "(defvar *p14-a* 1)", "*P14-A*" },
+    .{ "(progn (defvar *p14-a* 1) (defvar *p14-a* 2) *p14-a*)", "1" },
+    .{ "(progn (defparameter *p14-b* 1) (defparameter *p14-b* 2) *p14-b*)", "2" },
+    .{ "(defparameter *p14-c* 3 \"doc\")", "*P14-C*" },
+    .{ "(progn (defvar *p14-x* 10) (defun p14-get-x () *p14-x*) (list (let ((*p14-x* 20)) (p14-get-x)) (p14-get-x)))", "(20 10)" },
+    .{ "(progn (defvar *p14-x* 10) (defun p14-get-x () *p14-x*) (list (let ((*p14-x* 20)) (setq *p14-x* 30) (p14-get-x)) *p14-x*))", "(30 10)" },
+    .{ "(progn (defvar *p14-x* 10) (funcall (let ((*p14-x* 5)) (lambda () *p14-x*))))", "10" },
+    .{ "(progn (defun p14-read-y () (declare (special p14-y)) p14-y) (let ((p14-y 7)) (declare (special p14-y)) (p14-read-y)))", "7" },
+    .{ "(let ((p14-z 1)) (let ((p14-z 2)) (declare (special p14-z)) (funcall (lambda () (declare (special p14-z)) p14-z))))", "2" },
+    .{ "(let ((p14-w 'lex)) (let ((p14-w 'dyn)) (declare (special p14-w)) (list p14-w (funcall (lambda () p14-w)))))", "(DYN DYN)" },
+    .{ "(progn (defvar *p14-u*) (list (let ((*p14-u* 1)) *p14-u*) (boundp '*p14-u*)))", "(1 NIL)" },
+    .{ "(list (progv '(*p14-p1*) '(5) (symbol-value '*p14-p1*)) (boundp '*p14-p1*))", "(5 NIL)" },
+    .{ "(progv '(*p14-p2* *p14-p3*) '(1) (list (symbol-value '*p14-p2*) (boundp '*p14-p3*)))", "(1 NIL)" },
+    .{ "(progn (defvar *p14-depth* 0) (defun p14-g () *p14-depth*) (defun p14-f (*p14-depth*) (p14-g)) (list (p14-f 5) *p14-depth*))", "(5 0)" },
+    .{ "(progn (defvar *p14-x* 10) (let* ((*p14-x* 1) (y *p14-x*)) (list y *p14-x*)))", "(1 1)" },
+    .{ "(progn (defvar *p14-s* 0) (set '*p14-s* 3) (list *p14-s* (symbol-value '*p14-s*)))", "(3 3)" },
+    .{ "(progn (defvar *p14-x* 10) (let ((*p14-x* 1)) (let ((*p14-x* 2)) (setq *p14-x* 3)) *p14-x*))", "1" },
+    .{ "(progn (defvar *p14-n* 0) (defun p14-count (n) (if (= n 0) *p14-n* (let ((*p14-n* (+ *p14-n* 1))) (p14-count (- n 1))))) (list (p14-count 100) *p14-n*))", "(100 0)" },
+    .{ "(progn (defvar *p14-x* 10) (flet ((show () *p14-x*)) (let ((*p14-x* 42)) (show))))", "42" },
+    .{ "(boundp 'p14-never)", "NIL" },
+    .{ "(progn (defvar *p14-x* 10) (let ((*p14-x* 1) (y *p14-x*)) y))", "10" },
+    .{ "(let ((x 1)) (declare (special x)) (setq x 2) x)", "2" },
+};
+
+test "dynamic binding like SBCL 2.6.7 (Phase 14)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (special_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (special_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    try testing.expectEqual(@as(usize, 0), e.th.binding_depth);
+    // エラーで抜けると、その間の動的束縛は元に戻る
+    try expectValue(&e, "(defvar *p14-e* 10)", "*P14-E*");
+    try expectError(&e, "(let ((*p14-e* 99)) (car 1))", .type_error);
+    try testing.expectEqual(@as(usize, 0), e.th.binding_depth);
+    try expectValue(&e, "*p14-e*", "10");
+    // apply（Zig の関数）を挟んだ中のエラーでも戻る
+    try expectError(&e, "(let ((*p14-e* 1)) (apply (lambda () (let ((*p14-e* 2)) (car 1))) nil))", .type_error);
+    try expectValue(&e, "*p14-e*", "10");
+    // 未束縛の特殊変数を束縛して抜けると、未束縛に戻る
+    try expectValue(&e, "(progn (defvar *p14-unb*) (let ((*p14-unb* 1)) (list *p14-unb* (boundp '*p14-unb*))))", "(1 T)");
+    try expectValue(&e, "(boundp '*p14-unb*)", "NIL");
+    try expectError(&e, "*p14-unb*", .unbound_variable);
+    // 深い動的束縛（再帰の各段で束縛する）
+    try expectValue(&e, "(progn (defvar *p14-k* 0) (defun p14-deep (n) (if (= n 0) *p14-k* (let ((*p14-k* (+ *p14-k* 1))) (p14-deep (- n 1))))) (p14-deep 10000))", "10000");
+    // 束縛のスタックが溢れるとエラーになり、元に戻る
+    try expectError(&e, "(p14-deep 100000)", .storage_condition);
+    try testing.expectEqual(@as(usize, 0), e.th.binding_depth);
+    try expectValue(&e, "*p14-k*", "0");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -424,13 +479,15 @@ test "errors" {
         .{ "(setq t 1)", .program_error },
         .{ "(setq :k 1)", .program_error },
         .{ "(setq x)", .program_error },
-        .{ "(let ((*print-base* 16)) 1)", .unimplemented },
+        .{ "(progv '(1) '(2) 3)", .type_error },
+        .{ "(defvar)", .program_error },
         .{ "(lambda (&optional x) x)", .unimplemented },
         .{ "(lambda (x x) x)", .program_error },
         .{ "(funcall 1)", .type_error },
         .{ "(apply #'+ 1 2)", .type_error },
         .{ "(1 2)", .program_error },
-        .{ "(let ((x 1)) (declare (special x)) x)", .unimplemented },
+        .{ "(defvar t 1)", .program_error },
+        .{ "(symbol-value 'p14-never-bound)", .unbound_variable },
         .{ "(funcall 'quote 1)", .undefined_function },
         .{ "(car 1 2)", .program_error },
     };

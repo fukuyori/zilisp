@@ -97,3 +97,41 @@ pub fn symbolFunction(th: *Thread, args: []const Value) Value {
     if (f == Value.unbound) return th.signal(.undefined_function, "", name, Value.unbound);
     return f;
 }
+
+// ---------------------------------------------------------------------------
+// 特殊変数の値（Phase 14。値は今の動的な値：§6.5 の shallow binding）
+
+pub fn boundp(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    return th.rt.boolean(th.rt.symbolPtr(name).value != Value.unbound);
+}
+
+pub fn symbolValue(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    const v = th.rt.symbolPtr(name).value;
+    if (v == Value.unbound) return th.signal(.unbound_variable, "", name, Value.unbound);
+    return v;
+}
+
+fn checkAssignable(th: *Thread, name: Value) ?Value {
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    const flags = @import("../values/object.zig").SymbolFlags;
+    const s = th.rt.symbolPtr(name);
+    if (name == Value.nil or s.hasFlag(flags.constant) or s.hasFlag(flags.keyword))
+        return th.signal(.program_error, "定数には代入できません", name, Value.unbound);
+    return null;
+}
+
+pub fn set(th: *Thread, args: []const Value) Value {
+    if (checkAssignable(th, args[0])) |e| return e;
+    th.rt.symbolPtr(args[0]).value = args[1];
+    return args[1];
+}
+
+pub fn makunbound(th: *Thread, args: []const Value) Value {
+    if (checkAssignable(th, args[0])) |e| return e;
+    th.rt.symbolPtr(args[0]).value = Value.unbound;
+    return args[0];
+}

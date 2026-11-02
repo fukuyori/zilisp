@@ -72,6 +72,8 @@ pub const Resolver = struct {
     th: *Thread,
     rt: *Runtime,
     arena: std.mem.Allocator,
+    /// 今から解決するフォームがトップレベルのフォームか（CLHS 3.2.3.1：トップレベルの progn の中のフォームもトップレベル）
+    at_toplevel: bool = false,
 
     pub fn init(th: *Thread, arena: std.mem.Allocator) Resolver {
         return .{ .th = th, .rt = th.rt, .arena = arena };
@@ -93,7 +95,9 @@ pub const Resolver = struct {
         const l = try r.arena.create(Lambda);
         l.* = .{ .parent = null };
         const scope: Scope = .{ .parent = null, .lambda = l, .vars = &.{} };
+        r.at_toplevel = true;
         l.body = try r.resolve(form, &scope);
+        r.at_toplevel = false;
         return l;
     }
 
@@ -264,6 +268,9 @@ pub const Resolver = struct {
     }
 
     fn resolveCompound(r: *Resolver, form: Value, scope: *const Scope) Error!*Node {
+        // トップレベルかどうかは、このフォームだけに効く（引数・本体のフォームはトップレベルではない）
+        const toplevel_form = r.at_toplevel;
+        r.at_toplevel = false;
         const head = Runtime.consPtr(form).car;
         const args = try r.listItems(Runtime.consPtr(form).cdr, "フォームがドット対で終わっています");
         const y = r.rt.syms;
@@ -283,7 +290,15 @@ pub const Resolver = struct {
             }
             if (head == y.progn) {
                 if (args.len == 0) return r.node(.{ .constant = Value.nil });
-                return r.resolveBody(args, scope);
+                if (!toplevel_form) return r.resolveBody(args, scope);
+                // トップレベルの progn の中のフォームもトップレベル
+                const nodes = try r.arena.alloc(*Node, args.len);
+                for (args, 0..) |f, i| {
+                    r.at_toplevel = true;
+                    nodes[i] = try r.resolve(f, scope);
+                    r.at_toplevel = false;
+                }
+                return if (nodes.len == 1) nodes[0] else r.node(.{ .progn = nodes });
             }
             if (head == y.let) return r.resolveLet(form, args, scope);
             if (head == y.@"let*") return r.resolveLetStar(form, args, scope);
@@ -292,8 +307,8 @@ pub const Resolver = struct {
             if (head == y.lambda) return r.node(.{ .lambda = try r.resolveLambda(form, scope) });
             if (head == y.declare) return r.fail(.program_error, "DECLARE はこの位置には書けません", form);
             if (head == y.defun) return r.resolveDefun(form, args, scope);
-            if (head == y.defvar) return r.resolveDefvar(form, args, scope, false);
-            if (head == y.defparameter) return r.resolveDefvar(form, args, scope, true);
+            if (head == y.defvar) return r.resolveDefvar(form, args, scope, false, toplevel_form);
+            if (head == y.defparameter) return r.resolveDefvar(form, args, scope, true, toplevel_form);
             if (head == y.progv) return r.resolveProgv(form, args, scope);
             if (head == y.flet) return r.resolveLocalFunctions(form, args, scope, false);
             if (head == y.labels) return r.resolveLocalFunctions(form, args, scope, true);
@@ -431,34 +446,42 @@ pub const Resolver = struct {
     }
 
     /// defvar・defparameter（Zig で書いたブートストラップ用のマクロ：§11.1 の 6。Phase 14）。
-    /// 名前を特殊変数と宣言する。この宣言はコンパイルの時点で行う（同じフォームの後ろの部分や、後のフォームの
-    /// コンパイルで、束縛が動的束縛になるように：CLHS defvar「the compiler must recognize that the name has been proclaimed special」）。
-    ///   (defparameter 名前 初期値 [説明])  → (progn (setq 名前 初期値) '名前)
-    ///   (defvar 名前 [初期値 [説明]])      → (progn (if (boundp '名前) nil (setq 名前 初期値)) '名前)
-    fn resolveDefvar(r: *Resolver, form: Value, args: []Value, scope: *const Scope, parameter: bool) Error!*Node {
+    /// 名前を特殊変数と宣言する。
+    ///   - トップレベルのフォームなら、コンパイルの時点でも宣言する（同じフォームの後ろの部分や、後のフォームの
+    ///     コンパイルで、束縛が動的束縛になるように：CLHS 3.2.3.1、defvar「the compiler must recognize that the name
+    ///     has been proclaimed special」）
+    ///   - どちらの場合も、実行した時点で宣言する（トップレベルでない defvar は、実行されるまで宣言しない）
+    ///   (defparameter 名前 初期値 [説明])  → (progn (zl-sys::%proclaim-special '名前) (setq 名前 初期値) '名前)
+    ///   (defvar 名前 [初期値 [説明]])      → (progn (zl-sys::%proclaim-special '名前) (if (boundp '名前) nil (setq 名前 初期値)) '名前)
+    fn resolveDefvar(r: *Resolver, form: Value, args: []Value, scope: *const Scope, parameter: bool, toplevel_form: bool) Error!*Node {
         const min: usize = if (parameter) 2 else 1;
         if (args.len < min or args.len > 3) return r.fail(.program_error, "DEFVAR・DEFPARAMETER の引数の数が正しくありません", form);
         const name = args[0];
         try r.checkBindable(name);
-        const s = r.rt.symbolPtr(name);
-        s.header.flags |= SymbolFlags.special;
+        if (toplevel_form) r.rt.symbolPtr(name).header.flags |= SymbolFlags.special;
         const name_node = try r.node(.{ .constant = name });
-        if (args.len == 1) return name_node;
-        const set = try r.node(.{ .global_set = .{ .sym = name, .value = try r.resolve(args[1], scope) } });
-        const forms = try r.arena.alloc(*Node, 2);
-        forms[1] = name_node;
-        if (parameter) {
-            forms[0] = set;
-        } else {
-            const call_args = try r.arena.alloc(*Node, 1);
-            call_args[0] = name_node;
-            forms[0] = try r.node(.{ .if_ = .{
-                .cond = try r.node(.{ .call_global = .{ .sym = r.rt.syms.boundp, .args = call_args } }),
-                .then = try r.node(.{ .constant = Value.nil }),
-                .else_ = set,
-            } });
+        const proclaim_args = try r.arena.alloc(*Node, 1);
+        proclaim_args[0] = name_node;
+        const proclaim = try r.node(.{ .call_global = .{ .sym = r.rt.sys_proclaim_special, .args = proclaim_args } });
+        var forms: std.ArrayList(*Node) = .empty;
+        try forms.append(r.arena, proclaim);
+        if (args.len >= 2) {
+            // 初期値は、宣言の後で解決する（初期値の中から名前を参照すると、特殊変数の参照になる）
+            const set = try r.node(.{ .global_set = .{ .sym = name, .value = try r.resolve(args[1], scope) } });
+            if (parameter) {
+                try forms.append(r.arena, set);
+            } else {
+                const call_args = try r.arena.alloc(*Node, 1);
+                call_args[0] = name_node;
+                try forms.append(r.arena, try r.node(.{ .if_ = .{
+                    .cond = try r.node(.{ .call_global = .{ .sym = r.rt.syms.boundp, .args = call_args } }),
+                    .then = try r.node(.{ .constant = Value.nil }),
+                    .else_ = set,
+                } }));
+            }
         }
-        return r.node(.{ .progn = forms });
+        try forms.append(r.arena, name_node);
+        return r.node(.{ .progn = forms.items });
     }
 
     /// progv（特殊演算子。Phase 14）：(progv シンボルのリスト 値のリスト 本体...)
@@ -466,9 +489,10 @@ pub const Resolver = struct {
         if (args.len < 2) return r.fail(.program_error, "PROGV にはシンボルのリストと値のリストが必要です", form);
         const l = scope.lambda;
         const saved = l.next_slot;
+        // 深さはシンボル・値の式より前に保存するので、番号もその式（の中の let）より前に割り当てる
+        const depth_slot = l.newSlot();
         const syms = try r.resolve(args[0], scope);
         const vals = try r.resolve(args[1], scope);
-        const depth_slot = l.newSlot();
         const body = if (args.len == 2) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(args[2..], scope);
         l.next_slot = saved;
         return r.node(.{ .progv = .{ .syms = syms, .vals = vals, .body = body, .depth_slot = depth_slot } });

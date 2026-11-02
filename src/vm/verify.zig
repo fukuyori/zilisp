@@ -20,6 +20,8 @@ pub const VerifyError = error{
     StackOverflow,
     StackMismatch,
     BadReturnDepth,
+    /// WIDE の後の命令が、添字・個数のオペランドを持たない
+    BadWide,
     FallsOffEnd,
     OutOfMemory,
 };
@@ -45,6 +47,15 @@ fn decode(bc: []const u8, at: usize) VerifyError!Insn {
     }
     const op = std.enums.fromInt(Op, bc[p]) orelse return error.BadOpcode;
     if (op == .wide) return error.BadOpcode;
+    // WIDE は直後の命令の k・i・n にだけ効く。それを持たない命令の前の WIDE は拒否する
+    // （VM は、オペランドを読む命令まで WIDE の印を残すため、検証器と VM で解釈が分かれないように）
+    if (wide) {
+        var has = false;
+        for (ops.operands(op)) |o| {
+            if (o == .k or o == .i or o == .n) has = true;
+        }
+        if (!has) return error.BadWide;
+    }
     var insn: Insn = .{ .op = op, .start = at, .next = 0 };
     p += 1;
     for (ops.operands(op)) |o| {
@@ -166,6 +177,9 @@ test "verifier accepts a simple function and rejects bad code" {
     // 到達しない命令のジャンプ先が命令の途中（NIL; RETURN; JUMP -4 はジャンプ自身のオペランドを指す）
     const unreachable_jump = [_]u8{ @backingInt(Op.nil), @backingInt(Op.@"return"), @backingInt(Op.jump), 0xFC, 0xFF, 0xFF, 0xFF };
     try std.testing.expectError(error.BadJumpTarget, verify(std.testing.allocator, &unreachable_jump, 0, 0, 0, 1));
+    // WIDE の後に、添字・個数を持たない命令（Codex のレビュー P14 #5 の例：WIDE; NIL; POP; CONST 0; RETURN）
+    const bad_wide = [_]u8{ @backingInt(Op.wide), @backingInt(Op.nil), @backingInt(Op.pop), @backingInt(Op.@"const"), 0, 0, @backingInt(Op.@"return") };
+    try std.testing.expectError(error.BadWide, verify(std.testing.allocator, &bad_wide, 1, 0, 0, 1));
     const falls = [_]u8{@backingInt(Op.nil)};
     try std.testing.expectError(error.FallsOffEnd, verify(std.testing.allocator, &falls, 0, 0, 0, 1));
 }

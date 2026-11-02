@@ -135,3 +135,10 @@ pub fn makunbound(th: *Thread, args: []const Value) Value {
     th.rt.symbolPtr(args[0]).value = Value.unbound;
     return args[0];
 }
+
+/// ZILISP-SYSTEM::%PROCLAIM-SPECIAL 名前：名前を特殊変数と宣言する（defvar・defparameter を実行した時点）
+pub fn sysProclaimSpecial(th: *Thread, args: []const Value) Value {
+    if (checkAssignable(th, args[0])) |e| return e;
+    th.rt.symbolPtr(args[0]).header.flags |= @import("../values/object.zig").SymbolFlags.special;
+    return args[0];
+}

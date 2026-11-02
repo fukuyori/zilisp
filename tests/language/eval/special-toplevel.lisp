@@ -1,0 +1,10 @@
+;; Codex のレビュー（P14）の回帰試験：トップレベルでない defvar、progv の復元、値を捨てる let
+(if nil (defvar rv-x) nil)
+(print (let ((rv-x 1)) (list rv-x (boundp 'rv-x))))
+(progn (defvar *rv-top*) (print (let ((*rv-top* 1)) (boundp '*rv-top*))))
+(defparameter *rv-pv* 0)
+(print (progv (let ((a 5)) a '(*rv-pv*)) (let ((b 1)) b '(1)) *rv-pv*))
+(print *rv-pv*)
+(print (progn (let ((x 1)) x) 2))
+(print (progn (let* ((x 1) (y x)) y) 3))
+(terpri)

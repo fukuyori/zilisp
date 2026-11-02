@@ -124,6 +124,8 @@ pub const Runtime = struct {
     syms: Syms = undefined,
     /// ZILISP-SYSTEM::%DEFUN（defun の展開先。関数をシンボルの関数セルに置く）
     sys_defun: Value = Value.nil,
+    /// ZILISP-SYSTEM::%PROCLAIM-SPECIAL（defvar・defparameter の展開先。実行した時点で特殊変数と宣言する）
+    sys_proclaim_special: Value = Value.nil,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
     thread: ?*thread_mod.Thread = null,
 

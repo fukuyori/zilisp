@@ -71,6 +71,7 @@ pub const table = [_]Entry{
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
 pub const sys_table = [_]Entry{
     .{ .name = "%DEFUN", .impl = functions.sysDefun, .min = 2, .max = 2 },
+    .{ .name = "%PROCLAIM-SPECIAL", .impl = functions.sysProclaimSpecial, .min = 1, .max = 1 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -87,6 +88,7 @@ pub fn install(rt: *Runtime) runtime.Error!void {
         rt.symbolPtr(sym).function = try function.makeNative(rt, sym, e.impl, e.min, e.max);
     }
     rt.sys_defun = rt.findSymbol(rt.sys, "%DEFUN").?.symbol;
+    rt.sys_proclaim_special = rt.findSymbol(rt.sys, "%PROCLAIM-SPECIAL").?.symbol;
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
     for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;

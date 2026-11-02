@@ -83,25 +83,34 @@ pub fn main(init: std.process.Init) !u8 {
         if (dir.readFileAlloc(io, try std.fmt.allocPrint(arena, "{s}.exit", .{stem}), arena, .limited(64))) |s| {
             expected_exit = std.fmt.parseInt(u8, std.mem.trim(u8, s, " \t\r\n"), 10) catch 255;
         } else |_| {}
-        const r = try std.process.run(gpa, io, .{ .argv = &.{bin} });
-        defer gpa.free(r.stdout);
-        defer gpa.free(r.stderr);
-        const code: ?u8 = switch (r.term) {
-            .exited => |c| c,
-            else => null,
-        };
-        const got = try normalize(arena, r.stdout);
-        const want = try normalize(arena, expected);
-        if (code == expected_exit and std.mem.eql(u8, got, want)) {
-            passed += 1;
-        } else {
-            failed += 1;
-            try out.print("FAIL {s}: exit={?d}（期待 {d}）\n--- expected\n{s}\n--- actual\n{s}\n--- stderr\n{s}\n", .{
-                stem, code, expected_exit, want, got, r.stderr,
-            });
+        // 通常の実行と、確保のたびに GC を行う実行（生成したコードの局所変数の値が、保守的な走査で守られているか）
+        var ok = true;
+        for ([_][]const []const u8{ &.{bin}, &.{ bin, "--gc-stress" } }) |argv| {
+            const r = try std.process.run(gpa, io, .{ .argv = argv });
+            defer gpa.free(r.stdout);
+            defer gpa.free(r.stderr);
+            const code: ?u8 = switch (r.term) {
+                .exited => |c| c,
+                else => null,
+            };
+            const got = try normalize(arena, r.stdout);
+            const want = try normalize(arena, expected);
+            if (code != expected_exit or !std.mem.eql(u8, got, want)) {
+                ok = false;
+                try out.print("FAIL {s}（{s}）: exit={?d}（期待 {d}）\n--- expected\n{s}\n--- actual\n{s}\n--- stderr\n{s}\n", .{
+                    stem,
+                    if (argv.len == 1) "通常" else "--gc-stress",
+                    code,
+                    expected_exit,
+                    want,
+                    got,
+                    r.stderr,
+                });
+            }
         }
+        if (ok) passed += 1 else failed += 1;
     }
-    try out.print("native-test: {d} passed, {d} failed, {d} total\n", .{ passed, failed, cases.items.len });
+    try out.print("native-test: {d} passed, {d} failed, {d} total（各ファイルを通常と --gc-stress で実行）\n", .{ passed, failed, cases.items.len });
     return if (failed == 0) 0 else 1;
 }
 

@@ -303,6 +303,8 @@ const FnGen = struct {
                 try f.w().writeAll("    }\n");
             },
             .progn => |forms| for (forms) |x| try f.genDiscard(x),
+            .let_ => |b| _ = try f.genLet(b, true),
+            .progv => |p| _ = try f.genProgv(p, true),
             else => _ = try f.gen(n),
         }
     }
@@ -319,6 +321,61 @@ const FnGen = struct {
         }
         try f.w().writeAll("};\n");
         return Expr.of("&t{d}", .{t});
+    }
+
+    /// let（discard なら本体の値を捨てる。値を捨てる位置では、本体の最後の式も値を捨てる位置になる）
+    fn genLet(f: *FnGen, b: anytype, discard: bool) Error!?Expr {
+        const e = f.e;
+        var inits: std.ArrayList(Expr) = .empty;
+        defer inits.deinit(e.gpa);
+        for (b.inits) |i| try inits.append(e.gpa, try f.gen(i));
+        // 本体を先に生成し、使われた変数が分かってから宣言を書く
+        var body_out: std.Io.Writer.Allocating = .init(e.gpa);
+        defer body_out.deinit();
+        std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
+        const result: ?Expr = if (discard) blk: {
+            try f.genDiscard(b.body);
+            break :blk null;
+        } else try f.gen(b.body);
+        std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
+        const special = ir.hasSpecial(b.vars);
+        var depth: u32 = 0;
+        if (special) {
+            depth = f.temp();
+            try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
+        }
+        for (b.vars, inits.items) |v, init| {
+            if (v.special) {
+                try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) return Value.unwind;\n", .{ try e.constant(v.name), init.s() });
+                continue;
+            }
+            const id = try e.varId(v);
+            if (v.boxed()) {
+                try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, init.s(), id, id });
+            } else {
+                const kw = if (v.assigned) "var" else "const";
+                try f.w().print("    {s} v{d} = {s};\n", .{ kw, id, init.s() });
+            }
+            if (!f.used.contains(id)) try f.w().print("    _ = &v{d};\n", .{id});
+        }
+        try f.w().writeAll(body_out.written());
+        if (special) try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
+        return result;
+    }
+
+    /// progv（discard なら本体の値を捨てる）
+    fn genProgv(f: *FnGen, p: anytype, discard: bool) Error!?Expr {
+        const depth = f.temp();
+        try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
+        const syms = try f.gen(p.syms);
+        const vals = try f.gen(p.vals);
+        try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) return Value.unwind;\n", .{ syms.s(), vals.s() });
+        const result: ?Expr = if (discard) blk: {
+            try f.genDiscard(p.body);
+            break :blk null;
+        } else try f.gen(p.body);
+        try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
+        return result;
     }
 
     fn gen(f: *FnGen, n: *Node) Error!Expr {
@@ -386,50 +443,8 @@ const FnGen = struct {
                 for (forms[0 .. forms.len - 1]) |x| try f.genDiscard(x);
                 return f.gen(forms[forms.len - 1]);
             },
-            .let_ => |b| {
-                var inits: std.ArrayList(Expr) = .empty;
-                defer inits.deinit(e.gpa);
-                for (b.inits) |i| try inits.append(e.gpa, try f.gen(i));
-                // 本体を先に生成し、使われた変数が分かってから宣言を書く
-                var body_out: std.Io.Writer.Allocating = .init(e.gpa);
-                defer body_out.deinit();
-                std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
-                const result = try f.gen(b.body);
-                std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
-                const special = ir.hasSpecial(b.vars);
-                var depth: u32 = 0;
-                if (special) {
-                    depth = f.temp();
-                    try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
-                }
-                for (b.vars, inits.items) |v, init| {
-                    if (v.special) {
-                        try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) return Value.unwind;\n", .{ try e.constant(v.name), init.s() });
-                        continue;
-                    }
-                    const id = try e.varId(v);
-                    if (v.boxed()) {
-                        try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, init.s(), id, id });
-                    } else {
-                        const kw = if (v.assigned) "var" else "const";
-                        try f.w().print("    {s} v{d} = {s};\n", .{ kw, id, init.s() });
-                    }
-                    if (!f.used.contains(id)) try f.w().print("    _ = &v{d};\n", .{id});
-                }
-                try f.w().writeAll(body_out.written());
-                if (special) try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
-                return result;
-            },
-            .progv => |p| {
-                const depth = f.temp();
-                try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
-                const syms = try f.gen(p.syms);
-                const vals = try f.gen(p.vals);
-                try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) return Value.unwind;\n", .{ syms.s(), vals.s() });
-                const result = try f.gen(p.body);
-                try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
-                return result;
-            },
+            .let_ => |b| return (try f.genLet(b, false)).?,
+            .progv => |p| return (try f.genProgv(p, false)).?,
             .lambda => |child| {
                 const id = try e.emitLambda(child);
                 if (child.captures.items.len == 0) return Expr.of("N.K[CLOSURE_BASE + {d}]", .{id});

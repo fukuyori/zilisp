@@ -418,6 +418,26 @@ test "dynamic binding like SBCL 2.6.7 (Phase 14)" {
     try expectValue(&e, "*p14-k*", "0");
 }
 
+test "Codex review of Phase 14: progv slots, defvar outside the toplevel" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // progv の深さの局所変数が、シンボル・値の式の中の let と重ならない（#1）
+    try expectValue(&e, "(progn (defparameter *rv-pv* 0) (progv (let ((a 5)) a '(*rv-pv*)) (let ((b 1)) b '(1)) *rv-pv*))", "1");
+    try expectValue(&e, "*rv-pv*", "0");
+    try testing.expectEqual(@as(usize, 0), e.th.binding_depth);
+    // 実行されない defvar は宣言しない（#3。SBCL 2.6.7：(1 NIL)）
+    try expectValue(&e, "(if nil (defvar rv-x) nil)", "NIL");
+    try expectValue(&e, "(let ((rv-x 1)) (list rv-x (boundp 'rv-x)))", "(1 NIL)");
+    // トップレベルの progn の中の defvar は、コンパイルの時点で宣言する（SBCL 2.6.7：T）
+    try expectValue(&e, "(progn (defvar *rv-top*) (let ((*rv-top* 1)) (boundp '*rv-top*)))", "T");
+    // 関数の中の defvar は、実行した時点で宣言する。その後でコンパイルしたフォームの束縛は動的束縛になる
+    // （load の意味。SBCL 2.6.7 の --script でも (1 T 1)。compile-file でまとめてコンパイルすると (1 T 5) になる）
+    try expectValue(&e, "(defun rv-define () (defvar rv-late 5))", "RV-DEFINE");
+    try expectValue(&e, "(rv-define)", "RV-LATE");
+    try expectValue(&e, "(let ((rv-late 1)) (list rv-late (boundp 'rv-late) (symbol-value 'rv-late)))", "(1 T 1)");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();

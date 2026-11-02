@@ -290,13 +290,21 @@ pub fn runProgram(init: std.process.Init, prog: *const Program) !u8 {
     const rt = try Runtime.create(init.gpa);
     defer rt.destroy();
     rt.io = io;
+    // --gc-stress：確保のたびに GC を行う（生成したコードの局所変数の値が保守的な走査で守られているかの試験。§3.7）
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    for (args[1..]) |a| {
+        if (std.mem.eql(u8, a, "--gc-stress")) rt.heap.stress = true;
+    }
     const th = try Thread.create(rt, stdout, .{});
     defer th.destroy();
     try buildConstants(th, prog);
 
     for (prog.toplevels) |t| {
+        // エラーで抜けたときは、このフォームの中で作った動的束縛を戻す（VM の run と同じ。§6.5）
+        const depth = th.binding_depth;
         const v = t.entry(th, Value.nil, &[_]Value{}, 0);
         if (v == Value.unwind) {
+            th.unbindTo(depth);
             try stdout.flush();
             try stderr.print("{s}:{d}:{d}: ", .{ prog.file, t.line, t.col });
             try th.writeError(stderr);

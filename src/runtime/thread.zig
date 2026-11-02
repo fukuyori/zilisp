@@ -40,6 +40,7 @@ pub const ErrorKind = enum {
     undefined_function,
     program_error,
     control_error,
+    package_error,
     division_by_zero,
     floating_point_overflow,
     floating_point_invalid_operation,
@@ -55,6 +56,7 @@ pub const ErrorKind = enum {
             .undefined_function => "UNDEFINED-FUNCTION",
             .program_error => "PROGRAM-ERROR",
             .control_error => "CONTROL-ERROR",
+            .package_error => "PACKAGE-ERROR",
             .division_by_zero => "DIVISION-BY-ZERO",
             .floating_point_overflow => "FLOATING-POINT-OVERFLOW",
             .floating_point_invalid_operation => "FLOATING-POINT-INVALID-OPERATION",
@@ -91,8 +93,8 @@ pub const Thread = struct {
     pub const Options = struct {
         /// VM の値スタックの要素数（§7.1。既定 1M 要素 = 8 MiB）
         stack_size: usize = 1 << 20,
-        /// VM のフレームの数の上限
-        frame_count: usize = 1 << 16,
+        /// VM のフレームの数の上限（1 フレームは値スタックを 1 要素以上使うので、値スタックの 1/4 とする）
+        frame_count: usize = 1 << 18,
     };
 
     pub fn create(rt: *Runtime, out: *std.Io.Writer, options: Options) runtime.Error!*Thread {

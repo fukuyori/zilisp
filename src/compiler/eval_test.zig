@@ -22,7 +22,7 @@ const Env = struct {
         e.rt = try Runtime.create(testing.allocator);
         errdefer e.rt.destroy();
         e.out = .init(testing.allocator);
-        e.th = try Thread.create(e.rt, &e.out.writer, .{ .stack_size = 1 << 18, .frame_count = 1 << 12 });
+        e.th = try Thread.create(e.rt, &e.out.writer, .{});
     }
     fn deinit(e: *Env) void {
         e.th.destroy();
@@ -225,6 +225,54 @@ test "let and let* bind and shadow like SBCL 2.6.7 (Phase 09)" {
     }
 }
 
+/// Phase 10：defun・関数の呼び出し・再帰（SBCL 2.6.7 の結果）
+const defun_cases = [_][2][]const u8{
+    .{ "(defun p10-sq (x) (* x x))", "P10-SQ" },
+    .{ "(progn (defun p10-sq (x) (* x x)) (p10-sq 7))", "49" },
+    .{ "(progn (defun p10-fact (n) (if (<= n 1) 1 (* n (p10-fact (- n 1))))) (p10-fact 10))", "3628800" },
+    .{ "(progn (defun p10-fib (n) (if (< n 2) n (+ (p10-fib (- n 1)) (p10-fib (- n 2))))) (p10-fib 20))", "6765" },
+    .{ "(progn (defun p10-ev (n) (if (= n 0) t (p10-od (- n 1)))) (defun p10-od (n) (if (= n 0) nil (p10-ev (- n 1)))) (list (p10-ev 10) (p10-od 7) (p10-ev 7)))", "(T T NIL)" },
+    .{ "(progn (defun p10-f () 1) (defun p10-f () 2) (p10-f))", "2" },
+    .{ "(progn (defun p10-g (x) x) (list (funcall #'p10-g 1) (funcall 'p10-g 2) (apply #'p10-g '(3))))", "(1 2 3)" },
+    .{ "(progn (defun p10-doc (x) \"doc\" (declare (ignorable x)) (+ x 1)) (p10-doc 1))", "2" },
+    .{ "(progn (defun p10-none ()) (p10-none))", "NIL" },
+    .{ "(progn (defun p10-str () \"only\") (p10-str))", "\"only\"" },
+    .{ "(progn (let ((count 0)) (defun p10-counter () (setq count (+ count 1)))) (p10-counter) (p10-counter))", "2" },
+    .{ "(progn (defun p10-compose (f g) (lambda (x) (funcall f (funcall g x)))) (funcall (p10-compose #'1+ #'p10-sq) 3))", "10" },
+    .{ "(progn (defun p10-twice (f x) (funcall f (funcall f x))) (p10-twice (lambda (y) (* y 3)) 2))", "18" },
+    .{ "(progn (defun p10-k (x) (+ x 1)) (funcall (symbol-function 'p10-k) 1))", "2" },
+    .{ "(progn (defun p10-sum (n) (if (= n 0) 0 (+ n (p10-sum (- n 1))))) (p10-sum 10000))", "50005000" },
+    .{ "(progn (defun p10-loc (x) (let ((x (+ x 1))) (let* ((y (* x 2))) (list x y)))) (p10-loc 1))", "(2 4)" },
+};
+
+test "defun, function calls and recursion like SBCL 2.6.7 (Phase 10)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (defun_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (defun_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // fboundp：関数なら関数そのもの、マクロ・特殊演算子なら真、なければ NIL
+    try expectValue(&e, "(progn (defun p10-h (x) x) (list (eq (fboundp 'p10-h) #'p10-h) (fboundp 'p10-undefined-xyz) (eq (fboundp 'car) #'car) (fboundp 'if) (fboundp 'defun)))", "(T NIL T T T)");
+    try expectValue(&e, "(progn (defun p10-sq (x) (* x x)) #'p10-sq)", "#<FUNCTION P10-SQ>");
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(p10-sq)", .program_error);
+    try expectError(&e, "(p10-sq 1 2)", .program_error);
+    try expectError(&e, "(defun car (x) x)", .package_error);
+    try expectError(&e, "(defun 1 () 1)", .program_error);
+    try expectError(&e, "(defun p10-bad)", .program_error);
+    try expectError(&e, "(symbol-function 'p10-undefined-xyz)", .undefined_function);
+    try expectError(&e, "(defun (setf p10-x) (v) v)", .unimplemented);
+    try expectError(&e, "(funcall 'defun 'a nil)", .undefined_function);
+    // CL の関数の定義は変わっていない
+    try expectValue(&e, "(car '(1 2))", "1");
+    // 再定義はすぐに反映される（呼び出しのたびに関数セルを参照する）
+    try expectValue(&e, "(progn (defun p10-a () 1) (defun p10-b () (p10-a)) (defun p10-a () 2) (p10-b))", "2");
+    // 深い再帰（10 万段）
+    try expectValue(&e, "(progn (defun p10-depth (n) (if (= n 0) 0 (+ 1 (p10-depth (- n 1))))) (p10-depth 100000))", "100000");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -277,7 +325,7 @@ test "errors" {
         .{ "(- -2305843009213693952)", .unimplemented },
         .{ "(* 1e30 1e30)", .floating_point_overflow },
         .{ "(+ 1d308 1d308)", .floating_point_overflow },
-        .{ "(defun f ())", .unimplemented },
+        .{ "(defmacro m ())", .unimplemented },
         .{ "(block nil)", .unimplemented },
         .{ "(quote)", .program_error },
         .{ "(if)", .program_error },

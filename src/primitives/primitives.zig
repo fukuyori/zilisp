@@ -58,6 +58,14 @@ pub const table = [_]Entry{
     .{ .name = "PRIN1", .impl = functions.prin1, .min = 1, .max = 1 },
     .{ .name = "PRINT", .impl = functions.print, .min = 1, .max = 1 },
     .{ .name = "TERPRI", .impl = functions.terpri, .min = 0, .max = 0 },
+    // 関数の参照（Phase 10）
+    .{ .name = "FBOUNDP", .impl = functions.fboundp, .min = 1, .max = 1 },
+    .{ .name = "SYMBOL-FUNCTION", .impl = functions.symbolFunction, .min = 1, .max = 1 },
+};
+
+/// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
+pub const sys_table = [_]Entry{
+    .{ .name = "%DEFUN", .impl = functions.sysDefun, .min = 2, .max = 2 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -69,6 +77,14 @@ pub fn install(rt: *Runtime) runtime.Error!void {
         s.function = f;
         s.header.flags &= ~SymbolFlags.unimplemented;
     }
+    for (sys_table) |e| {
+        const sym = try rt.intern(rt.sys, e.name);
+        rt.symbolPtr(sym).function = try function.makeNative(rt, sym, e.impl, e.min, e.max);
+    }
+    rt.sys_defun = rt.findSymbol(rt.sys, "%DEFUN").?.symbol;
+    // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
+    // マクロの印は残す（funcall できない）が、「未実装」の印は外す
+    rt.symbolPtr(rt.syms.defun).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {

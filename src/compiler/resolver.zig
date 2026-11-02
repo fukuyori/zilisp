@@ -233,6 +233,7 @@ pub const Resolver = struct {
             if (head == y.function) return r.resolveFunction(form, args, scope);
             if (head == y.lambda) return r.node(.{ .lambda = try r.resolveLambda(form, scope) });
             if (head == y.declare) return r.fail(.program_error, "DECLARE はこの位置には書けません", form);
+            if (head == y.defun) return r.resolveDefun(form, args, scope);
 
             const s = r.rt.symbolPtr(head);
             if (s.hasFlag(SymbolFlags.special_operator))
@@ -308,9 +309,14 @@ pub const Resolver = struct {
     fn resolveLambda(r: *Resolver, form: Value, scope: *const Scope) Error!*Lambda {
         const parts = try r.listItems(Runtime.consPtr(form).cdr, "LAMBDA の形が正しくありません");
         if (parts.len < 1) return r.fail(.program_error, "LAMBDA にはラムダリストが必要です", form);
+        return r.resolveLambdaParts(parts, Value.nil, scope);
+    }
+
+    /// parts = (ラムダリスト 本体...)。fn_name は defun などで付ける関数の名前（無名なら NIL）
+    fn resolveLambdaParts(r: *Resolver, parts: []Value, fn_name: Value, scope: *const Scope) Error!*Lambda {
         const params = try r.listItems(parts[0], "ラムダリストがドット対で終わっています");
         const l = try r.arena.create(Lambda);
-        l.* = .{ .parent = scope.lambda, .name = parts[0] };
+        l.* = .{ .parent = scope.lambda, .name = parts[0], .fn_name = fn_name };
         const vars = try r.arena.alloc(*Var, params.len);
         for (params, 0..) |p, i| {
             if (r.isLambdaListKeyword(p))
@@ -329,6 +335,22 @@ pub const Resolver = struct {
         const inner: Scope = .{ .parent = scope, .lambda = l, .vars = vars, .inline_decls = decls.items };
         l.body = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         return l;
+    }
+
+    /// defun（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
+    /// (defun 名前 ラムダリスト 本体...) を (zl-sys::%defun '名前 (lambda ラムダリスト 本体...)) にする。
+    /// 関数の名前を付けた lambda にする（印字は #<FUNCTION 名前>）。
+    /// 本体を (block 名前 ...) で囲む処理は、block を実装する Phase 18 で加える
+    fn resolveDefun(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len < 2) return r.fail(.program_error, "DEFUN には名前とラムダリストが必要です", form);
+        const name = args[0];
+        if (name.isCons()) return r.fail(.unimplemented, "(setf 名前) の関数の定義は未実装です（Phase 16 で実装予定）", name);
+        if (!isSymbol(name) or name == Value.nil) return r.fail(.program_error, "関数の名前はシンボルでなければなりません", name);
+        const l = try r.resolveLambdaParts(args[1..], name, scope);
+        const call_args = try r.arena.alloc(*Node, 2);
+        call_args[0] = try r.node(.{ .constant = name });
+        call_args[1] = try r.node(.{ .lambda = l });
+        return r.node(.{ .call_global = .{ .sym = r.rt.sys_defun, .args = call_args } });
     }
 
     const Binding = struct { name: Value, init_form: Value };

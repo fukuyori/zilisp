@@ -57,3 +57,43 @@ pub fn terpri(th: *Thread, args: []const Value) Value {
     th.out.writeByte('\n') catch return writeFailed(th);
     return Value.nil;
 }
+
+// ---------------------------------------------------------------------------
+// 関数の定義と参照（Phase 10）
+
+fn isSymbol(v: Value) bool {
+    return v == Value.nil or (v.isOther() and Runtime.kindOf(v) == .symbol);
+}
+
+/// ZILISP-SYSTEM::%DEFUN 名前 関数：defun の展開先。関数をシンボルの関数セルに置き、名前を返す
+pub fn sysDefun(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    const f = args[1];
+    if (!isSymbol(name) or name == Value.nil) return th.typeError(name, th.rt.syms.symbol);
+    const s = th.rt.symbolPtr(name);
+    // CL パッケージのシンボルの関数は再定義できない（CLHS 11.1.2.1.2。SBCL 2.6.7 ではパッケージのロックのエラー）
+    if (s.package == th.rt.cl.obj)
+        return th.signal(.package_error, "COMMON-LISP パッケージのシンボルの関数は定義できません", name, Value.unbound);
+    s.function = f;
+    return name;
+}
+
+/// fboundp：関数・マクロ・特殊演算子の名前なら真（関数ならその関数を返す。SBCL 2.6.7 と同じ）
+pub fn fboundp(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    const s = th.rt.symbolPtr(name);
+    if (s.function != Value.unbound) return s.function;
+    const flags = @import("../values/object.zig").SymbolFlags;
+    if (s.hasFlag(flags.special_operator) or s.hasFlag(flags.macro)) return th.rt.t;
+    return Value.nil;
+}
+
+/// symbol-function：シンボルの関数セルの関数（なければ undefined-function）
+pub fn symbolFunction(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    const f = th.rt.symbolPtr(name).function;
+    if (f == Value.unbound) return th.signal(.undefined_function, "", name, Value.unbound);
+    return f;
+}

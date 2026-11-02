@@ -28,6 +28,7 @@ pub const Syms = struct {
     lambda: Value,
     function: Value,
     declare: Value,
+    defun: Value,
     // ラムダリストのキーワード
     @"&optional": Value,
     @"&rest": Value,
@@ -115,6 +116,8 @@ pub const Runtime = struct {
     stack_top: usize = 0,
     /// よく使う CL のシンボル
     syms: Syms = undefined,
+    /// ZILISP-SYSTEM::%DEFUN（defun の展開先。関数をシンボルの関数セルに置く）
+    sys_defun: Value = Value.nil,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
     thread: ?*thread_mod.Thread = null,
 

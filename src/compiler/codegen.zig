@@ -265,8 +265,8 @@ pub fn compileLambda(rt: *Runtime, gpa: std.mem.Allocator, pins: *Pins, l: *Lamb
     try g.op0(.@"return");
 
     const consts = if (g.consts.items.len == 0) Value.nil else try rt.makeVector(g.consts.items);
-    var name = Value.nil;
-    if (l.parent != null) {
+    var name = l.fn_name;
+    if (name == Value.nil and l.parent != null) {
         // 印字用の名前 (LAMBDA ラムダリスト)。consts と name は引数・局所変数として生きている（§3.4）
         name = try rt.cons(l.name, Value.nil);
         name = try rt.cons(rt.syms.lambda, name);

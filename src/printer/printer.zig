@@ -60,7 +60,11 @@ fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
                 try w.writeAll("(LAMBDA ");
                 if (ll == Value.nil) try w.writeAll("()") else try prin1(rt, w, ll);
                 try w.writeByte(')');
-            } else try prin1(rt, w, name);
+            } else {
+                // 名前の付いた関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
+                try prin1(rt, w, name);
+                return w.writeByte('>');
+            }
             try w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
         },
         else => try w.print("#<FUNCTION {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),

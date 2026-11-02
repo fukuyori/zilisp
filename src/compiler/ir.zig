@@ -34,8 +34,10 @@ pub const Lambda = struct {
     next_slot: u32 = 0,
     /// 外側の lambda から捕捉する変数（closure の捕捉した値の並び順）
     captures: std.ArrayList(*Var) = .empty,
-    /// 印字用の名前（(LAMBDA ラムダリスト)）
+    /// ラムダリスト（印字用の名前 (LAMBDA ラムダリスト) に使う）
     name: Value = Value.nil,
+    /// defun などで付けた関数の名前（シンボル）。NIL なら無名の lambda
+    fn_name: Value = Value.nil,
 
     pub fn newSlot(l: *Lambda) u32 {
         const s = l.next_slot;

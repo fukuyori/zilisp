@@ -49,6 +49,10 @@
 - Phase 09：`let*`（束縛を順に行う。同じ名前を2回束縛してよい。SBCL 2.6.7 と同じ）。
   `let`・`let*` の束縛と shadowing の試験（SBCL 2.6.7 の結果と比べる20通り。GC stress でも実行）、
   言語試験 `tests/language/eval/let.lisp`（と gc-stress 版）
+- Phase 10：`defun`（Zig で書いたブートストラップ用のマクロ。`zl-sys::%defun` に展開する。名前の付いた関数は
+  `#<FUNCTION 名前>` と印字する。COMMON-LISP パッケージのシンボルの関数の定義は package-error）、`fboundp`、`symbol-function`。
+  VM のフレームの上限を値スタックの 1/4（既定 262144）に。再帰・相互再帰・再定義・高階関数の試験（SBCL 2.6.7 の結果と比べる）、
+  言語試験 `tests/language/eval/functions.lisp`（と gc-stress 版）
 
 ### Fixed
 - Codex による Phase 07 のレビューの指摘10件

@@ -15,6 +15,11 @@ pub const SymbolFlags = object.SymbolFlags;
 
 pub const Error = error{OutOfMemory};
 
+/// main が記録するスタックの先頭（Windows 以外で、GC の保守的走査の範囲に使う。§3.4）
+pub var main_stack_top: usize = 0;
+
+const gc = @import("gc.zig");
+
 pub const PackageData = struct {
     name: []const u8,
     nicknames: []const []const u8,
@@ -47,6 +52,10 @@ pub const Runtime = struct {
     sys: *PackageData,
     /// *package*
     current: *PackageData,
+    /// GC の停止時間の計測に使う（null なら計測しない）
+    io: ?std.Io = null,
+    /// GC の保守的走査の範囲の上端（0 なら OS から取得する。試験で明示的に設定する）
+    stack_top: usize = 0,
 
     pub fn create(gpa: std.mem.Allocator) Error!*Runtime {
         const rt = try gpa.create(Runtime);
@@ -67,7 +76,18 @@ pub const Runtime = struct {
         };
         errdefer rt.destroy0();
         try rt.bootstrap();
+        // 起動時の初期化が終わってから GC を有効にする
+        rt.heap.gc_hook = .{ .ctx = rt, .collect = collectThunk };
         return rt;
+    }
+
+    fn collectThunk(ctx: *anyopaque) void {
+        gc.collect(@ptrCast(@alignCast(ctx)));
+    }
+
+    /// GC を行う
+    pub fn collect(rt: *Runtime) void {
+        gc.collect(rt);
     }
 
     fn destroy0(rt: *Runtime) void {
@@ -208,7 +228,11 @@ pub const Runtime = struct {
             if (cp > 0xFF) wide = true;
         }
         const width: u16 = if (wide) 4 else 1;
-        const buf = try rt.heap.allocBytes(count * width);
+        // 先にオブジェクトを作り、そのオブジェクトが持つバッファを確保する（バッファの確保では GC は起きない）
+        const s = try rt.heap.create(object.String, 0);
+        s.* = .{ .header = .{ .kind = .string, .aux = width, .len = @intCast(count) }, .data = undefined };
+        const buf = try rt.heap.allocOwnedBuffer(s, count * width);
+        s.data = buf.ptr;
         it = (std.unicode.Utf8View.init(utf8) catch unreachable).iterator();
         var i: usize = 0;
         while (it.nextCodepoint()) |cp| : (i += 1) {
@@ -217,8 +241,6 @@ pub const Runtime = struct {
                 p[i] = cp;
             } else buf[i] = @intCast(cp);
         }
-        const s = try rt.heap.create(object.String, 0);
-        s.* = .{ .header = .{ .kind = .string, .aux = width, .len = @intCast(count) }, .data = buf.ptr };
         return Value.fromPointer(s, .other);
     }
 

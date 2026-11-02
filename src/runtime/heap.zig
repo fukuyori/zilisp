@@ -10,12 +10,15 @@
 //!       大きいオブジェクト：8 KiB を超えるオブジェクト。連続したページを使う
 //!   - ページごとの情報（使用中ビット・マークビット）はページの外（Zig のヒープ）に置く。
 //!
-//! Phase 06 の範囲：確保、使用中ビット、アドレスからオブジェクトの先頭を求める処理（P07 の保守的走査用）、
-//! マークビットの操作、統計。回収（スイープ）は Phase 07 で実装する。
-//! オブジェクトが別に持つバッファ（allocBytes）は、Phase 07 で「finalize 待ちの一覧」から解放する。
-//! それまでは Heap.deinit でまとめて解放する。
+//! GC（詳細設計 §3.2、Phase 07）との分担
+//!   - マーク（gc.zig）：ルートからたどり、マークビットを立てる。
+//!   - afterMark（このファイル）：finalize 待ちの一覧のうちマークされていないオブジェクトのバッファを解放し、
+//!     大きいオブジェクトをその場で回収し、小さいページをすべて「未掃除」の一覧に入れる。
+//!   - 遅延スイープ：確保のときに未掃除のページを1つずつ掃除する（使用中ビット ← マークビット）。
+//!     次の GC の前に、残りをすべて掃除する（finishSweep）。空になったページは空きページに戻す。
 
 const std = @import("std");
+const builtin = @import("builtin");
 const object = @import("../values/object.zig");
 const Value = @import("../values/value.zig").Value;
 const os_memory = @import("../support/os_memory.zig");
@@ -101,7 +104,34 @@ pub const Stats = struct {
     bytes_since_gc: u64 = 0,
     objects_allocated: u64 = 0,
     chunks: usize = 0,
+    /// GC の回数
+    collections: u64 = 0,
+    /// GC の停止時間の合計と最大（ns。時刻を取れる場合だけ）
+    pause_ns_total: u64 = 0,
+    pause_ns_max: u64 = 0,
+    /// 直前の GC で生き残ったバイト数・オブジェクト数
+    live_bytes: u64 = 0,
+    live_objects: u64 = 0,
+    /// 直前の GC で、保守的な走査で見つかった参照の数
+    conservative_refs: u64 = 0,
+    /// 回収したオブジェクトの累計（掃除の時点で数える）
+    objects_freed: u64 = 0,
 };
+
+/// オブジェクトが別に持つバッファ（文字列の中身など）。持ち主が回収されたら解放する（§3.2）
+const Finalizable = struct {
+    owner: usize,
+    buffer: []align(8) u8,
+};
+
+/// GC を起動する処理（Runtime が登録する）
+pub const GcHook = struct {
+    ctx: *anyopaque,
+    collect: *const fn (ctx: *anyopaque) void,
+};
+
+/// GC を始める確保量の下限（§3.1）
+pub const min_threshold: u64 = 8 * 1024 * 1024;
 
 /// アドレスから求めたオブジェクト
 pub const ObjectRef = struct {
@@ -119,8 +149,18 @@ pub const Heap = struct {
     partial: [size_classes.len + 1]std.ArrayList(*Page) = @splat(.empty),
     /// 空きページ（1 ページずつ使う場合）。新しいチャンクのページは、アドレスの若い順に取り出せるよう積む
     free_pages: std.ArrayList(*Page) = .empty,
-    buffers: std.ArrayList([]align(8) u8) = .empty,
+    /// GC の後、まだ掃除していないページ（サイズクラスごと）
+    unswept: [size_classes.len + 1]std.ArrayList(*Page) = @splat(.empty),
+    finalizable: std.ArrayList(Finalizable) = .empty,
     stats: Stats = .{},
+    /// 次の GC を始める確保量
+    threshold: u64 = min_threshold,
+    gc_hook: ?GcHook = null,
+    in_gc: bool = false,
+    /// --gc-stress：確保のたびに GC を行う（ルートの登録漏れの検出用。§3.7）
+    stress: bool = false,
+    /// 回収した領域を 0xAA で埋める（デバッグビルドの既定。§3.7）
+    poison: bool = builtin.mode == .debug,
 
     pub fn init(gpa: std.mem.Allocator) Heap {
         return .{ .gpa = gpa };
@@ -134,15 +174,23 @@ pub const Heap = struct {
         }
         h.chunks.deinit(h.gpa);
         for (&h.partial) |*l| l.deinit(h.gpa);
+        for (&h.unswept) |*l| l.deinit(h.gpa);
         h.free_pages.deinit(h.gpa);
-        for (h.buffers.items) |b| h.gpa.free(b);
-        h.buffers.deinit(h.gpa);
+        for (h.finalizable.items) |f| h.gpa.free(f.buffer);
+        h.finalizable.deinit(h.gpa);
     }
 
     // ------------------------------------------------------------------
     // 確保
 
+    inline fn maybeCollect(h: *Heap) void {
+        if (h.gc_hook) |hook| {
+            if (!h.in_gc and (h.stress or h.stats.bytes_since_gc >= h.threshold)) hook.collect(hook.ctx);
+        }
+    }
+
     pub fn cons(h: *Heap, car: Value, cdr: Value) error{OutOfMemory}!Value {
+        h.maybeCollect();
         const addr = try h.allocSmall(cons_class);
         const c: *object.Cons = @ptrFromInt(addr);
         c.* = .{ .car = car, .cdr = cdr };
@@ -150,18 +198,20 @@ pub const Heap = struct {
     }
 
     /// ヘッダ付きのオブジェクトを確保する。`extra` は型の大きさの後ろに続ける領域のバイト数。
-    /// 中身は呼び出し側が初期化すること。
+    /// 中身は呼び出し側が初期化すること（初期化する前に、確保を伴う処理を呼ばないこと）。
     pub fn create(h: *Heap, comptime T: type, extra: usize) error{OutOfMemory}!*T {
+        h.maybeCollect();
         const size = @sizeOf(T) + extra;
         const addr = if (size <= max_small) try h.allocSmall(classOf(size)) else try h.allocLarge(size);
         return @ptrFromInt(addr);
     }
 
-    /// オブジェクトが別に持つバッファ（文字列の中身など）を確保する。
-    pub fn allocBytes(h: *Heap, n: usize) error{OutOfMemory}![]u8 {
+    /// オブジェクト `owner` が別に持つバッファを確保する。owner が回収されたときに解放する（§3.2）。
+    /// GC は起こさない（owner を確保した直後に呼べるようにするため）。確保量は GC の契機に数える（§3.1）。
+    pub fn allocOwnedBuffer(h: *Heap, owner: *const anyopaque, n: usize) error{OutOfMemory}![]u8 {
         const b = try h.gpa.alignedAlloc(u8, .@"8", @max(n, 1));
         errdefer h.gpa.free(b);
-        try h.buffers.append(h.gpa, b);
+        try h.finalizable.append(h.gpa, .{ .owner = @intFromPtr(owner), .buffer = b });
         h.count(b.len);
         return b;
     }
@@ -203,6 +253,16 @@ pub const Heap = struct {
             if (p.findFree()) |slot| {
                 h.current[class] = p;
                 return h.take(p, slot);
+            }
+        }
+        // GC の後、まだ掃除していないページを掃除して使う（遅延スイープ）
+        while (h.unswept[class].pop()) |p| {
+            if (h.sweepPage(p)) {
+                p.cursor = 0;
+                if (p.findFree()) |slot| {
+                    h.current[class] = p;
+                    return h.take(p, slot);
+                }
             }
         }
         const p = try h.freePages(1);
@@ -345,6 +405,100 @@ pub const Heap = struct {
         for (h.chunks.items) |c| {
             for (c.pages) |*p| p.mark_bits = @splat(0);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 回収（詳細設計 §3.2）
+
+    /// GC のマークを始める前に呼ぶ。前回の GC の後に掃除していないページをすべて掃除する
+    /// （マークビットを次の GC で使い回すため）。
+    pub fn finishSweep(h: *Heap) void {
+        for (&h.unswept) |*list| {
+            while (list.pop()) |p| _ = h.sweepPage(p);
+        }
+    }
+
+    /// 1ページを掃除する。マークされていない枠を空きにし、マークビットを消す。
+    /// 空きの枠ができれば true。ページが空になったら空きページに戻す。
+    fn sweepPage(h: *Heap, p: *Page) bool {
+        var used: u32 = 0;
+        const words = (p.slots + 63) / 64;
+        for (0..words) |wi| {
+            const dead = p.alloc_bits[wi] & ~p.mark_bits[wi];
+            if (dead != 0) {
+                h.stats.objects_freed += @popCount(dead);
+                if (h.poison) {
+                    var d = dead;
+                    while (d != 0) {
+                        const bit = @ctz(d);
+                        d &= d - 1;
+                        const slot = wi * 64 + bit;
+                        const ptr: [*]u8 = @ptrFromInt(p.addr + slot * p.slot_size);
+                        @memset(ptr[0..p.slot_size], 0xAA);
+                    }
+                }
+            }
+            p.alloc_bits[wi] &= p.mark_bits[wi];
+            p.mark_bits[wi] = 0;
+            used += @popCount(p.alloc_bits[wi]);
+        }
+        p.used = used;
+        p.cursor = 0;
+        if (used == 0) {
+            p.kind = .free;
+            h.free_pages.append(h.gpa, p) catch {}; // 一覧に入れられなくても、確保の時に連続した空きとして見つかる
+            return false;
+        }
+        return used < p.slots;
+    }
+
+    /// マークが終わった直後に呼ぶ（GC の停止時間の中で行う処理）
+    pub fn afterMark(h: *Heap, live_bytes: u64, live_objects: u64) void {
+        // finalize 待ちの一覧：持ち主がマークされていなければバッファを解放する
+        var i: usize = 0;
+        var live_buffer_bytes: u64 = 0;
+        while (i < h.finalizable.items.len) {
+            const f = h.finalizable.items[i];
+            const alive = if (h.findObject(f.owner)) |ref| isMarked(ref) else false;
+            if (alive) {
+                live_buffer_bytes += f.buffer.len;
+                i += 1;
+            } else {
+                h.gpa.free(f.buffer);
+                _ = h.finalizable.swapRemove(i);
+            }
+        }
+        // 大きいオブジェクトはその場で回収し、小さいページは未掃除の一覧に入れる
+        for (&h.partial) |*l| l.clearRetainingCapacity();
+        h.current = @splat(null);
+        for (h.chunks.items) |c| {
+            for (c.pages) |*p| switch (p.kind) {
+                .free, .large_tail => {},
+                .cons, .small => h.unswept[p.class].append(h.gpa, p) catch {
+                    _ = h.sweepPage(p);
+                },
+                .large_head => {
+                    if (Page.testBit(&p.mark_bits, 0)) {
+                        p.mark_bits = @splat(0);
+                    } else {
+                        h.stats.objects_freed += 1;
+                        const n = p.large;
+                        const head_index = (p.addr - c.base()) / page_size;
+                        for (c.pages[head_index .. head_index + n]) |*pg| {
+                            if (h.poison) @memset(@as([*]u8, @ptrFromInt(pg.addr))[0..page_size], 0xAA);
+                            pg.kind = .free;
+                            pg.alloc_bits = @splat(0);
+                            h.free_pages.append(h.gpa, pg) catch {};
+                        }
+                    }
+                },
+            };
+        }
+        const live = live_bytes + live_buffer_bytes;
+        h.stats.live_bytes = live;
+        h.stats.live_objects = live_objects;
+        h.stats.bytes_since_gc = 0;
+        h.threshold = @max(min_threshold, live * 2);
     }
 };
 

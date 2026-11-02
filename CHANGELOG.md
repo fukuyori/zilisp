@@ -31,3 +31,8 @@
   明示的なルートと FFI handle（世代番号つき。`src/runtime/roots.zig`）。
   Windows で大きな境界にそろえた確保を行う `src/support/os_memory.zig`（Zig 0.17.0 の page_allocator の問題の回避）。
   確保のベンチマーク（`tests/bench/alloc.zig`）
+- Phase 07：mark-and-sweep GC（`src/runtime/gc.zig`）。マークスタック、正確なルート（パッケージ・NIL・明示的ルート・
+  FFI handle）と保守的なルート（ネイティブのスタックとレジスタ）、finalize 待ちの一覧（文字列のバッファの解放）、
+  大きいオブジェクトの即時回収、小さいページの遅延スイープ、空になったページの再利用、GC の契機
+  （max(8 MiB, 生存量 × 2)）、`--gc-stress`、回収した領域を 0xAA で埋める（Debug）、統計と `--gc-stats`。
+  言語試験 `tests/language/gc-stress/`、GC の停止時間のベンチマーク（`tests/bench/gc.zig`）

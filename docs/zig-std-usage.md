@@ -47,6 +47,9 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | `std.mem.doNotOptimizeAway` | 使える（値・ポインタの両方） | §3.4 |
 | callee-saved レジスタの退避 | 空のインラインアセンブリに clobber を指定する書き方が使える：x86_64 は `asm volatile ("" ::: .{ .rbx = true, .rbp = true, .r12 = true, .r13 = true, .r14 = true, .r15 = true, .memory = true })`、aarch64 は `.x19`〜`.x28`。これで、コンパイラが該当のレジスタをスタックに退避する | §3.4 手順1 |
 | `extern struct` を含む error union、`callconv(.c)` | どちらもコンパイル・実行できる | §6.2 |
+| ビルドの種類 | `@import("builtin").mode` の型は `std.lang.Optimize` で、値は `.debug`・`.safe`・`.fast`・`.small`（旧 `.Debug`・`.ReleaseSafe` など） | Phase 07 |
+| `@frameAddress()` | 最適化ありのビルドでは、その関数自身のローカル変数が `@frameAddress()` より高いアドレスに置かれることがある。GC の保守的走査の上端に、値を持つ関数自身のフレームの位置を使ってはならない（詳細設計 §3.4） | §3.4 |
+| スタックの上端（Windows） | `std.os.windows.teb().NtTib.StackBase` | §3.4 |
 | enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
 
 ## 3. 戻り値の返し方（詳細設計 §6.2 の要検証項目）

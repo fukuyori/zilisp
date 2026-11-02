@@ -63,6 +63,12 @@
   コンパイル）、開発用のコマンド `zilisp --emit-zig FILE OUT.zig`、`zig build native-test`（言語試験をネイティブで実行し、
   VM と同じ結果かを確かめる。8件すべて一致）、言語試験 `tests/language/eval/cases.lisp`（P08〜P11 の単体テストの式 160 あまり）。
   計測：fib(30) で VM 約 34.9 ms、ネイティブ約 9.7 ms。`Value.unwind` の検査の費用は約12%
+- Phase 13：教材のブロックを VM と SBCL 2.6.7 で実行して比べる道具（`zig build eval-check`。結果は
+  `compatibility/eval-status.md` と `eval-check.tsv`）。955 件のうち一致 82、出力の違い 0、Zilisp だけがエラー 511（すべて未実装の機能。
+  多いのは defparameter・defmacro・defstruct・cond・loop・setf・dolist）。
+  エラーの報告に、VM のフレームの関数名の呼び出しの履歴を加えた（関数の中で起きたエラーのとき。16 件まで）。
+  CL の定数 `most-positive-fixnum`・`most-negative-fixnum`・`call-arguments-limit`・`lambda-parameters-limit`・
+  `multiple-values-limit`・`char-code-limit`・`pi` に値を設定。値のない CL の変数は「未実装です」と報告する
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

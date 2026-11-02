@@ -239,6 +239,7 @@ pub const Runtime = struct {
             @field(rt.syms, field) = (rt.findSymbol(rt.cl, name) orelse @panic("CL のシンボルがありません: " ++ name)).symbol;
         }
         try primitives.install(rt);
+        try rt.setStandardConstants();
 
         for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
             const s = try rt.intern(rt.sys, n);
@@ -291,6 +292,23 @@ pub const Runtime = struct {
 
     pub fn cons(rt: *Runtime, car: Value, cdr: Value) Error!Value {
         return rt.heap.cons(car, cdr);
+    }
+
+    /// 値の表現で決まる CL の定数に値を置く（他の定数・変数は、その機能を実装する Phase で設定する）。
+    /// 値は処理系依存（tests/differential/impl-dependent.toml に SBCL との違いを記録）
+    fn setStandardConstants(rt: *Runtime) Error!void {
+        const thread_mod2 = @import("thread.zig");
+        const fixnums = [_]struct { []const u8, i64 }{
+            .{ "MOST-POSITIVE-FIXNUM", value_mod.most_positive_fixnum },
+            .{ "MOST-NEGATIVE-FIXNUM", value_mod.most_negative_fixnum },
+            .{ "CALL-ARGUMENTS-LIMIT", thread_mod2.call_arguments_limit },
+            .{ "LAMBDA-PARAMETERS-LIMIT", 1024 },
+            .{ "MULTIPLE-VALUES-LIMIT", thread_mod2.mv_limit },
+            .{ "CHAR-CODE-LIMIT", 0x110000 },
+        };
+        for (fixnums) |c| rt.symbolPtr((rt.findSymbol(rt.cl, c[0]) orelse unreachable).symbol).value = Value.fromFixnum(c[1]);
+        // pi は long-float。Zilisp の long-float は double-float と同じ（CLHS 12.1.4.1.1 で許される）
+        rt.symbolPtr((rt.findSymbol(rt.cl, "PI") orelse unreachable).symbol).value = try rt.makeDouble(std.math.pi);
     }
 
     /// Zig の真偽値を T・NIL にする

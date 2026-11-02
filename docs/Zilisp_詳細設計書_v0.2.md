@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記11） | 2026-11-02 | Phase 13：教材のブロックの実行と SBCL との比較（`zig build eval-check`。§13.1）、エラーの報告の呼び出しの履歴（§9.4） |
 | 0.2（追記10） | 2026-11-02 | Phase 12：IR の検証器、ネイティブバックエンドの最小実装（§7A.8）、VM とネイティブの一致の試験（`zig build native-test`）、VM とネイティブの速度と、`Value.unwind` の検査の費用の計測（§6.4・§7A.8） |
 | 0.2（追記9） | 2026-11-02 | VM の命令の分岐をラベル付き `switch` と `continue` に確定（計測の結果。§7.1）。`defun` の展開（§5.2） |
 | 0.2（追記8） | 2026-11-02 | Phase 08 の実装に合わせて、condition ができるまでのエラーの扱い（§6.6）、`call-arguments-limit` の解釈（§7.3）、Phase 08 で実装した命令とフレームの形（§7.4）、CLI の動作（§19）を追記 |
@@ -960,7 +961,7 @@ pub const Package = struct {
 
 | 実行形態 | 処理されなかった `error` への動作 |
 |---|---|
-| REPL | condition の型・メッセージ・発生位置・backtrace と、restart の一覧を番号付きで表示する。番号の入力で `invoke-restart` を実行する。toplevel の `abort` で REPL に戻る |
+| REPL | condition の型・メッセージ・発生位置・backtrace と、restart の一覧を番号付きで表示する（Phase 13 から：condition ができるまでは、型・説明・発生位置と、VM のフレームの関数名の呼び出しの履歴（新しい順、16 件まで）を表示する）。番号の入力で `invoke-restart` を実行する。toplevel の `abort` で REPL に戻る |
 | `--script` / ソース実行 / ビルドした実行ファイル | 標準エラー出力に condition と backtrace を出力し、**終了コード 1** で終了する |
 
 - `*debugger-hook*` と `invoke-debugger` は標準どおりに実装する。
@@ -1119,6 +1120,8 @@ instance                      rack
 ## 13. SBCL との差分試験・性能計測
 
 ### 13.1 差分試験
+
+**教材のブロックの実行**（Phase 13 から）：`zig build eval-check -Dsbcl=SBCL のパス` は、教材のブロックのうち分類の候補が A のもの（955 件）を、Zilisp（VM、`--script`）と SBCL 2.6.7（`--script`）で、ブロックごとの空の作業用ディレクトリの中で実行し（時間制限 10 秒）、結果を比べる。結果は `compatibility/eval-status.md`（集計と、Zilisp だけがエラーになったブロックの最初のエラーの内訳）と `compatibility/eval-check.tsv`（ブロックごと）に書く。未実装の機能の優先順位を決める材料にする。Phase 13 の時点：一致 82、両方ともエラー 362（前のブロックの定義を使うものなど）、出力の違い 0、Zilisp だけがエラー 511（すべて未実装の機能）。
 
 - 試験用の Lisp ファイルは SBCL と Zilisp の両方で動くように書き、結果を正規化した文字列として出力する。
 - `tools/compare_sbcl/`（Zig）が、両方を実行して出力を比較し、差分を分類（不具合／処理系依存／未実装）する。SBCL の期待出力は `tests/differential/*.expected` に保存する。

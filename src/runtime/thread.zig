@@ -19,6 +19,8 @@ pub const mv_limit = 1024;
 pub const call_arguments_limit = 65536;
 /// Zig の関数（funcall・apply など）から関数を呼ぶ入れ子の深さの上限（ネイティブのスタックを溢れさせないため）
 pub const max_native_depth = 1000;
+/// エラーの報告に含める呼び出しの履歴の数
+pub const backtrace_max = 16;
 
 /// 戻り値が Value.unwind のときの理由（§6.6）
 pub const Fault = enum(u8) {
@@ -89,6 +91,11 @@ pub const Thread = struct {
     native_depth: u32 = 0,
     /// 多値レジスタ（mv[0] は使わない。主値は戻り値）
     mv: [mv_limit]Value = @splat(Value.nil),
+    /// エラーを記録した時点の呼び出しの履歴（VM のフレームの closure。新しい順）
+    backtrace: [backtrace_max]Value = @splat(Value.nil),
+    backtrace_len: u32 = 0,
+    /// 履歴の全体の深さ（backtrace_max を超えた分は記録しない）
+    backtrace_depth: u32 = 0,
 
     pub const Options = struct {
         /// VM の値スタックの要素数（§7.1。既定 1M 要素 = 8 MiB）
@@ -118,15 +125,18 @@ pub const Thread = struct {
         for (th.mv[1..@min(th.mv_count, mv_limit)]) |v| f(ctx, v);
         f(ctx, th.err.datum);
         f(ctx, th.err.expected);
+        for (th.backtrace[0..th.backtrace_len]) |v| f(ctx, v);
     }
 
     // ------------------------------------------------------------------
     // エラー（Phase 25 で condition の通知に置き換える）
 
     /// エラーを記録して Value.unwind を返す（呼び出し側はそのまま返す）
-    pub fn signal(th: *Thread, kind: ErrorKind, message: []const u8, datum: Value, expected: Value) Value {
+    /// エラーの経路はまれにしか通らないので、inline 展開しない（呼び出し側の高速経路のコードを小さく保つ）
+    pub noinline fn signal(th: *Thread, kind: ErrorKind, message: []const u8, datum: Value, expected: Value) Value {
         th.fault = .lisp_error;
         th.err = .{ .kind = kind, .message = message, .datum = datum, .expected = expected };
+        th.captureBacktrace();
         return Value.unwind;
     }
 
@@ -166,7 +176,12 @@ pub const Thread = struct {
             .unbound_variable => {
                 try w.writeAll("変数 ");
                 try printer.prin1(rt, w, e.datum);
-                try w.writeAll(" に値がありません");
+                // COMMON-LISP パッケージの変数・定数で値がないのは、その機能が未実装のため
+                if (e.datum.isOther() and Runtime.kindOf(e.datum) == .symbol and rt.symbolPtr(e.datum).package == rt.cl.obj) {
+                    try w.writeAll(" は未実装です");
+                } else {
+                    try w.writeAll(" に値がありません");
+                }
             },
             .undefined_function => {
                 try w.writeAll("関数 ");
@@ -193,6 +208,29 @@ pub const Thread = struct {
     pub fn clearError(th: *Thread) void {
         th.fault = .none;
         th.err = .{};
+        th.backtrace_len = 0;
+        th.backtrace_depth = 0;
+    }
+
+    /// VM のフレームの関数を、新しい順に記録する（エラーの報告用。ネイティブのフレームは Phase 25 以降）
+    fn captureBacktrace(th: *Thread) void {
+        const n = th.vm.fp;
+        th.backtrace_depth = @intCast(n);
+        th.backtrace_len = @intCast(@min(n, backtrace_max));
+        for (0..th.backtrace_len) |i| th.backtrace[i] = th.vm.frames[n - 1 - i].closure;
+    }
+
+    /// 呼び出しの履歴を書く（関数の中で起きたエラーのときだけ）。各行は 2 字下げで、改行で終わる
+    pub fn writeBacktrace(th: *Thread, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        // トップレベルのフォームの中だけで起きたエラーには、履歴を書かない（情報がない）
+        if (th.backtrace_depth <= 1) return;
+        try w.writeAll("  呼び出しの履歴（新しい順）:\n");
+        for (th.backtrace[0..th.backtrace_len], 0..) |c, i| {
+            try w.print("    {d}: ", .{i});
+            try printer.printCodeName(th.rt, w, function.closurePtr(c).codePtr().name);
+            try w.writeByte('\n');
+        }
+        if (th.backtrace_depth > th.backtrace_len) try w.print("    …ほか {d} 件\n", .{th.backtrace_depth - th.backtrace_len});
     }
 
     // ------------------------------------------------------------------

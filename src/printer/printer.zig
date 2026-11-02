@@ -51,27 +51,28 @@ fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
             try w.writeByte('>');
         },
         .closure => {
-            const code = function.closurePtr(v).codePtr();
+            const name = function.closurePtr(v).codePtr().name;
             try w.writeAll("#<FUNCTION ");
-            const name = code.name;
-            if (name.isCons() and Runtime.consPtr(name).car == rt.syms.lambda) {
-                // 空のラムダリストは () と書く（SBCL 2.6.7：#<FUNCTION (LAMBDA ()) {…}>）
-                const ll = Runtime.consPtr(Runtime.consPtr(name).cdr).car;
-                try w.writeAll("(LAMBDA ");
-                if (ll == Value.nil) try w.writeAll("()") else try prin1(rt, w, ll);
-                try w.writeByte(')');
-            } else if (name.isCons()) {
-                // 局所関数：(FLET 名前)・(LABELS 名前) とアドレス
-                try prin1(rt, w, name);
-            } else {
-                // 名前の付いた大域の関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
-                try prin1(rt, w, name);
-                return w.writeByte('>');
-            }
+            try printCodeName(rt, w, name);
+            // 名前の付いた大域の関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
+            if (!name.isCons()) return w.writeByte('>');
             try w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
         },
         else => try w.print("#<FUNCTION {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
     }
+}
+
+/// 関数の名前（Code の name）を書く：FACT、(LAMBDA (X))、(FLET F)。トップレベルのフォーム（NIL）は「トップレベル」
+pub fn printCodeName(rt: *Runtime, w: *Writer, name: Value) Error!void {
+    if (name == Value.nil) return w.writeAll("（トップレベル）");
+    if (name.isCons() and Runtime.consPtr(name).car == rt.syms.lambda) {
+        // 空のラムダリストは () と書く（SBCL 2.6.7：#<FUNCTION (LAMBDA ()) {…}>）
+        const ll = Runtime.consPtr(Runtime.consPtr(name).cdr).car;
+        try w.writeAll("(LAMBDA ");
+        if (ll == Value.nil) try w.writeAll("()") else try prin1(rt, w, ll);
+        return w.writeByte(')');
+    }
+    try prin1(rt, w, name);
 }
 
 fn printList(rt: *Runtime, w: *Writer, v: Value) Error!void {

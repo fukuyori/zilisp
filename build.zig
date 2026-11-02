@@ -5,6 +5,7 @@
 //!   zig build test            単体テストを実行する
 //!   zig build bench           ベンチマークを ReleaseFast で実行する（詳細設計 §13.2）
 //!   zig build lang-test       言語試験（VM）
+//!   zig build eval-check      教材のブロックを VM と SBCL で実行して比べる（-Dsbcl=SBCL のパス）
 //!   zig build native-test     言語試験をネイティブバックエンドで実行し、VM と同じ結果かを確かめる（-Doptimize で最適化を指定）
 //!
 //! 2段階ビルド（標準ライブラリのネイティブ化。詳細設計 §11.3）は Phase 12 で追加する。
@@ -95,6 +96,27 @@ pub fn build(b: *std.Build) void {
     const native_step = b.step("native-test", "Compile tests/language/eval with the native backend and compare with the VM results");
     native_step.dependOn(&run_native_test.step);
 
+    // 教材のブロックを VM で実行し、SBCL の結果と比べる（Phase 13。詳細設計 §13.1）：
+    //   zig build eval-check [-Dsbcl=SBCL のパス]   結果は compatibility/eval-status.md と eval-check.tsv
+    const sbcl_path = b.option([]const u8, "sbcl", "Path to the SBCL executable (eval-check)") orelse "sbcl";
+    const eval_check_exe = b.addExecutable(.{
+        .name = "zilisp-eval-check",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/eval_check/main.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_eval_check = b.addRunArtifact(eval_check_exe);
+    run_eval_check.addArtifactArg(exe);
+    run_eval_check.addArg(sbcl_path);
+    run_eval_check.addArg(".work/samples");
+    run_eval_check.addArg(".zig-cache/eval-check");
+    run_eval_check.addArg("compatibility/eval-status.md");
+    run_eval_check.has_side_effects = true;
+    const eval_check_step = b.step("eval-check", "Run curriculum blocks with the Zilisp VM and compare with SBCL");
+    eval_check_step.dependOn(&run_eval_check.step);
+
     // 教材のコードブロックの抽出（詳細設計 §12）：zig build extract-samples -- <教材> <出力先>
     const extract_exe = b.addExecutable(.{
         .name = "zilisp-extract-samples",
@@ -135,7 +157,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/lib.zig"),
         .target = b.graph.host,
     });
-    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tools/native_test/main.zig", "tests/bench/main.zig" }) |path| {
+    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tools/native_test/main.zig", "tools/eval_check/main.zig", "tests/bench/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path(path),
             .target = b.graph.host,

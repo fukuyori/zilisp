@@ -86,6 +86,7 @@ fn evalText(
             try stderr.print("{s}:{d}:{d}: ", .{ name, loc.line, loc.col });
             try s.th.writeError(stderr);
             try stderr.writeByte('\n');
+            try s.th.writeBacktrace(stderr);
             try stderr.flush();
             s.th.clearError();
             if (!interactive) {
@@ -264,4 +265,21 @@ test "repl evaluates forms, waits for unfinished forms, and keeps going after er
             "<repl>:1:1: TYPE-ERROR: 値 1 は型 LIST ではありません\n",
         got,
     );
+}
+
+test "errors inside functions report the call history" {
+    const t = try replTranscript("(defun bt-f (x) (car x))\n(defun bt-g (y) (bt-f y))\n(bt-g 5)\n");
+    defer testing.allocator.free(t.text);
+    const want =
+        \\<repl>:1:1: TYPE-ERROR: 値 5 は型 LIST ではありません
+        \\  呼び出しの履歴（新しい順）:
+        \\    0: BT-F
+        \\    1: BT-G
+        \\    2: （トップレベル）
+        \\
+    ;
+    testing.expect(std.mem.indexOf(u8, t.text, want) != null) catch |e| {
+        std.debug.print("{s}\n", .{t.text});
+        return e;
+    };
 }

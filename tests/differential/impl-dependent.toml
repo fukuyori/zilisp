@@ -72,3 +72,11 @@ sbcl = "キーワード :NAME として読む"
 zilisp = "SBCL と同じくキーワードとして読む"
 clhs = "2.3.5 Valid Patterns for Tokens（::name は規定されていない）"
 since = "Phase 03"
+
+[[items]]
+id = "implementation-limits"
+description = "処理系の上限を表す定数の値"
+sbcl = "most-positive-fixnum 4611686018427387903（2^62-1）、call-arguments-limit・lambda-parameters-limit・multiple-values-limit 1073741824"
+zilisp = "most-positive-fixnum 2305843009213693951（2^61-1。詳細設計 §2.2）、call-arguments-limit 65536、lambda-parameters-limit 1024、multiple-values-limit 1024（§6.7）"
+clhs = "most-positive-fixnum、call-arguments-limit、lambda-parameters-limit、multiple-values-limit の各定数の定義（値は処理系依存。下限だけが決められている）"
+since = "Phase 13"

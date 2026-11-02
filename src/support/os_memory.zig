@@ -3,7 +3,7 @@
 //! Zig 0.17.0 の std.heap.page_allocator は、Windows でページより大きい境界（4 MiB など）にそろえた確保を
 //! 求めると、最初の確保がたまたまそろわなかった場合に、プレースホルダーとして予約した領域を
 //! NtAllocateVirtualMemory(COMMIT) で確定しようとして失敗し、OutOfMemory を返す
-//! （lib/std/heap/PageAllocator.zig 66〜107 行目。docs/zig-std-usage.md に記録）。
+//! （lib/std/heap/PageAllocator.zig 66〜107 行目。docs/zig-std-usage.ja.md に記録）。
 //! そこで Windows では、大きめの範囲を予約（RESERVE）だけしておき、その中のそろった部分だけを確定する。
 //! 予約しただけの範囲はアドレス空間を使うだけで、メモリは消費しない。
 //! Windows 以外では page_allocator を使う（mmap で多めに取り、余りを返す方式）。領域は OS が 0 で埋めたもの。

@@ -476,7 +476,7 @@ zilisp/
 │   ├── Zilisp_企画・基本設計書_v0.3.md  # 本書
 │   ├── Zilisp_詳細設計書_v0.2.md        # 詳細設計（Value、GC、IR、VM、ネイティブバックエンド、CLOS、ビルド等を1冊に集約）
 │   ├── version-update-checklist.md     # バージョン変更時に更新するファイルの一覧（Phase 01）
-│   ├── zig-std-usage.md                # Zig 0.17.0 のstd・言語機能の照合結果（Phase 01）
+│   ├── zig-std-usage.ja.md                # Zig 0.17.0 のstd・言語機能の照合結果（Phase 01）
 │   └── ffi.md                          # FFIの詳細設計（Phase 31）
 ├── src/
 │   ├── main.zig

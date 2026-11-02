@@ -9,6 +9,7 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 | `build.zig.zon` | `.version` |
 | `src/version.zig` | `version`（`build.zig.zon` と同じ値にする） |
 | `CHANGELOG.md`（英語）・`CHANGELOG.ja.md`（日本語） | 新しいバージョンの見出しと変更点（両方に同じ内容を書く） |
+| `docs/Zilisp_詳細設計書_v0.2.md`・`docs/Zilisp_Detailed_Design_v0.2.md`、`docs/zig-std-usage.ja.md`・`docs/zig-std-usage.md` | 変更するときは、日本語版と英語版の両方を同じ変更で更新する（2026-11-02 決定） |
 | `README.md`・`README.ja.md` | 「Status」・「状況」の版と、実装した機能の一覧（機能が増えたとき） |
 | `installer/zilisp.iss` | 更新しない（`scripts/build-installer.ps1` が `build.zig.zon` の `.version` を読んで `AppVersion` として渡す。`src/version.zig` と違えば停止する） |
 
@@ -38,7 +39,7 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 |---|---|
 | `build.zig.zon` | `.minimum_zig_version` |
 | `scripts/build-release.ps1` | 要求する Zig のバージョンの検査 |
-| `docs/zig-std-usage.md` | 照合をやり直し、結果と日付を更新する |
+| `docs/zig-std-usage.ja.md` | 照合をやり直し、結果と日付を更新する |
 | `docs/Zilisp_詳細設計書_v*.md` | §1.1 の Zig のバージョン |
 | `docs/Zilisp_企画・基本設計書_v*.md` | Zig のバージョンに触れている箇所 |
 

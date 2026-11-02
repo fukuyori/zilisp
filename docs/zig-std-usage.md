@@ -1,100 +1,102 @@
-# Zig 0.17.0 の std・言語機能の照合結果
+# Zig 0.17.0 standard library and language features: verification results
 
-詳細設計書 §1.3 で「要検証」とした Zig の標準ライブラリと言語機能を、実物で照合した結果です。
+[日本語](zig-std-usage.ja.md)
 
-| 項目 | 内容 |
+Results of checking, against the real toolchain, the Zig standard library APIs and language features that the detailed design §1.3 marked "to be verified".
+
+| Item | Value |
 |---|---|
-| 照合日 | 2026-11-01 |
-| Zig | 0.17.0（winget でインストール。`zig version` で確認） |
-| std の場所 | `C:\Users\n_fuk\AppData\Local\Microsoft\WinGet\Packages\zig.zig_Microsoft.Winget.Source_8wekyb3d8bbwe\zig-x86_64-windows-0.17.0\lib\std` |
-| 照合用の試験 | `tests/zig-probe/probe.zig`（`zig test tests/zig-probe/probe.zig`）、`tests/zig-probe/abi.zig`（アセンブリを出力して確認） |
-| 照合した環境 | 実行：x86_64-windows（Debug・ReleaseFast）。コンパイルのみ：x86_64-linux-musl、aarch64-macos、x86_64-macos、aarch64-linux-musl、aarch64-windows |
+| Date checked | 2026-11-01 |
+| Zig | 0.17.0 (installed with winget; checked with `zig version`) |
+| Location of std | `C:\Users\n_fuk\AppData\Local\Microsoft\WinGet\Packages\zig.zig_Microsoft.Winget.Source_8wekyb3d8bbwe\zig-x86_64-windows-0.17.0\lib\std` |
+| Probe tests | `tests/zig-probe/probe.zig` (`zig test tests/zig-probe/probe.zig`), `tests/zig-probe/abi.zig` (checked by emitting assembly) |
+| Environments | Run: x86_64-windows (Debug, ReleaseFast). Compile only: x86_64-linux-musl, aarch64-macos, x86_64-macos, aarch64-linux-musl, aarch64-windows |
 
-Zig を更新したときは、この照合をやり直す（`docs/version-update-checklist.md` §3）。
+When Zig is updated, redo these checks (`docs/version-update-checklist.md` §3).
 
-## 1. std の API
+## 1. Standard library APIs
 
-| 用途 | 0.17.0 での名前・使い方 | 確認方法 | 備考 |
+| Purpose | Name and usage in 0.17.0 | How checked | Notes |
 |---|---|---|---|
-| `main` の形式 | `pub fn main(init: std.process.Init) !T`。`init.arena`・`init.gpa`・`init.io`・`init.minimal.args`・`init.environ_map` を持つ。`std.process.Init.Minimal` を受け取る形式もある | `lib/std/start.zig` 786〜837行目、`lib/std/process.zig` 31〜58行目、`zig init` のひな形 | 戻り値は `!void` / `!u8` など。`src/main.zig` は `!u8` で終了コードを返す |
-| コマンドライン引数 | `init.minimal.args.toSlice(arena)` → `[]const [:0]const u8` | `lib/std/process/Args.zig` 479行目 | Windows では UTF-8（WTF-8）に変換される |
-| 標準出力・標準エラー出力 | `var w: std.Io.File.Writer = .init(.stdout(), io, &buffer);` → `&w.interface`（`*std.Io.Writer`）。最後に `flush()` が必要 | `zig init` のひな形、`lib/std/Io/File.zig` 91・104行目 | 0.15 以降の `Writer` の新しい形式 |
-| 固定バッファへの書き出し（試験用） | `std.Io.Writer.fixed(&buf)`、`buffered()` | `src/main.zig` の試験 | |
-| 時刻（計測） | `std.Io.Timestamp.now(io, .awake)`、`t.untilNow(io, .awake).nanoseconds`（i96） | `lib/std/Io.zig` 836〜1100行目 | `std.time` には定数（`ns_per_s` など）だけが残っている |
-| アロケータ | `std.heap.page_allocator`、`std.heap.ArenaAllocator`、`std.heap.DebugAllocator(.{})`、`std.heap.SmpAllocator`、`std.heap.SafeAllocator`、`std.heap.FixedBufferAllocator`、`std.heap.memory_pool` | `lib/std/heap.zig` 12〜35行目、`probe.zig` | 汎用アロケータの名前は `DebugAllocator`（旧 `GeneralPurposeAllocator`） |
-| 可変長配列 | `std.ArrayList(T)` は unmanaged（`.empty` で初期化し、`append(gpa, x)` のようにアロケータを渡す） | `probe.zig` | |
-| ハッシュ表 | `std.StringHashMapUnmanaged(V)`（`.empty`、`put(gpa, k, v)`）、`std.AutoHashMapUnmanaged` | `probe.zig` | |
-| 多倍長整数 | `std.math.big.int.Managed`（`initSet`・`add`・`toConst`）。`Mutable`・`Const` もある | `probe.zig` | limb の配列を管理ヒープに置く設計（詳細設計 §1.3）は、`Mutable` / `Const` の limb 指定で実現する（Phase 20 で詳細を確認） |
-| ハッシュ関数 | `std.hash.Wyhash.hash(seed, bytes)`、`std.hash.Crc32.hash(bytes)` | `probe.zig` | |
-| UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Windows API の境界で使う |
-| 実行ファイルのパス | `std.process.executablePath(io, buf)`、`std.process.executablePathAlloc(io, gpa)` | `lib/std/process.zig` 742・769行目 | |
-| 子プロセス | `std.process.Child` | `lib/std/process.zig` 19行目 | 使い方は Phase 12（`zig` の呼び出し）で確認する |
-| 動的ライブラリ | `std.DynLib`（`lib/std/dynamic_library.zig`） | `lib/std/dynamic_library.zig` 14行目 | 使い方は Phase 39 で確認する |
-| 終了 | `std.process.exit(status: u8)`、`std.process.fatal(fmt, args)` | `lib/std/process.zig` 698・865行目 | |
-| 大きな境界にそろえた確保 | `std.heap.page_allocator.alignedAlloc(u8, .fromByteUnits(4 MiB), n)` は **Windows で失敗することがある**（2026-11-02 に Phase 06 で確認） | `lib/std/heap/PageAllocator.zig` 45〜108行目 | 最初の確保がたまたまそろえば成功するが、そろわない場合はプレースホルダーとして予約した領域を `NtAllocateVirtualMemory(COMMIT)` で確定しようとして失敗し、`OutOfMemory` を返す。Zilisp は Windows では予約（RESERVE）した範囲の中のそろった部分だけを確定する方式で回避する（`src/support/os_memory.zig`）。Windows 以外は `page_allocator` を使う |
-| ディレクトリの走査・ファイル | `std.Io.Dir.cwd()`、`openDir(io, path, .{ .iterate = true })`、`walk(gpa)`（順序は不定）、`readFileAlloc(io, path, gpa, .limited(n))`、`writeFile(io, .{ .sub_path, .data })`、`createDirPath(io, path)` | `lib/std/Io/Dir.zig` | Phase 02 の道具で使用 |
-| 子プロセス | `std.process.run(gpa, io, .{ .argv = ... })` → `.term`（`.exited => code`）、`.stdout`、`.stderr` | `lib/std/process.zig` 470〜507行目 | Phase 02 の言語試験の実行器で使用 |
-| 書き出し先を確保する Writer | `std.Io.Writer.Allocating.init(gpa)`、`.writer`、`.written()`、`.toOwnedSlice()` | `lib/std/Io/Writer.zig` 2644行目 | |
+| Form of `main` | `pub fn main(init: std.process.Init) !T`. It has `init.arena`, `init.gpa`, `init.io`, `init.minimal.args` and `init.environ_map`. A form taking `std.process.Init.Minimal` also exists | `lib/std/start.zig` lines 786–837, `lib/std/process.zig` lines 31–58, the `zig init` template | The return type is `!void`, `!u8` and so on. `src/main.zig` uses `!u8` to return the exit code |
+| Command-line arguments | `init.minimal.args.toSlice(arena)` → `[]const [:0]const u8` | `lib/std/process/Args.zig` line 479 | Converted to UTF-8 (WTF-8) on Windows |
+| Standard output and standard error | `var w: std.Io.File.Writer = .init(.stdout(), io, &buffer);` → `&w.interface` (`*std.Io.Writer`). `flush()` is needed at the end | the `zig init` template, `lib/std/Io/File.zig` lines 91 and 104 | The new `Writer` form introduced in 0.15 |
+| Writing to a fixed buffer (tests) | `std.Io.Writer.fixed(&buf)`, `buffered()` | tests in `src/main.zig` | |
+| Time (measurement) | `std.Io.Timestamp.now(io, .awake)`, `t.untilNow(io, .awake).nanoseconds` (i96) | `lib/std/Io.zig` lines 836–1100 | Only constants (`ns_per_s` and so on) remain in `std.time` |
+| Allocators | `std.heap.page_allocator`, `std.heap.ArenaAllocator`, `std.heap.DebugAllocator(.{})`, `std.heap.SmpAllocator`, `std.heap.SafeAllocator`, `std.heap.FixedBufferAllocator`, `std.heap.memory_pool` | `lib/std/heap.zig` lines 12–35, `probe.zig` | The general-purpose allocator is named `DebugAllocator` (formerly `GeneralPurposeAllocator`) |
+| Dynamic arrays | `std.ArrayList(T)` is unmanaged (initialize with `.empty` and pass the allocator, as in `append(gpa, x)`) | `probe.zig` | |
+| Hash maps | `std.StringHashMapUnmanaged(V)` (`.empty`, `put(gpa, k, v)`), `std.AutoHashMapUnmanaged` | `probe.zig` | |
+| Big integers | `std.math.big.int.Managed` (`initSet`, `add`, `toConst`). `Mutable` and `Const` also exist | `probe.zig` | The design that keeps the limb array on the managed heap (detailed design §1.3) is realized by specifying the limbs of `Mutable` / `Const` (details to be checked in Phase 20) |
+| Hash functions | `std.hash.Wyhash.hash(seed, bytes)`, `std.hash.Crc32.hash(bytes)` | `probe.zig` | |
+| UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Used at the Windows API boundary |
+| Path of the executable | `std.process.executablePath(io, buf)`, `std.process.executablePathAlloc(io, gpa)` | `lib/std/process.zig` lines 742 and 769 | |
+| Child processes | `std.process.Child` | `lib/std/process.zig` line 19 | Usage to be checked in Phase 12 (invoking `zig`) |
+| Dynamic libraries | `std.DynLib` (`lib/std/dynamic_library.zig`) | `lib/std/dynamic_library.zig` line 14 | Usage to be checked in Phase 39 |
+| Exiting | `std.process.exit(status: u8)`, `std.process.fatal(fmt, args)` | `lib/std/process.zig` lines 698 and 865 | |
+| Allocation aligned to a large boundary | `std.heap.page_allocator.alignedAlloc(u8, .fromByteUnits(4 MiB), n)` **can fail on Windows** (found in Phase 06 on 2026-11-02) | `lib/std/heap/PageAllocator.zig` lines 45–108 | It succeeds if the first allocation happens to be aligned. Otherwise it tries to commit the region reserved as a placeholder with `NtAllocateVirtualMemory(COMMIT)`, fails and returns `OutOfMemory`. On Windows, Zilisp works around it by reserving (RESERVE) a range and committing only its aligned part (`src/support/os_memory.zig`). Other OSes use `page_allocator` |
+| Directory traversal and files | `std.Io.Dir.cwd()`, `openDir(io, path, .{ .iterate = true })`, `walk(gpa)` (order is unspecified), `readFileAlloc(io, path, gpa, .limited(n))`, `writeFile(io, .{ .sub_path, .data })`, `createDirPath(io, path)` | `lib/std/Io/Dir.zig` | Used by the Phase 02 tools |
+| Child processes | `std.process.run(gpa, io, .{ .argv = ... })` → `.term` (`.exited => code`), `.stdout`, `.stderr` | `lib/std/process.zig` lines 470–507 | Used by the Phase 02 language test runner |
+| Writer that allocates its output | `std.Io.Writer.Allocating.init(gpa)`, `.writer`, `.written()`, `.toOwnedSlice()` | `lib/std/Io/Writer.zig` line 2644 | |
 
-## 2. 言語機能
+## 2. Language features
 
-| 機能 | 結果 | 詳細設計の箇所 |
+| Feature | Result | Section of the detailed design |
 |---|---|---|
-| `@addWithOverflow` | 使える。**タグ（下位2ビット）を付けたまま i64 で加算すると、62ビットの fixnum の範囲を超えたときにちょうど溢れが立つ**（`most-positive-fixnum` のタグ付きの値 + タグ付きの 1 で溢れ、1 つ小さい値では溢れない） | §2.2 |
-| ラベル付き `switch` と `continue :label` | 使える（VM の分岐の形で試験）。Phase 10 の後に VM の実行ループに使い、`while` と `switch` より fib(25) で約41%速く、ほかのコードの変更による速さの揺れもなくなった（詳細設計 §7.1） | §7.1 |
-| `@call(.always_tail, …)` | LLVM を使うビルドでは使える（x86_64-windows の Debug・ReleaseFast、全ターゲットの ReleaseFast）。**x86_64-linux の Debug ビルドではコンパイルエラーになる**（Zig 自前の x86_64 用コード生成器 `stage2_x86_64` が末尾呼び出しに対応していない）。末尾呼び出しを使うコードは、Debug ビルドでも LLVM を使う設定にするか、代わりの方式（詳細設計 §7A.3 のループ化・トランポリン）を用意する | §7A.3 |
-| `@"…"` の識別子 | 使える（`@"cl-user::foo-bar?"` の関数を定義・呼び出し）。生成したシンボル名がデバッガ・リンカでどう表示されるかは未確認 | §7A.5 C1 |
-| `std.mem.doNotOptimizeAway` | 使える（値・ポインタの両方） | §3.4 |
-| callee-saved レジスタの退避 | 空のインラインアセンブリに clobber を指定する書き方はコンパイルできるが、退避先がローカル変数より下に置かれない保証がない。Phase 07 のレビューを受けて、**レジスタの値を直接読む方式**に変更した：`asm volatile ("" : [v] "={rbx}" (-> usize))`。制約の文字列は文字列リテラルでなければならない（`"={" ++ r ++ "}"` はコンパイルエラー。命令の文字列の方は `++` で組み立ててよい） | §3.4 手順1 |
-| インラインアセンブリの制限 | (1) メモリを指す書き方 `movq %%rbx, 0(%[r])` は、Zig 自前の x86_64 用コード生成器（x86_64-linux の Debug）で `invalid memory operand` になる。(2) フレームポインタ `"={rbp}"`（ReleaseSafe・ReleaseFast）・`"={x29}"`（aarch64）は `Interference usage of base pointer/frame pointer`・`couldn't allocate output register` になるので、`movq %%rbp, %[v]` / `mov %[v], x29` と `"=r"` で読む。(3) スタックポインタは `movq %%rsp, %[sp]` / `mov %[sp], sp`。(4) clobber の名前は `std.lang.assembly.Clobbers`（x86_64 の条件コードは `.cc`、aarch64 は `.nzcv`） | §3.4 |
-| `extern struct` を含む error union、`callconv(.c)` | どちらもコンパイル・実行できる | §6.2 |
-| ビルドの種類 | `@import("builtin").mode` の型は `std.lang.Optimize` で、値は `.debug`・`.safe`・`.fast`・`.small`（旧 `.Debug`・`.ReleaseSafe` など） | Phase 07 |
-| `@frameAddress()` | 最適化ありのビルドでは、その関数自身のローカル変数が `@frameAddress()` より高いアドレスに置かれることがある。GC の保守的走査の上端に、値を持つ関数自身のフレームの位置を使ってはならない（詳細設計 §3.4） | §3.4 |
-| スタックの上端（Windows） | `std.os.windows.teb().NtTib.StackBase` | §3.4 |
-| 構造体のフィールドの一覧 | `std.meta.fields` は 0.17.0 で廃止（`@compileError`）。`@typeInfo(T).@"struct".field_names`（名前の配列）と `field_types` を使う | Phase 08 |
-| 1 行ずつの入力 | `std.Io.File.Reader.init(.stdin(), io, &buf)` の `interface` に `takeDelimiter('\n')`（終わりで null、行がバッファより長ければ `error.StreamTooLong`） | Phase 08 の REPL |
-| `@frameAddress()` の型 | 0.17.0 では `usize` を返す（ポインタではない。`@intFromPtr` は不要） | Phase 12 |
-| build.zig の構成のキャッシュ | build.zig の構成（`build` 関数の実行）の結果はキャッシュされ、build.zig の内容が変わらない限り作り直されない。構成の時点でディレクトリを読んで試験の一覧を作ると、ファイルを足しても反映されない。試験の一覧は、実行時にディレクトリを読む道具で作る（`tools/native_test`） | Phase 12 |
-| build.zig のパス・Zig | パッケージのディレクトリは `b.root.root_dir.handle`（`Io.Dir`）と `b.root.sub_path`、Io は `b.graph.io`、Zig の実行ファイルは `b.graph.zig_exe` | Phase 12 |
-| 外部のモジュールと一緒にコンパイル | `zig build-exe --dep zilisp -Mroot=gen.zig -Mzilisp=src/lib.zig --stack 67108864 -femit-bin=out.exe`（`--dep` は直後の `-M` のモジュールに付く） | Phase 12 |
-| 子プロセスの時間制限・作業用ディレクトリ | `std.process.run(gpa, io, .{ .argv = …, .cwd = .{ .path = dir }, .timeout = .{ .duration = .{ .raw = .fromSeconds(10), .clock = .awake } }, .stdout_limit = .limited(n) })`。時間切れは `error.Timeout`（子プロセスは kill される）。`cwd` は文字列ではなく `Child.Cwd`（`.inherit`・`.dir`・`.path`） | Phase 13 |
-| 書き捨ての Writer | `std.Io.Writer.discarding` はない。`.fixed(&buf)` を使う（あふれると `error.WriteFailed`） | Phase 08 のベンチマーク |
-| naked の関数（`callconv(.naked)`） | 本体がアセンブリだけの関数は `noreturn` と宣言する。その関数を別の型の関数ポインタに `@ptrCast` して呼ぶと、ReleaseSafe・ReleaseFast の最適化が呼び出し先の `noreturn` を見て「戻らない呼び出し」とみなし、後ろのコードを消す（実行すると落ちる。Debug では起きない）。代わりに、モジュールの大域のアセンブリ（`comptime { asm (…); }`。レジスタは `%rbx` のように `%` 1つ）に関数を書き、`extern fn 名前(…) callconv(.c) …;` と宣言して直接呼ぶ（`tests/bench/nonlocal.zig`。x86_64-windows の Debug・ReleaseSafe・ReleaseFast で確認）。x86_64-linux の Debug（Zig 自前のコード生成器）で大域のアセンブリが使えるかは未確認 | §6.4（Phase 18 の方式2の試作） |
-| インラインアセンブリのメモリのオペランド | 出力 `[m] "=m" (m)` で `stmxcsr %[m]` と書くと、x86_64-windows の Debug で実行時にアクセス違反になった。ポインタをレジスタで渡す `stmxcsr (%[p])` と `[p] "r" (&m)`、clobber `.{ .memory = true }` にすると正しく動く | Phase 18 |
-| `Allocator.alignedAlloc` の中身 | Debug ビルドでは、確保した領域を未定義の印（0xAA）で埋める（`page_allocator` でも）。OS が 0 で埋めた領域をそのまま使いたいときは `allocator.rawAlloc(len, alignment, @returnAddress())`・`rawFree` を使う（Linux の試験で発見） | §3.1 |
-| 大域のアセンブリ（`comptime { asm (…); }`） | Zig 自前のコード生成器（x86_64-linux の Debug）では出力されず、そこで定義した関数が未定義のシンボルになる。LLVM（Windows の全モード、Linux の ReleaseFast）では使える。`builtin.zig_backend == .stage2_llvm` で分ける | Phase 18 |
-| Linux のスタックの範囲 | libc なしでは pthread の関数を使えないので、`std.os.linux.open`・`read` で `/proc/self/maps` を読み、今のフレームを含む行の終わりをスタックの先頭とする（メインスレッド）。macOS は libSystem の `pthread_get_stackaddr_np` | §3.4 |
-| `if (true) break :label 値;` | ラベル付きブロックの途中に書くと、後ろの文があってもコンパイルできる（「到達しないコード」のエラーにならない）。ネイティブバックエンドの return-from で使う | §6.4（Phase 18） |
-| enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
+| `@addWithOverflow` | Usable. **Adding as i64 with the tag (low two bits) attached sets the overflow flag exactly when the result leaves the 62-bit fixnum range** (tagged `most-positive-fixnum` + tagged 1 overflows; one less does not) | §2.2 |
+| Labeled `switch` and `continue :label` | Usable (tested in the shape of the VM dispatch). Used for the VM dispatch loop after Phase 10: fib(25) about 41% faster than `while` with `switch`, and the speed no longer fluctuated with changes to other code (detailed design §7.1) | §7.1 |
+| `@call(.always_tail, …)` | Usable in builds that use LLVM (x86_64-windows Debug and ReleaseFast, ReleaseFast for all targets). **It is a compile error in x86_64-linux Debug builds** (Zig's own x86_64 code generator `stage2_x86_64` does not support tail calls). Code that uses tail calls must use LLVM even in Debug builds, or provide an alternative (looping or trampolines, detailed design §7A.3) | §7A.3 |
+| `@"…"` identifiers | Usable (defined and called a function `@"cl-user::foo-bar?"`). How the generated symbol names appear in debuggers and linkers is not verified | §7A.5 C1 |
+| `std.mem.doNotOptimizeAway` | Usable (for both values and pointers) | §3.4 |
+| Saving callee-saved registers | An empty inline assembly block with clobbers compiles, but nothing guarantees that the save area lies below the local variables. After the Phase 07 review, changed to **reading the register values directly**: `asm volatile ("" : [v] "={rbx}" (-> usize))`. The constraint string must be a string literal (`"={" ++ r ++ "}"` is a compile error; the instruction string may be built with `++`) | §3.4 step 1 |
+| Limits of inline assembly | (1) Memory operands such as `movq %%rbx, 0(%[r])` fail with `invalid memory operand` in Zig's own x86_64 code generator (x86_64-linux Debug). (2) The frame pointer `"={rbp}"` (ReleaseSafe, ReleaseFast) and `"={x29}"` (aarch64) fail with `Interference usage of base pointer/frame pointer` and `couldn't allocate output register`, so read them with `movq %%rbp, %[v]` / `mov %[v], x29` and `"=r"`. (3) The stack pointer: `movq %%rsp, %[sp]` / `mov %[sp], sp`. (4) Clobber names are in `std.lang.assembly.Clobbers` (condition codes are `.cc` on x86_64 and `.nzcv` on aarch64) | §3.4 |
+| Error unions containing an `extern struct`, `callconv(.c)` | Both compile and run | §6.2 |
+| Build modes | `@import("builtin").mode` has type `std.lang.Optimize`, with values `.debug`, `.safe`, `.fast` and `.small` (formerly `.Debug`, `.ReleaseSafe` and so on) | Phase 07 |
+| `@frameAddress()` | In optimized builds, a function's own local variables can be placed above its `@frameAddress()`. Do not use the frame position of the function that holds the values as the top of the GC's conservative scan (detailed design §3.4) | §3.4 |
+| Top of the stack (Windows) | `std.os.windows.teb().NtTib.StackBase` | §3.4 |
+| List of struct fields | `std.meta.fields` was removed in 0.17.0 (`@compileError`). Use `@typeInfo(T).@"struct".field_names` (an array of names) and `field_types` | Phase 08 |
+| Line-by-line input | `takeDelimiter('\n')` on the `interface` of `std.Io.File.Reader.init(.stdin(), io, &buf)` (null at the end; `error.StreamTooLong` if a line is longer than the buffer) | Phase 08 REPL |
+| Type of `@frameAddress()` | In 0.17.0 it returns `usize` (not a pointer; `@intFromPtr` is not needed) | Phase 12 |
+| Caching of the build.zig configuration | The result of configuring build.zig (running the `build` function) is cached and is not rebuilt unless build.zig changes. A test list built by reading a directory at configure time does not pick up new files. Build the test list with a tool that reads the directory at run time (`tools/native_test`) | Phase 12 |
+| build.zig paths and Zig | The package directory is `b.root.root_dir.handle` (`Io.Dir`) and `b.root.sub_path`; Io is `b.graph.io`; the Zig executable is `b.graph.zig_exe` | Phase 12 |
+| Compiling together with an external module | `zig build-exe --dep zilisp -Mroot=gen.zig -Mzilisp=src/lib.zig --stack 67108864 -femit-bin=out.exe` (`--dep` applies to the `-M` module that follows it) | Phase 12 |
+| Time limit and working directory of child processes | `std.process.run(gpa, io, .{ .argv = …, .cwd = .{ .path = dir }, .timeout = .{ .duration = .{ .raw = .fromSeconds(10), .clock = .awake } }, .stdout_limit = .limited(n) })`. A timeout is `error.Timeout` (the child is killed). `cwd` is a `Child.Cwd` (`.inherit`, `.dir`, `.path`), not a string | Phase 13 |
+| Discarding Writer | There is no `std.Io.Writer.discarding`. Use `.fixed(&buf)` (`error.WriteFailed` when it overflows) | Phase 08 benchmark |
+| Naked functions (`callconv(.naked)`) | A function whose body is only assembly is declared `noreturn`. If it is cast with `@ptrCast` to a function pointer of another type and called, the ReleaseSafe and ReleaseFast optimizers see the callee's `noreturn`, treat the call as never returning and remove the code after it (it crashes at run time; this does not happen in Debug). Instead, write the function in module-level global assembly (`comptime { asm (…); }`, with registers written with a single `%`, as in `%rbx`), declare it as `extern fn name(…) callconv(.c) …;` and call it directly (`tests/bench/nonlocal.zig`; checked on x86_64-windows Debug, ReleaseSafe and ReleaseFast). Global assembly cannot be used in x86_64-linux Debug (Zig's own code generator; see the "Global assembly" row below) | §6.4 (Phase 18 method-2 prototype) |
+| Memory operands in inline assembly | Writing `stmxcsr %[m]` with the output `[m] "=m" (m)` caused an access violation at run time in x86_64-windows Debug. Passing a pointer in a register, `stmxcsr (%[p])` with `[p] "r" (&m)` and the clobber `.{ .memory = true }`, works correctly | Phase 18 |
+| Contents after `Allocator.alignedAlloc` | Debug builds fill the allocated memory with an undefined marker (0xAA), even for `page_allocator`. To use the zero-filled memory from the OS as is, use `allocator.rawAlloc(len, alignment, @returnAddress())` and `rawFree` (found by the Linux tests) | §3.1 |
+| Global assembly (`comptime { asm (…); }`) | Not emitted by Zig's own code generator (x86_64-linux Debug); functions defined there become undefined symbols. Usable with LLVM (all modes on Windows, ReleaseFast on Linux). Distinguish with `builtin.zig_backend == .stage2_llvm` | Phase 18 |
+| Stack range on Linux | Without libc the pthread functions are not available, so read `/proc/self/maps` with `std.os.linux.open` and `read`, and use the end of the line that contains the current frame as the top of the stack (main thread). On macOS, use `pthread_get_stackaddr_np` from libSystem | §3.4 |
+| `if (true) break :label value;` | Written in the middle of a labeled block, it compiles even when statements follow (no "unreachable code" error). Used for return-from in the native backend | §6.4 (Phase 18) |
+| Converting between enums and integers | `@intFromEnum` / `@enumFromInt` are replaced by `@backingInt` / `@fromBackingInt` in 0.17.0. `zig fmt` rewrites the old forms automatically (`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`) | §2 (used when Value is an `enum(u64)`) |
 
-## 3. 戻り値の返し方（詳細設計 §6.2 の要検証項目）
+## 3. How return values are returned (item to be verified in detailed design §6.2)
 
-`tests/zig-probe/abi.zig` を ReleaseFast でコンパイルし、出力したアセンブリで確認した。
+Checked by compiling `tests/zig-probe/abi.zig` with ReleaseFast and reading the emitted assembly.
 
-| 戻り値の型 | x86_64-windows | x86_64-linux | aarch64-macos |
+| Return type | x86_64-windows | x86_64-linux | aarch64-macos |
 |---|---|---|---|
-| `Error!Ret`（`Ret` は16バイトの `extern struct`） | メモリ | メモリ | メモリ |
-| `Ret` 相当の16バイトの構造体（Zig の既定の呼び出し規約） | メモリ | メモリ | メモリ |
-| `extern struct` の `Ret`、`callconv(.c)` | メモリ（Windows x64 の C ABI の規則） | **レジスタ**（`rax:rdx`） | **レジスタ**（`x0:x1`） |
-| 8バイトの `extern struct` の Value（既定の呼び出し規約） | メモリ | メモリ | メモリ |
-| **8バイトの `enum(u64)` の Value（既定の呼び出し規約）** | **レジスタ**（`rax`） | **レジスタ**（`rax`） | **レジスタ**（`x0`） |
-| `Error!Value`（Value は `enum(u64)`） | メモリ | メモリ | メモリ |
+| `Error!Ret` (`Ret` is a 16-byte `extern struct`) | memory | memory | memory |
+| A 16-byte struct like `Ret` (Zig's default calling convention) | memory | memory | memory |
+| `Ret` as an `extern struct`, `callconv(.c)` | memory (Windows x64 C ABI rules) | **registers** (`rax:rdx`) | **registers** (`x0:x1`) |
+| Value as an 8-byte `extern struct` (default calling convention) | memory | memory | memory |
+| **Value as an 8-byte `enum(u64)` (default calling convention)** | **register** (`rax`) | **register** (`rax`) | **register** (`x0`) |
+| `Error!Value` (Value is an `enum(u64)`) | memory | memory | memory |
 
-「メモリ」は、呼び出し側が渡した隠れたポインタ（`rcx`・`rdi`・`x0`）の指す領域に書き込んで返すことを表す。
+"memory" means the value is written to the area pointed to by a hidden pointer passed by the caller (`rcx`, `rdi`, `x0`).
 
-### 設計への影響（2026-11-01 に案 A で決定し、詳細設計書 §2.1・§6.2・§6.4・§6.6・§7A.2 に反映済み）
+### Impact on the design (decided on 2026-11-01 as option A and reflected in detailed design §2.1, §6.2, §6.4, §6.6 and §7A.2)
 
-1. **`Value` は `enum(u64)` で定義する。** `extern struct` で定義すると、8バイトでもメモリ経由で返される。
-2. **詳細設計 §6.2 の `Error!Ret` は、すべてのターゲットでメモリ経由になる。** 呼び出し規約は次のどちらかに変える必要がある（Phase 08 の前に決める。Phase 12 で計測して確定する）。
-   - 案 A：戻り値は主値の `Value`（`enum(u64)`。レジスタで返る）だけにする。非局所脱出などのエラーは、決まった特別な即値（Lisp の値としては現れない値）を返して表し、値の個数は `Thread` の欄に書く。
-   - 案 B：`callconv(.c)` の16バイトの構造体で主値と個数を返す。Linux と macOS ではレジスタで返るが、**開発の一次ターゲットである Windows ではメモリ経由になる**。
-3. 高速入口（単値）の `Error!Value` もメモリ経由になるため、案 A と同じ方式（特別な即値でエラーを表す）にそろえる必要がある。
+1. **`Value` is defined as an `enum(u64)`.** Defined as an `extern struct`, even 8 bytes are returned through memory.
+2. **`Error!Ret` in detailed design §6.2 goes through memory on every target.** The calling convention has to change to one of the following (to be decided before Phase 08 and confirmed by measurement in Phase 12).
+   - Option A: return only the primary value as a `Value` (an `enum(u64)`, returned in a register). Errors such as non-local exits are represented by returning a fixed special immediate value (a value that never appears as a Lisp value), and the value count is written to a field of `Thread`.
+   - Option B: return the primary value and the count in a 16-byte struct with `callconv(.c)`. It is returned in registers on Linux and macOS, but **through memory on Windows, the primary development target**.
+3. The single-value fast entry's `Error!Value` also goes through memory, so it must use the same scheme as option A (a special immediate value for errors).
 
-## 4. ビルド
+## 4. Build
 
-| 項目 | 結果 |
+| Item | Result |
 |---|---|
-| `zig init` のひな形 | `build.zig` は `b.addExecutable(.{ .root_module = b.createModule(...) })`、`b.addTest(.{ .root_module = ... })`、`run_cmd.addPassthruArgs()` の形 |
-| `build.zig.zon` | `.fingerprint` が必須。初回の `zig build` が値を提示する（Zilisp は `0xedb879257924792a`） |
-| クロスビルド（ReleaseFast） | x86_64-windows、x86_64-linux-musl、aarch64-macos、x86_64-macos、aarch64-linux-musl、aarch64-windows のすべてで成功（実機での動作は未確認） |
-| PowerShell からの指定 | `zig build "-Dtarget=$t"` のように引用符で囲む（囲まないと変数が展開されない） |
+| The `zig init` template | `build.zig` uses `b.addExecutable(.{ .root_module = b.createModule(...) })`, `b.addTest(.{ .root_module = ... })` and `run_cmd.addPassthruArgs()` |
+| `build.zig.zon` | `.fingerprint` is required. The first `zig build` suggests a value (Zilisp uses `0xedb879257924792a`) |
+| Cross builds (ReleaseFast) | Succeed for all of x86_64-windows, x86_64-linux-musl, aarch64-macos, x86_64-macos, aarch64-linux-musl and aarch64-windows (behavior on real hardware not verified) |
+| Specifying from PowerShell | Quote the argument, as in `zig build "-Dtarget=$t"` (without quotes the variable is not expanded) |

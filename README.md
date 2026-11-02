@@ -115,12 +115,10 @@ GitHub release.
 
 ## Documentation
 
-The design documents are in Japanese:
-
-- `docs/Zilisp_企画・基本設計書_v0.3.md` — project plan and basic design
-- `docs/Zilisp_詳細設計書_v0.2.md` — detailed design
-- `docs/zig-std-usage.md` — notes on Zig 0.17.0 standard library and language features
-- `docs/version-update-checklist.md` — files to update when the version changes, and release steps
+- [`docs/Zilisp_Detailed_Design_v0.2.md`](docs/Zilisp_Detailed_Design_v0.2.md) — detailed design ([日本語](docs/Zilisp_詳細設計書_v0.2.md))
+- [`docs/zig-std-usage.md`](docs/zig-std-usage.md) — notes on Zig 0.17.0 standard library and language features ([日本語](docs/zig-std-usage.ja.md))
+- `docs/Zilisp_企画・基本設計書_v0.3.md` — project plan and basic design (Japanese only)
+- `docs/version-update-checklist.md` — files to update when the version changes, and release steps (Japanese only)
 
 Changes are listed in [CHANGELOG.md](CHANGELOG.md) ([日本語](CHANGELOG.ja.md)).
 

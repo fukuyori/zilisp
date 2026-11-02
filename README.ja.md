@@ -106,10 +106,10 @@ zig build eval-check -Dsbcl=<sbcl のパス>
 
 ## 文書
 
-- `docs/Zilisp_企画・基本設計書_v0.3.md`：企画と基本設計
-- `docs/Zilisp_詳細設計書_v0.2.md`：詳細設計
-- `docs/zig-std-usage.md`：Zig 0.17.0 の標準ライブラリ・言語機能の照合の記録
-- `docs/version-update-checklist.md`：バージョンを変えるときに更新するファイルと、リリースの手順
+- [`docs/Zilisp_詳細設計書_v0.2.md`](docs/Zilisp_詳細設計書_v0.2.md)：詳細設計（[English](docs/Zilisp_Detailed_Design_v0.2.md)）
+- [`docs/zig-std-usage.ja.md`](docs/zig-std-usage.ja.md)：Zig 0.17.0 の標準ライブラリ・言語機能の照合の記録（[English](docs/zig-std-usage.md)）
+- `docs/Zilisp_企画・基本設計書_v0.3.md`：企画と基本設計（日本語のみ）
+- `docs/version-update-checklist.md`：バージョンを変えるときに更新するファイルと、リリースの手順（日本語のみ）
 
 変更の記録は [CHANGELOG.ja.md](CHANGELOG.ja.md)（[English](CHANGELOG.md)）にあります。
 

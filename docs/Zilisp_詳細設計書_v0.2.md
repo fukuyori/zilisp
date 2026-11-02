@@ -1,5 +1,7 @@
 # Zilisp 詳細設計書
 
+[English](Zilisp_Detailed_Design_v0.2.md)
+
 **Version 0.2 / 2026-11-01**
 
 | 項目 | 内容 |
@@ -16,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記19） | 2026-11-02 | §5.2 の `define-symbol-macro` などの時期の記述（Phase 30 に移したことに合わせる）と、§6.4 の `ControlEntry` のネイティブの再開の説明（Phase 18 の実装に合わせる）を直した。英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）を作成。以後、本書を変更するときは英語版も同じ変更で更新する。`docs/zig-std-usage.md` は英語版になり、日本語版は `docs/zig-std-usage.ja.md` |
 | 0.2（追記18） | 2026-11-02 | 0.2.0 のリリースの準備：インストーラーのスクリプト（§18.1・§18.2）、GitHub Actions による試験とリリース（§18.4）、Linux・macOS のスタックの先頭（§3.4） |
 | 0.2（追記17） | 2026-11-02 | Codex・agy のレビュー（Phase 18）を反映：暗黙の block は本体だけを囲む（defmacro のコンパイル時の定義にも付ける）、処理途中の脱出のスタックの大きさの不変条件、cleanup の間のエラーの内容の退避、検証器による制御スタックの検査、方式2の試作の修正（浮動小数の制御の状態の保存、直接呼び出し）と再計測（§6.4・§7.4） |
 | 0.2（追記16） | 2026-11-02 | Phase 18：block・return-from・catch・throw・unwind-protect の実装（制御スタック、Transfer、cleanup の中の脱出、VM の再開、ネイティブのラベル付きブロック）、defun・flet・labels・defmacro の暗黙の block、非局所脱出の方式2の試作と計測（方式1を継続。§6.4・§7.4） |
@@ -28,7 +31,7 @@
 | 0.2（追記9） | 2026-11-02 | VM の命令の分岐をラベル付き `switch` と `continue` に確定（計測の結果。§7.1）。`defun` の展開（§5.2） |
 | 0.2（追記8） | 2026-11-02 | Phase 08 の実装に合わせて、condition ができるまでのエラーの扱い（§6.6）、`call-arguments-limit` の解釈（§7.3）、Phase 08 で実装した命令とフレームの形（§7.4）、CLI の動作（§19）を追記 |
 | 0.2（追記7） | 2026-11-02 | Phase 07 の実装に対する Codex のレビュー（10件）を受けて、レジスタの退避の方法と走査の下端を確定（§3.4）。実装側では §3.5 の規則（Zig のヒープに Lisp の値を置くなら明示的なルートに登録する）への違反を修正 |
-| 0.2（追記6） | 2026-11-01 | Phase 01 の照合結果（`docs/zig-std-usage.md`）を受けて、Value を `enum(u64)` で定義（§2.1）、戻り値の規約を案 A に変更（主値だけをレジスタで返し、個数は `th.mv_count`、非局所脱出・エラーは特別な即値 `Value.unwind` と `th.fault`。§2.2・§6.1〜§6.4・§6.6・§7A.2）、汎用の入口を `callconv(.c)` に（§6.2） |
+| 0.2（追記6） | 2026-11-01 | Phase 01 の照合結果（`docs/zig-std-usage.ja.md`）を受けて、Value を `enum(u64)` で定義（§2.1）、戻り値の規約を案 A に変更（主値だけをレジスタで返し、個数は `th.mv_count`、非局所脱出・エラーは特別な即値 `Value.unwind` と `th.fault`。§2.2・§6.1〜§6.4・§6.6・§7A.2）、汎用の入口を `callconv(.c)` に（§6.2） |
 | 0.2（追記5） | 2026-11-01 | agy（Antigravity）によるレビューの指摘15件を反映（本文では「agy #番号」）。closure を作り直さず code にネイティブの入口を設定（§2.4・§6.2・§7A.6）、cleanup の前の動的環境の巻き戻し（§6.4）、派生したポインタの規則（§3.4）、動的環境を深さで戻す方式に統一（§6.4）、`call-next-method` の引数と `:after` の扱い（§10.3）、トップレベルフォームの再帰的な処理（§4.1・§16.1）、`setf` 関数と高速入口をシンボルの欄に（§6.2・§8.1）、Phase 12〜34 は `.zfasl` を介さない（§5.1・§15.2）、自己再帰のループ化と `musttail` の型の制約（§6.2・§7A.3）、まとめてコンパイル・プロセス数の上限・キャッシュの掃除（§7A.6）、CL 関数の直接呼び出し（§5.2）、`equalp` のハッシュ（§2.6）、`defconstant`（§8.1・§16.1）、`unintern`・シャドウイング（§8.2）、`&environment`・`define-symbol-macro` の時期（§5.2） |
 | 0.2（追記4） | 2026-11-01 | Codex によるレビューの指摘（24件。#25 は CLHS で確認のうえ不採用、#5 は一部のみ採用）を反映。`eql` のハッシュ（§2.6）、GC の資源回収と確保量（§3.1・§3.2）、保守的走査の「生存の契約」（§3.4）、FFI の貸し出し（§3.6）、単一スレッドの制約（§6.1）、共有ライブラリとの ABI（§6.2）、多値の退避（§6.3）、`unwind-protect` と入れ子の脱出（§6.4）、未束縛の特殊変数（§6.5・§7.4）、引数の個数の符号化（§7.3）、バイトコードの検証（§7.4・§14.1）、末尾呼び出しの条件（§7A.3）、バックグラウンドのジョブ・`compile`・キャッシュ（§7A.6）、Reader の `#+`・`#.`（§8.5・§12）、クラスの再定義の標準手順（§10.2）、標準メソッド結合（§10.3）、キャッシュの失効（§10.4）、混在経路の試験と GC の再判断（§13）、`.zfasl` のロード順序（§14.1）、起動時の状態復元の範囲（§15.3） |
 | 0.2（追記3） | 2026-11-01 | SICL・Janet・Carp の調査結果を反映。クラスの番号（stamp）によるディスパッチとキャッシュの失効（§10.2、§10.4）、rack によるインスタンスの表現（§2.4、§10.2）、判別用コードの生成（§10.4）、Zig の識別子とソース位置の対応づけ（§7A.5）、起動時間の対策（§11.3、§15.3）、参考資料（§20） |
@@ -105,7 +108,7 @@
 
 **規則**：`std` への依存は `src/platform/` と `src/support/` に集め、上位層は Zilisp の自前インターフェースだけを参照する。
 
-**Phase 01 の検証項目**：上表の各機能について、0.17.0 に実在すること、シグネチャ、使用例を `docs/zig-std-usage.md` に記録する。存在しない機能があれば本書を改訂する。
+**Phase 01 の検証項目**：上表の各機能について、0.17.0 に実在すること、シグネチャ、使用例を `docs/zig-std-usage.ja.md` に記録する。存在しない機能があれば本書を改訂する。
 
 ---
 
@@ -115,7 +118,7 @@
 
 - `Value` は **8バイト（64ビット）の1語**とし、**下位3ビットに型タグ**を置く。ヒープのオブジェクトは8バイト境界（cons は16バイト境界）に配置するので、ポインタの下位3ビットは常に 0 であり、タグに使える。
 - `Value` のビット操作は `src/values/` の中だけで行う。他の層はメソッド（`isCons()`、`asFixnum()`、`Value.fromFixnum()` など）経由でのみ扱う。
-- **Zig での定義は `enum(u64)`（非網羅の enum）とする**（2026-11-01 確定）。Zig 0.17.0 の既定の呼び出し規約では、`enum(u64)` の値はレジスタで返されるが、8バイトの `extern struct` はメモリ経由で返される（`docs/zig-std-usage.md` §3 で、x86_64-windows・x86_64-linux・aarch64-macos のアセンブリを確認）。
+- **Zig での定義は `enum(u64)`（非網羅の enum）とする**（2026-11-01 確定）。Zig 0.17.0 の既定の呼び出し規約では、`enum(u64)` の値はレジスタで返されるが、8バイトの `extern struct` はメモリ経由で返される（`docs/zig-std-usage.ja.md` §3 で、x86_64-windows・x86_64-linux・aarch64-macos のアセンブリを確認）。
 
 ```zig
 pub const Value = enum(u64) {
@@ -303,7 +306,7 @@ pub const ObjHeader = packed struct(u64) {
 1. GC を開始する関数（`gc.scanStack`）で、callee-saved レジスタの値をインラインアセンブリで読み出し、各値を下の 2 と同じ方法で判定する（Phase 07 で確定）。
    - x86_64：`rbx` `rbp` `rdi` `rsi` `r12`〜`r15`（`rdi`・`rsi` は Windows で callee-saved）。Windows ではさらに `xmm6`〜`xmm15` の下位 64 ビット。
    - aarch64：`x19`〜`x29` と `d8`〜`d15`。
-   - レジスタを出力に指定する書き方（`"={rbx}"`）で読む。メモリを指す書き方（`0(%[r])`）は Zig の x86_64 用コード生成器で使えない。フレームポインタ（`rbp`・`x29`）は指定できないので `mov` 命令で読む（`docs/zig-std-usage.md` §2）。
+   - レジスタを出力に指定する書き方（`"={rbx}"`）で読む。メモリを指す書き方（`0(%[r])`）は Zig の x86_64 用コード生成器で使えない。フレームポインタ（`rbp`・`x29`）は指定できないので `mov` 命令で読む（`docs/zig-std-usage.ja.md` §2）。
 2. スレッドのスタックの先頭（起動時に記録した位置）から**現在のスタックポインタ**（インラインアセンブリで読む。ローカル変数の位置は使わない）までの各語について、次の判定を行う。
    1. タグを外したアドレスが、ヒープの範囲に入っているか。
    2. ページ表を引き、そのページのサイズクラスから、オブジェクトの先頭を計算する（`先頭 = ページ先頭 + ⌊(addr − ページ先頭) / サイズ⌋ × サイズ`。大きいオブジェクトはページ列の先頭）。**オブジェクトの途中を指すポインタも、そのオブジェクトへの参照とみなす。**
@@ -465,7 +468,7 @@ pub const Node = union(enum) {
 - CL の 25 個の特殊演算子は Resolver が直接解釈する。
 - `prim`（インライン化）の対象は CL パッケージの関数に限り、`flet` / `labels` で局所的に隠されていない場合だけ行う（CL パッケージの関数の再定義は未定義の動作：CLHS 11.1.2.1.2）。
 - **CL パッケージの関数の直接呼び出し**（agy #11）：インライン化しない CL パッケージの関数（`format`、`mapcar`、`sort` など）も、同じ理由で、関数セルを経由せずにネイティブの入口を直接呼ぶ（`flet` / `labels` で局所的に隠されている場合を除く）。
-- **`&environment` と `define-symbol-macro`**（agy #15）：`defmacro` の `&environment`（§2.4 の `environment` オブジェクト）と `&whole` は Phase 15、`define-symbol-macro`（シンボルのフラグ `global_symbol_macro`）と `symbol-macrolet` は Phase 15 で実装する。
+- **`&environment` と `define-symbol-macro`**（agy #15）：`defmacro` の `&whole` は Phase 15 で実装した。`&environment` の値（§2.4 の `environment` オブジェクト。今は NIL）、`define-symbol-macro`（シンボルのフラグ `global_symbol_macro`）と `symbol-macrolet` は、当初は Phase 15 の予定だったが、Phase 30 で行う（上の「Phase 15 で実装しなかったもの」。tque #341）。
 - `call_global.same_file`：同じファイル内で定義された関数の呼び出し。`notinline` が宣言されていなければ、ネイティブバックエンドは直接呼び出しにしてよい（CLHS 3.2.2.3 が許す範囲）。
 
 ### 5.3 宣言と安全性
@@ -540,7 +543,7 @@ pub const Entry = *const fn (th: *Thread, self: Value, args: [*]const Value, nar
   - 個数を正しく保つため、**関数は戻るたびに `th.mv_count` を書く**（単値を返す場合は 1 を書く）。ただし、戻り値が末尾位置の関数呼び出しの戻り値そのものである場合は、呼び出し先が書いた個数をそのまま使えるので書かない。
   - 呼び出し側は、多値が必要な場所（`multiple-value-bind` など。§5.5 の `multiple` モード）でだけ `th.mv_count` と `th.mv` を読む。単値の場所では戻り値だけを使う。
 - **非局所脱出とエラーは、特別な即値 `Value.unwind`（§2.2）を返して表す。** 理由は `th.fault`（§6.6）に置く。呼び出し側は、呼び出しのたびに戻り値が `Value.unwind` かを比べ（レジスタと定数の比較1回）、そうであれば自分も `Value.unwind` を返す（§6.4）。
-- **この規約にした理由**：Zig 0.17.0 では、`Error!Ret`、エラーを含む型、16バイトの構造体は、x86_64-windows・x86_64-linux・aarch64-macos のどれでもメモリ経由で返される。`callconv(.c)` の16バイトの構造体は Linux・macOS ではレジスタで返るが、開発の一次ターゲットの Windows ではメモリ経由になる。`enum(u64)` の値だけが、3つのターゲットすべてでレジスタで返る（`docs/zig-std-usage.md` §3）。
+- **この規約にした理由**：Zig 0.17.0 では、`Error!Ret`、エラーを含む型、16バイトの構造体は、x86_64-windows・x86_64-linux・aarch64-macos のどれでもメモリ経由で返される。`callconv(.c)` の16バイトの構造体は Linux・macOS ではレジスタで返るが、開発の一次ターゲットの Windows ではメモリ経由になる。`enum(u64)` の値だけが、3つのターゲットすべてでレジスタで返る（`docs/zig-std-usage.ja.md` §3）。
 - 参考：Clasp は主値と個数をレジスタで返している（`include/clasp/core/lispCallingConvention.h` 36〜46行目）。Zilisp の規約は、個数を `Thread` の欄に書く分だけ、戻るたびにメモリへの書き込みが1回増える。この費用は Phase 12 で計測する。
 
 **呼び出し規約の種類**
@@ -578,7 +581,7 @@ pub const ControlEntry = struct {
     binding_depth: u32,
     handler_depth: u32,
     restart_depth: u32,
-    resume: Resume,        // VM：フレーム番号・sp・ip。ネイティブ：エントリの番号だけ（復帰は Zig のエラーで行う）
+    resume: Resume,        // VM：フレーム番号・sp・ip。ネイティブ：使わない（Value.unwind を受け取ったコードが脱出先かを確かめる。Phase 18 の実装）
 };
 ```
 
@@ -1413,7 +1416,7 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 
 | Phase | 作業単位 | 受け入れ条件 |
 |---|---|---|
-| 01 | `build.zig` / `build.zig.zon`、`src/main.zig`（CLI の引数解析）、`src/version.zig`、`LICENSE`、`docs/zig-std-usage.md`（§1.3 の検証結果）、`docs/version-update-checklist.md`、`scripts/build-release.ps1` の骨組み、**ベンチマーク実行器**（`zig build bench`） | `zilisp --version`、`zilisp --help` が動く。`zig build test` と `zig build bench` が動く |
+| 01 | `build.zig` / `build.zig.zon`、`src/main.zig`（CLI の引数解析）、`src/version.zig`、`LICENSE`、`docs/zig-std-usage.ja.md`（§1.3 の検証結果）、`docs/version-update-checklist.md`、`scripts/build-release.ps1` の骨組み、**ベンチマーク実行器**（`zig build bench`） | `zilisp --version`、`zilisp --help` が動く。`zig build test` と `zig build bench` が動く |
 | 02 | `tools/extract_samples/`、`compatibility/manifest.toml` の雛形、言語テストの実行器（`zig build lang-test`） | 教材のコミットを固定し、コードブロックを ID 付きで抽出できる |
 | 03 | `src/reader/`：字句解析、整数・浮動小数、シンボル、コメント、`SourceMap` | 代表的な S 式を読み取れ、位置情報が記録される |
 | 04 | Reader：quote、文字列、リスト、ドットペア、`#(`、`#\`、`#'`、backquote | Reader の試験が通る |

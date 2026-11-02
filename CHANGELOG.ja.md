@@ -6,6 +6,7 @@
 
 ### Added
 - README（英語・日本語）を加え、変更履歴を英語（`CHANGELOG.md`）と日本語（`CHANGELOG.ja.md`）に分けた
+- 詳細設計書の英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）と、Zig 0.17.0 の照合結果の英語版（`docs/zig-std-usage.md`。日本語版は `docs/zig-std-usage.ja.md` に移した）
 
 ## 0.2.0 - 2026-11-02
 
@@ -25,7 +26,7 @@ LOOP・DOLIST・FORMAT・DEFSTRUCT・CLOS・condition などは未実装（`comp
 - Phase 01：`build.zig` / `build.zig.zon`（Zig 0.17.0）、CLI の骨組み（`--version` / `--help`）、
   ベンチマークの実行器（`zig build bench`、`scripts/run-bench.ps1`）、
   リリースビルドのスクリプト（`scripts/build-release.ps1`）、
-  バージョン更新チェックリスト、Zig 0.17.0 の std・言語機能の照合結果（`docs/zig-std-usage.md`）
+  バージョン更新チェックリスト、Zig 0.17.0 の std・言語機能の照合結果（`docs/zig-std-usage.ja.md`）
 - Phase 02：言語試験の実行器（`zig build lang-test`）、教材のコードブロックの抽出（`zig build extract-samples`）、
   SBCL による読み込みだけの分類（`tools/classify_samples/classify.lisp`）、
   `scripts/curriculum-inventory.ps1`、`compatibility/curriculum-inventory.md`、`compatibility/manifest.toml`（初期版）

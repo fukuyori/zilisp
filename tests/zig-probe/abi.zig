@@ -1,4 +1,4 @@
-//! 戻り値の返し方（レジスタかメモリか）を確かめるための試験（docs/zig-std-usage.md §3）。
+//! 戻り値の返し方（レジスタかメモリか）を確かめるための試験（docs/zig-std-usage.ja.md §3）。
 //! 実行方法（ターゲットごとにアセンブリを出力して zl_ で始まる関数を見る）:
 //!   zig build-obj -target x86_64-windows -OReleaseFast -fno-emit-bin -femit-asm=abi.s tests/zig-probe/abi.zig
 

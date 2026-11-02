@@ -47,6 +47,8 @@ pub const Lambda = struct {
     rest_param: bool = false,
     /// この lambda の中の block（Phase 18）。脱出先のエントリが要る block の識別子の局所変数は、本体を解決した後で割り当てる
     blocks: std.ArrayList(*Block) = .empty,
+    /// この lambda の中の tagbody（Phase 19）
+    tagbodies: std.ArrayList(*Tagbody) = .empty,
 
     pub const FnKind = enum { none, global, flet, labels, macro };
 
@@ -74,6 +76,23 @@ pub const Lambda = struct {
 };
 
 pub const no_slot = std.math.maxInt(u32);
+
+/// tagbody（Phase 19。§6.4）
+pub const Tagbody = struct {
+    /// tagbody を持つ lambda
+    lambda: *Lambda,
+    /// 実行時の識別子を入れる局所変数（needs_entry のときだけ使う）
+    token: *Var,
+    /// 実行時の脱出で着地したときに、タグの番号を置く局所変数（VM。needs_entry のときだけ使う）
+    index_slot: u32 = no_slot,
+    /// 実行時の脱出（別の lambda から、または unwind-protect を横切る go）があり、制御スタックにエントリを積む
+    needs_entry: bool = false,
+    /// タグの数
+    ntags: u32 = 0,
+};
+
+/// tagbody の中身の1つ：タグ（番号）か、フォーム
+pub const TagItem = union(enum) { tag: u32, form: *Node };
 
 /// block（Phase 18。§6.4）
 pub const Block = struct {
@@ -142,5 +161,9 @@ pub const Node = struct {
         throw_: struct { tag: *Node, value: *Node },
         /// (unwind-protect 保護するフォーム cleanup...)
         unwind_protect: struct { protected: *Node, cleanup: []*Node },
+        /// (tagbody {タグ | フォーム}...)（Phase 19）。値は NIL
+        tagbody: struct { tb: *Tagbody, items: []TagItem },
+        /// (go タグ)。nonlocal なら実行時の脱出、そうでなければジャンプ
+        go_: struct { tb: *Tagbody, index: u32, nonlocal: bool },
     };
 };

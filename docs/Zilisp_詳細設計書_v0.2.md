@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記20） | 2026-11-02 | Phase 19：tagbody・go の実装（§6.4）、反復のマクロ・loop・写像と畳み込み・format の最小版と、反復の教材で使う関数（§11.2） |
 | 0.2（追記19） | 2026-11-02 | §5.2 の `define-symbol-macro` などの時期の記述（Phase 30 に移したことに合わせる）と、§6.4 の `ControlEntry` のネイティブの再開の説明（Phase 18 の実装に合わせる）を直した。英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）を作成。以後、本書を変更するときは英語版も同じ変更で更新する。`docs/zig-std-usage.md` は英語版になり、日本語版は `docs/zig-std-usage.ja.md` |
 | 0.2（追記18） | 2026-11-02 | 0.2.0 のリリースの準備：インストーラーのスクリプト（§18.1・§18.2）、GitHub Actions による試験とリリース（§18.4）、Linux・macOS のスタックの先頭（§3.4） |
 | 0.2（追記17） | 2026-11-02 | Codex・agy のレビュー（Phase 18）を反映：暗黙の block は本体だけを囲む（defmacro のコンパイル時の定義にも付ける）、処理途中の脱出のスタックの大きさの不変条件、cleanup の間のエラーの内容の退避、検証器による制御スタックの検査、方式2の試作の修正（浮動小数の制御の状態の保存、直接呼び出し）と再計測（§6.4・§7.4） |
@@ -641,6 +642,13 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 - **cleanup の中の脱出**：新しい脱出を始めるときと、エラーで cleanup に入るとき、`cleanup_at` が脱出先（エラーでは今の深さ）より深い、止まっている脱出を取り消す（その cleanup の外へ出るため）。cleanup の中で受け止められる脱出は、止まっている脱出を取り消さない。エラーでトップレベルまで戻ったときは、残った記録を消す（`clearError`）。
 - 試験：SBCL 2.6.7 の結果と比べる63通り（GC stress でも実行。毎回、制御スタック・脱出の記録・動的束縛が空に戻ることも確かめる）、エラーと cleanup の組み合わせ、言語試験 `exits.lisp`・`exit-cases.lisp`（63通りをネイティブでも実行）・`error-cleanup.lisp`。
 
+**Phase 19 の実装（tagbody・go）**
+- **Resolver**：tagbody の引数を、タグ（シンボルと fixnum）とフォーム（複合フォーム）に分ける。それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）。go は return-from と同じ規則で、同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出（tagbody に `needs_entry` を付ける）。値は NIL。
+- **制御スタック**：エントリの種類 `tagbody` を加えた。go の実行時の脱出が運ぶ値はタグの番号（fixnum）。block と違い、**脱出先として着地してもエントリを取り除かない**（tagbody の中で続けるため。`landTransfer`）。普通に抜けるときに取り除く。
+- **VM**：命令 `TAGBODY_ENTER i rel`（識別子を局所変数 i に置いてエントリを積む。rel は着地したときの再開の位置）と `GO_NL`（[識別子 タグの番号]。この後には進まない）。着地したら、タグの番号を局所変数に置き、番号を比べてタグの位置へ分岐する（タグの数に比例する。実行時の go はまれなため）。同じ関数の中の go は、途中の値を捨て（`POP`）、横切る動的束縛を戻し、横切るエントリを取り除いてジャンプする（後ろへのジャンプを含む）。検証器は、tagbody のエントリを「着地した後も残る」種類として扱う。
+- **ネイティブ**：tagbody を Zig のラベル付き switch にする（0 番の分岐は最初のタグの前、k+1 番の分岐はタグ k の後ろ）。同じ関数の中の go は `if (true) continue :s番号 k+1;`。実行時の脱出先なら、switch をループで囲み、`Value.unwind` を受け取ったら `N.land` で着地して、タグの分岐から switch に入り直す。
+- 試験：SBCL 2.6.7 の結果と比べる tagbody・go の24通り（後述の反復のマクロ・loop と合わせて139通り。GC stress でも実行。ネイティブでも実行：`iteration-cases.lisp`）。
+
 **動的環境を戻す方式の統一**（agy #4）
 
 動的束縛・handler・restart の解除は、Zig の `defer` / `errdefer` には頼らず、**すべて `Thread` のスタックの深さで戻す方式に統一する**（VM の `UNBIND_TO` と同じ考え方。ランタイムの関数 `th.unwindTo(depths)`）。
@@ -1160,6 +1168,13 @@ instance                      rack
 | 80 | `80-io.lisp` | `with-open-file` `with-output-to-string` 等 |
 
 - `print`、`read`、`format` の中核は Zig で実装する。
+
+**Phase 19 の時点**：反復の教材（Level 6）を通すため、上の表の 00・20・30 の一部と、`format` の最小版を前倒しで実装した（2026-11-02 決定）。
+- `src/lisp/boot.lisp` の反復の節：`psetq`、`dolist`・`dotimes`（本体は暗黙の tagbody。結果は、dolist は変数を NIL に、dotimes は変数を回数にして評価する：CLHS）、`do`・`do*`、`mapcar`・`mapc`・`mapcan`・`nconc`・`reduce`（`:key`・`:from-end`・`:start`・`:end`・`:initial-value`）、`loop`。
+- **loop**（独自実装）：`named`、`with`、`for`・`as`（`from`・`upfrom`・`downfrom`・`to`・`upto`・`below`・`downto`・`above`・`by`、`in`・`on`（`by`）、`= … then`、`across`、`being the hash-keys`・`hash-values`（`using`））、`repeat`、`initially`・`finally`、`do`、集める句（`collect`・`append`・`nconc`・`sum`・`count`・`maximize`・`minimize`、`into`）、`while`・`until`、`always`・`never`・`thereis`、`return`、`when`・`if`・`unless`（`and`・`else`・`end`・`it`）、`loop-finish`、変数の分解。展開は `(block 名前 (let* (束縛...) (tagbody 前処理 最初の検査 本体のタグ 本体 更新と検査 (go 本体のタグ) 終わりのタグ 後処理 (return-from 名前 既定の値))))`。for の句は、句の順に「更新・検査・代入」を行う（SBCL 2.6.7 と同じ順）。always・never・thereis は後処理を実行せずに返す（CLHS 6.1.4）。終わりのタグは `zl-sys::%loop-end`（`loop-finish` はそこへ go する。入れ子の loop では内側のタグが見える）。未対応の句（for・with の `and` による並列の束縛、`being` の `elements`・`symbols` など）は明示的なエラーにする。変数への型宣言はまだ付けない（速さの改善は後の Phase）。
+- Zig で書いた関数：`evenp`・`oddp`・`zerop`・`plusp`・`minusp`・`max`・`min`・`abs`・`mod`・`rem`、`reverse`・`nreverse`・`copy-list`・`last`・`endp`、`symbol-name`・`string=`・`string-upcase`・`string-downcase`・`char=`、`princ`、`format` の最小版。大文字・小文字の変換は ASCII の文字だけ（Reader と同じ。SBCL 2.6.7 は Unicode の文字も変換する）。
+- **format の最小版**：出力先は `T`（標準出力）と `NIL`（文字列を返す）。指示子は `~A`・`~S`・`~D`・`~%`・`~&`・`~~` と、`~` に続く改行。引数・修飾子の付いた指示子（`~5D`、`~:A`）とほかの指示子、ほかの出力先は明示的なエラー（Phase 24 で全体を実装する）。`~&` のため、スレッドは標準出力が行の先頭にいるかを覚える（`Thread.line_start`）。引数が足りないときのエラーは `simple-error`（SBCL 2.6.7 は処理系固有の `format-error`）。
+- 結果：Level 6 の 48 ブロックは、一致 41、両方ともエラー 7（Zilisp だけがエラーのものはない）。教材のブロック全体の一致は 244 から 347 に。
 
 ### 11.3 標準ライブラリのビルド
 

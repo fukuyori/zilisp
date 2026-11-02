@@ -52,6 +52,8 @@ pub const Syms = struct {
     @"catch": Value,
     throw: Value,
     @"unwind-protect": Value,
+    tagbody: Value,
+    go: Value,
     // ラムダリストのキーワード
     @"&optional": Value,
     @"&rest": Value,

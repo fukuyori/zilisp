@@ -338,3 +338,109 @@ test "exact comparison of integers and floats" {
     try std.testing.expectEqual(std.math.Order.gt, cmpIntFloat((1 << 53) + 1, 0x1p53));
     try std.testing.expectEqual(std.math.Order.lt, cmpIntFloat((1 << 61) - 1, 0x1p61));
 }
+
+// ---------------------------------------------------------------------------
+// 述語・max・min・abs・mod・rem（Phase 19。反復の教材で使うもの）
+
+fn integerArg(th: *Thread, v: Value) ?i64 {
+    if (v.isFixnum()) return v.asFixnum();
+    _ = th.typeError(v, th.rt.syms.integer);
+    return null;
+}
+
+pub fn evenp(th: *Thread, args: []const Value) Value {
+    const i = integerArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(@mod(i, 2) == 0);
+}
+
+pub fn oddp(th: *Thread, args: []const Value) Value {
+    const i = integerArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(@mod(i, 2) != 0);
+}
+
+pub fn zerop(th: *Thread, args: []const Value) Value {
+    const n = numArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(asF64(n) == 0);
+}
+
+pub fn plusp(th: *Thread, args: []const Value) Value {
+    const n = realArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(switch (n) {
+        .fix => |i| i > 0,
+        else => asF64(n) > 0,
+    });
+}
+
+pub fn minusp(th: *Thread, args: []const Value) Value {
+    const n = realArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(switch (n) {
+        .fix => |i| i < 0,
+        else => asF64(n) < 0,
+    });
+}
+
+/// max・min：引数のうち最大（最小）のものを返す（SBCL 2.6.7 と同じく、引数そのものを返す。浮動小数への変換はしない）
+fn extremum(th: *Thread, comptime c: Cmp, args: []const Value) Value {
+    var best = args[0];
+    _ = realArg(th, best) orelse return Value.unwind;
+    for (args[1..]) |a| {
+        _ = realArg(th, a) orelse return Value.unwind;
+        const r = compare2(th, c, a, best);
+        if (r == Value.unwind) return r;
+        if (r != Value.nil) best = a;
+    }
+    return best;
+}
+
+pub fn max(th: *Thread, args: []const Value) Value {
+    return extremum(th, .gt, args);
+}
+
+pub fn min(th: *Thread, args: []const Value) Value {
+    return extremum(th, .lt, args);
+}
+
+pub fn abs(th: *Thread, args: []const Value) Value {
+    const n = numArg(th, args[0]) orelse return Value.unwind;
+    return switch (n) {
+        .fix => |i| fixnum(th, if (i < 0) -i else i),
+        .single => |f| single(th, @abs(f)),
+        .double => |f| double(th, @abs(f)),
+    };
+}
+
+fn divisionByZero(th: *Thread) Value {
+    return th.signal(.division_by_zero, "0 で割りました", Value.unbound, Value.unbound);
+}
+
+/// mod（floor の余り）・rem（truncate の余り）
+fn remainder(th: *Thread, comptime floor_mode: bool, a: Value, b: Value) Value {
+    const x = realArg(th, a) orelse return Value.unwind;
+    const y = realArg(th, b) orelse return Value.unwind;
+    switch (formatOf(x, y)) {
+        .fix => {
+            if (y.fix == 0) return divisionByZero(th);
+            return fixnum(th, if (floor_mode) @mod(x.fix, y.fix) else @rem(x.fix, y.fix));
+        },
+        .single => {
+            const p = asF32(x);
+            const q = asF32(y);
+            if (q == 0) return divisionByZero(th);
+            return single(th, if (floor_mode) p - q * @floor(p / q) else @rem(p, q));
+        },
+        .double => {
+            const p = asF64(x);
+            const q = asF64(y);
+            if (q == 0) return divisionByZero(th);
+            return double(th, if (floor_mode) p - q * @floor(p / q) else @rem(p, q));
+        },
+    }
+}
+
+pub fn mod(th: *Thread, args: []const Value) Value {
+    return remainder(th, true, args[0], args[1]);
+}
+
+pub fn rem(th: *Thread, args: []const Value) Value {
+    return remainder(th, false, args[0], args[1]);
+}

@@ -262,3 +262,21 @@ pub fn hashTableCount(th: *Thread, args: []const Value) Value {
 pub fn hashTableP(th: *Thread, args: []const Value) Value {
     return th.rt.boolean(isHashTable(args[0]));
 }
+
+/// ZILISP-SYSTEM::%HASH-PAIRS 表：((キー . 値) ...) のリスト（loop の being the hash-keys・hash-values が使う。Phase 19）
+pub fn sysHashPairs(th: *Thread, args: []const Value) Value {
+    if (checkTable(th, args[0])) |e| return e;
+    const vec = tablePtr(args[0]).entries;
+    var list = Value.nil;
+    var i: usize = 0;
+    while (i < Runtime.vectorPtr(vec).items().len) : (i += 2) {
+        // 確保で GC が起きても表の vector は動かないので、毎回 items() を引き直さなくてよいが、念のため引き直す
+        const e = Runtime.vectorPtr(vec).items();
+        const k = e[i];
+        if (k == Value.unbound or k == tombstone(th)) continue;
+        const pair = th.rt.cons(k, e[i + 1]) catch return th.outOfMemory();
+        list = th.rt.cons(pair, list) catch return th.outOfMemory();
+    }
+    std.mem.doNotOptimizeAway(vec);
+    return list;
+}

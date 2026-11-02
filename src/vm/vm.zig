@@ -607,6 +607,22 @@ fn execute(th: *Thread, entry_fp: usize) Value {
             stack[base + slot] = token;
             continue :dispatch next(bc, &ip);
         },
+        .tagbody_enter => {
+            const w = wide;
+            wide = false;
+            const slot = readIndex(bc, &ip, w);
+            const rel = ops.readI32(bc, ip);
+            ip += 4;
+            const token = th.newBlockToken();
+            const resume_at: usize = @intCast(@as(i64, @intCast(ip)) + rel);
+            if (th.pushControl(.tagbody, token, vm.fp, sp, resume_at) == Value.unwind) return Value.unwind;
+            stack[base + slot] = token;
+            continue :dispatch next(bc, &ip);
+        },
+        .go_nl => {
+            vm.sp = sp;
+            return th.goTo(stack[sp - 2], @intCast(stack[sp - 1].asFixnum()));
+        },
         .catch_enter => {
             const rel = ops.readI32(bc, ip);
             ip += 4;

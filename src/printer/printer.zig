@@ -1,4 +1,5 @@
 //! 印字（prin1 相当。*print-escape* が真、*print-pretty* が偽、*print-readably* は偽の場合）。
+//! princ（*print-escape* が偽。Phase 19）は、文字列・文字をそのまま書き、シンボルをパッケージの修飾と |…| なしで書く。
 //! 規則は SBCL 2.6.7 の出力に合わせる（CLHS 22.1.3「Default Print-Object Methods」）。
 //! Phase 05 の範囲：fixnum、文字、single-float・double-float、シンボル、文字列、リスト、単純ベクタ。
 
@@ -13,23 +14,32 @@ const Writer = std.Io.Writer;
 pub const Error = Writer.Error;
 
 pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Error!void {
+    return write(rt, w, v, true);
+}
+
+/// princ（*print-escape* が偽）
+pub fn princ(rt: *Runtime, w: *Writer, v: Value) Error!void {
+    return write(rt, w, v, false);
+}
+
+pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
     if (v.isFixnum()) return w.print("{d}", .{v.asFixnum()});
     if (v == Value.nil) return w.writeAll("NIL");
-    if (v.isChar()) return printChar(w, v.asChar());
+    if (v.isChar()) return if (escape) printChar(w, v.asChar()) else writeCp(w, v.asChar());
     if (v.isSingleFloat()) return printFloat(w, f32, v.asSingle());
     if (v == Value.unbound) return w.writeAll("#<unbound>");
     if (v == Value.unwind) return w.writeAll("#<unwind>");
-    if (v.isCons()) return printList(rt, w, v);
+    if (v.isCons()) return printList(rt, w, v, escape);
     if (v.isFunctionPointer()) return printFunction(rt, w, v);
     switch (Runtime.kindOf(v) orelse return w.print("#<object {x}>", .{v.raw()})) {
-        .symbol => return printSymbol(rt, w, v),
-        .string => return printString(w, v),
+        .symbol => return if (escape) printSymbol(rt, w, v) else Runtime.writeStringUtf8(rt.symbolPtr(v).name, w),
+        .string => return if (escape) printString(w, v) else Runtime.writeStringUtf8(v, w),
         .double_float => return printFloat(w, f64, Runtime.doubleValue(v)),
         .simple_vector => {
             try w.writeAll("#(");
             for (Runtime.vectorPtr(v).items(), 0..) |x, i| {
                 if (i > 0) try w.writeByte(' ');
-                try prin1(rt, w, x);
+                try write(rt, w, x, escape);
             }
             return w.writeByte(')');
         },
@@ -86,7 +96,7 @@ pub fn printCodeName(rt: *Runtime, w: *Writer, name: Value) Error!void {
     try prin1(rt, w, name);
 }
 
-fn printList(rt: *Runtime, w: *Writer, v: Value) Error!void {
+fn printList(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
     try w.writeByte('(');
     var x = v;
     var first = true;
@@ -94,12 +104,12 @@ fn printList(rt: *Runtime, w: *Writer, v: Value) Error!void {
         if (!first) try w.writeByte(' ');
         first = false;
         const c = Runtime.consPtr(x);
-        try prin1(rt, w, c.car);
+        try write(rt, w, c.car, escape);
         x = c.cdr;
     }
     if (x != Value.nil) {
         try w.writeAll(" . ");
-        try prin1(rt, w, x);
+        try write(rt, w, x, escape);
     }
     try w.writeByte(')');
 }

@@ -836,6 +836,186 @@ test "nested error cleanups beyond the control stack size signal storage-conditi
     try expectClean(&e, "after overflow");
 }
 
+/// Phase 19：tagbody・go、反復のマクロ、loop、反復の教材で使う関数（SBCL 2.6.7 の結果）
+const iteration_cases = [_][2][]const u8{
+    .{ "(tagbody)", "NIL" },
+    .{ "(tagbody 1 2)", "NIL" },
+    .{ "(let ((x 0)) (tagbody top (setq x (+ x 1)) (if (< x 5) (go top))) x)", "5" },
+    .{ "(let ((log nil)) (tagbody (push 1 log) (go b) a (push 2 log) b (push 3 log)) log)", "(3 1)" },
+    .{ "(let ((log nil)) (tagbody (go 10) 5 (push 'five log) 10 (push 'ten log)) log)", "(TEN)" },
+    .{ "(let ((n 0)) (tagbody a (incf n) (when (< n 3) (go a)) b (incf n 10)) n)", "13" },
+    .{ "(let ((x 0)) (tagbody (setq x 1) (funcall (lambda () (go out))) (setq x 2) out) x)", "1" },
+    .{ "(progn (defun p19-jumper (f) (funcall f)) (let ((log nil)) (tagbody (p19-jumper (lambda () (go done))) (push 'skipped log) done (push 'done log)) log))", "(DONE)" },
+    .{ "(let ((log nil)) (block b (tagbody (unwind-protect (go x) (push 'cleanup log)) x (push 'x log))) log)", "(X CLEANUP)" },
+    .{ "(progn (defvar *p19-s* 'outer) (let ((seen nil)) (tagbody (let ((*p19-s* 'inner)) (go end)) end (setq seen *p19-s*)) seen))", "OUTER" },
+    .{ "(progn (defvar *p19-s* 'outer) (let ((seen nil)) (tagbody (let ((*p19-s* 'inner)) (funcall (lambda () (go end)))) end (setq seen *p19-s*)) seen))", "OUTER" },
+    .{ "(let ((n 0)) (tagbody a (incf n) (if (< n 1000) (funcall (lambda () (go a))))) n)", "1000" },
+    .{ "(let ((log nil)) (tagbody (catch 'c (go out)) out (push 'out log)) log)", "(OUT)" },
+    .{ "(block b (tagbody (return-from b 'value)))", "VALUE" },
+    .{ "(let ((x 0)) (tagbody (go nil) (setq x 1) nil) x)", "0" },
+    .{ "(multiple-value-list (tagbody))", "(NIL)" },
+    .{ "(let ((log nil)) (tagbody (block b (go out)) (push 'no log) out (push 'yes log)) log)", "(YES)" },
+    .{ "(let ((r nil)) (tagbody (setq r (list (block b (tagbody (return-from b 1))))) ) r)", "(1)" },
+    .{ "(loop for i from 1 to 3 collect i)", "(1 2 3)" },
+    .{ "(loop for i from 0 below 3 collect i)", "(0 1 2)" },
+    .{ "(loop for i below 3 collect i)", "(0 1 2)" },
+    .{ "(loop for i from 10 downto 7 collect i)", "(10 9 8 7)" },
+    .{ "(loop for i from 10 above 7 collect i)", "(10 9 8)" },
+    .{ "(loop for i from 0 to 10 by 3 collect i)", "(0 3 6 9)" },
+    .{ "(loop for i downfrom 3 to 1 collect i)", "(3 2 1)" },
+    .{ "(loop for i upfrom 5 repeat 3 collect i)", "(5 6 7)" },
+    .{ "(loop for x in '(1 2 3) collect (* x x))", "(1 4 9)" },
+    .{ "(loop for x in '(1 2 3 4 5) by #'cddr collect x)", "(1 3 5)" },
+    .{ "(loop for x on '(1 2 3) collect x)", "((1 2 3) (2 3) (3))" },
+    .{ "(loop for x across #(a b c) collect x)", "(A B C)" },
+    .{ "(loop for x across \"abc\" collect x)", "(#\\a #\\b #\\c)" },
+    .{ "(loop for x = 1 then (* x 2) repeat 5 collect x)", "(1 2 4 8 16)" },
+    .{ "(loop for x in '(1 2 3) for y = (* x 10) collect y)", "(10 20 30)" },
+    .{ "(loop for x in '(a b c) for i from 0 collect (list i x))", "((0 A) (1 B) (2 C))" },
+    .{ "(loop repeat 3 collect 'x)", "(X X X)" },
+    .{ "(loop for x in '(1 2 3) sum x)", "6" },
+    .{ "(loop for x in '(1 2 3) summing x into total finally (return total))", "6" },
+    .{ "(loop for x in '(1 2 3 4) count (evenp x))", "2" },
+    .{ "(loop for x in '(3 9 2) maximize x)", "9" },
+    .{ "(loop for x in '(3 9 2) minimize x)", "2" },
+    .{ "(loop for x in '((1 2) (3) ()) append x)", "(1 2 3)" },
+    .{ "(loop for x in (list (list 1 2) (list 3)) nconc x)", "(1 2 3)" },
+    .{ "(loop for x in '(1 2 3 4 5 6) when (evenp x) collect x)", "(2 4 6)" },
+    .{ "(loop for x in '(1 2 3 4 5 6) unless (evenp x) collect x)", "(1 3 5)" },
+    .{ "(loop for x in '(1 2 3 4) if (evenp x) collect x into evens else collect x into odds finally (return (list evens odds)))", "((2 4) (1 3))" },
+    .{ "(loop for x in '(1 2 3 4) when (evenp x) collect x and collect (* x 10))", "(2 20 4 40)" },
+    .{ "(loop for x in '(1 2 nil 4) when x collect it)", "(1 2 4)" },
+    .{ "(loop for x in '(1 2 3 4) while (< x 3) collect x)", "(1 2)" },
+    .{ "(loop for x in '(1 2 3 4) until (> x 2) collect x)", "(1 2)" },
+    .{ "(loop for x in '(2 4 6) always (evenp x))", "T" },
+    .{ "(loop for x in '(2 4 5) always (evenp x))", "NIL" },
+    .{ "(loop for x in '(1 3 5) never (evenp x))", "T" },
+    .{ "(loop for x in '(1 4 5) thereis (and (evenp x) x))", "4" },
+    .{ "(loop for x in '(1 2 3) when (= x 2) return (* x 100))", "200" },
+    .{ "(loop named outer for x in '(1 2 3) do (loop for y in '(a b) do (when (= x 2) (return-from outer y))))", "A" },
+    .{ "(loop with a = 1 with b = (+ a 1) repeat 2 collect (list a b))", "((1 2) (1 2))" },
+    .{ "(let ((n 0)) (loop (incf n) (when (> n 4) (return n))))", "5" },
+    .{ "(loop for (a b) in '((1 2) (3 4)) collect (+ a b))", "(3 7)" },
+    .{ "(loop for (a . b) in '((1 . 2) (3 . 4)) collect (list b a))", "((2 1) (4 3))" },
+    .{ "(loop for (a nil c) in '((1 2 3) (4 5 6)) collect (list a c))", "((1 3) (4 6))" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (loop for k being the hash-keys of h collect k))", "(A)" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (loop for v being the hash-values of h collect v))", "(1)" },
+    .{ "(let ((h (make-hash-table))) (setf (gethash 'a h) 1) (loop for k being the hash-keys of h using (hash-value v) collect (list k v)))", "((A 1))" },
+    .{ "(loop for x in '(1 2 3) collect x into acc finally (return (reverse acc)))", "(3 2 1)" },
+    .{ "(loop for x in '(a b) for y in '(1 2 3) collect (cons x y))", "((A . 1) (B . 2))" },
+    .{ "(loop for i from 1 to 5 when (oddp i) sum i)", "9" },
+    .{ "(loop for x in '(1 2 3) thereis (> x 5))", "NIL" },
+    .{ "(loop for x in nil always nil)", "T" },
+    .{ "(loop for i from 1 to 3 do (loop-finish) finally (return i))", "1" },
+    .{ "(loop for c across \"hello\" count (char= c #\\l))", "2" },
+    .{ "(loop for x from 1 to 3 collect x collect (- x))", "(1 -1 2 -2 3 -3)" },
+    .{ "(loop for i fixnum from 0 below 3 collect i)", "(0 1 2)" },
+    .{ "(loop for i of-type fixnum from 0 below 3 collect i)", "(0 1 2)" },
+    .{ "(loop for i from 0 to 2 append (list i i))", "(0 0 1 1 2 2)" },
+    .{ "(loop for x in '(5 3 8) for i from 0 maximize x into m finally (return (list m i)))", "(8 2)" },
+    .{ "(loop for i from 1 to 3 for sq = (* i i) collect sq)", "(1 4 9)" },
+    .{ "(loop for x = 0 then (1+ x) while (< x 3) collect x)", "(0 1 2)" },
+    .{ "(loop for i from 1 to 0 collect i)", "NIL" },
+    .{ "(loop for x in '(1 2 3) count x)", "3" },
+    .{ "(loop for i from 0 below 6 by 2 collect i)", "(0 2 4)" },
+    .{ "(loop for i from 1.0 to 2.0 by 0.5 collect i)", "(1.0 1.5 2.0)" },
+    .{ "(let ((r nil)) (dolist (x '(1 2 3) r) (push x r)))", "(3 2 1)" },
+    .{ "(dolist (x '(1 2 3)) x)", "NIL" },
+    .{ "(let ((r nil)) (dolist (x '(1 2 3) (list r x)) (push x r)))", "((3 2 1) NIL)" },
+    .{ "(dolist (x '(1 2 3 4)) (when (= x 3) (return (* x 10))))", "30" },
+    .{ "(let ((s 0)) (dotimes (i 5 s) (incf s i)))", "10" },
+    .{ "(dotimes (i 3))", "NIL" },
+    .{ "(let ((r nil)) (dotimes (i 3 (list r i)) (push i r)))", "((2 1 0) 3)" },
+    .{ "(let ((r nil)) (dotimes (i 0 r) (push i r)))", "NIL" },
+    .{ "(let ((fs nil)) (dotimes (i 3) (push (lambda () i) fs)) (length fs))", "3" },
+    .{ "(do ((i 0 (1+ i)) (acc nil (cons i acc))) ((= i 3) acc))", "(2 1 0)" },
+    .{ "(do* ((i 0 (1+ i)) (j i (* i 10))) ((= i 3) j))", "30" },
+    .{ "(do ((i 0 (1+ i))) ((= i 3)))", "NIL" },
+    .{ "(let ((x 1) (y 2)) (psetq x y y x) (list x y))", "(2 1)" },
+    .{ "(dolist (x '(1 2 3)) (tagbody (if (= x 2) (go skip)) (return x) skip))", "1" },
+    .{ "(mapcar #'1+ '(1 2 3))", "(2 3 4)" },
+    .{ "(mapcar #'+ '(1 2 3) '(10 20 30 40))", "(11 22 33)" },
+    .{ "(mapcar (lambda (x) (* x x)) nil)", "NIL" },
+    .{ "(let ((s 0)) (list (mapc (lambda (x) (incf s x)) '(1 2 3)) s))", "((1 2 3) 6)" },
+    .{ "(mapcan (lambda (x) (list x x)) '(1 2))", "(1 1 2 2)" },
+    .{ "(nconc (list 1 2) nil (list 3) (list 4 5))", "(1 2 3 4 5)" },
+    .{ "(nconc)", "NIL" },
+    .{ "(nconc nil (list 1) 2)", "(1 . 2)" },
+    .{ "(reduce #'+ '(1 2 3 4))", "10" },
+    .{ "(reduce #'+ nil)", "0" },
+    .{ "(reduce #'+ '(5))", "5" },
+    .{ "(reduce #'list '(1 2 3) :from-end t)", "(1 (2 3))" },
+    .{ "(reduce #'list '(1 2 3))", "((1 2) 3)" },
+    .{ "(reduce #'+ '(1 2 3) :initial-value 100)", "106" },
+    .{ "(reduce #'max '(3 9 2 7))", "9" },
+    .{ "(reduce #'+ #(1 2 3))", "6" },
+    .{ "(reduce #'+ '((1) (2) (3)) :key #'car)", "6" },
+    .{ "(reduce #'+ '(1 2 3 4 5) :start 1 :end 3)", "5" },
+    .{ "(list (evenp 4) (evenp -3) (oddp 7) (oddp 0))", "(T NIL T NIL)" },
+    .{ "(list (zerop 0) (zerop 0.0) (plusp 3) (minusp -1.5) (plusp 0))", "(T T T T NIL)" },
+    .{ "(list (max 1 5 3) (min 4 -2 8) (max 1 2.0) (max 3 2.0) (min 1.5 1))", "(5 -2 2.0 3 1)" },
+    .{ "(list (abs -5) (abs 3) (abs -2.5))", "(5 3 2.5)" },
+    .{ "(list (mod 7 3) (mod -7 3) (mod 7 -3) (rem 7 3) (rem -7 3) (rem 7 -3))", "(1 2 -2 1 -1 1)" },
+    .{ "(mod 7.5 2)", "1.5" },
+    .{ "(reverse '(1 2 3))", "(3 2 1)" },
+    .{ "(reverse #(1 2 3))", "#(3 2 1)" },
+    .{ "(reverse \"abc\")", "\"cba\"" },
+    .{ "(nreverse (list 1 2 3))", "(3 2 1)" },
+    .{ "(copy-list '(1 2 . 3))", "(1 2 . 3)" },
+    .{ "(list (last '(1 2 3)) (last '(1 2 3) 2) (last nil) (last '(1 2 3) 0) (last '(1 2 . 3)))", "((3) (2 3) NIL NIL (2 . 3))" },
+    .{ "(list (endp nil) (endp '(1)))", "(T NIL)" },
+    .{ "(symbol-name 'foo)", "\"FOO\"" },
+    .{ "(symbol-name nil)", "\"NIL\"" },
+    .{ "(list (string= \"abc\" \"abc\") (string= \"abc\" \"abd\") (string= 'foo \"FOO\") (string= \"abcde\" \"xbcd\" :start1 1 :end1 4 :start2 1))", "(T NIL T T)" },
+    .{ "(list (string-upcase \"Hello World\") (string-downcase \"Hello\") (string-upcase 'foo) (string-upcase \"hello\" :start 1 :end 3))", "(\"HELLO WORLD\" \"hello\" \"FOO\" \"hELlo\")" },
+    .{ "(list (char= #\\a #\\a) (char= #\\a #\\b) (char= #\\a #\\a #\\a))", "(T NIL T)" },
+    .{ "(format nil \"~A and ~S\" \"str\" \"str\")", "\"str and \\\"str\\\"\"" },
+    .{ "(format nil \"~~ tilde\")", "\"~ tilde\"" },
+    .{ "(format nil \"~a ~a\" 'sym '(1 \"two\" #\\c))", "\"SYM (1 two c)\"" },
+    .{ "(format nil \"~s\" '(1 \"two\" #\\c))", "\"(1 \\\"two\\\" #\\\\c)\"" },
+    .{ "(format nil \"~d\" 'abc)", "\"ABC\"" },
+    .{ "(format nil \"~a\" 1.5)", "\"1.5\"" },
+};
+
+test "tagbody, go, iteration macros, loop and helpers like SBCL 2.6.7 (Phase 19)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (iteration_cases) |c| {
+        try expectValue(&e, c[0], c[1]);
+        try expectClean(&e, c[0]);
+    }
+    e.rt.heap.stress = true;
+    for (iteration_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(tagbody (go nosuch))", .program_error);
+    try expectError(&e, "(go x)", .program_error);
+    try expectError(&e, "(tagbody \"str\")", .program_error);
+    try expectError(&e, "(tagbody a a)", .program_error);
+    try expectError(&e, "(progn (defun p19-mk2 () (let (f) (tagbody (setq f (lambda () (go x))) x) f)) (funcall (p19-mk2)))", .control_error);
+    try expectError(&e, "(mod 1 0)", .division_by_zero);
+    try expectError(&e, "(evenp 1.0)", .type_error);
+    try expectError(&e, "(endp 3)", .type_error);
+    try expectError(&e, "(format nil \"~A\")", .simple_error);
+    try expectError(&e, "(psetq a)", .program_error);
+    // 範囲外のもの（明示的なエラー）：format の引数付きの指示子・未実装の指示子、loop の並列の束縛
+    try expectError(&e, "(format nil \"~5D\" 3)", .unimplemented);
+    try expectError(&e, "(format nil \"~X\" 255)", .unimplemented);
+    try expectError(&e, "(format (make-array 3 :element-type 'character) \"x\")", .unimplemented);
+    try expectError(&e, "(loop for x in '(1 2) and y = 1 collect x)", .unimplemented);
+    try expectError(&e, "(loop for x being the elements of #(1) collect x)", .unimplemented);
+    // format の改行と ~&（SBCL 2.6.7 と同じ）
+    try expectValue(&e, "(format nil \"~D items~%\" 3)", "\"3 items\n\"");
+    try expectValue(&e, "(format nil \"x~&y~&~&z\")", "\"x\ny\nz\"");
+    try expectValue(&e, "(format nil \"a~\n    b\")", "\"ab\"");
+    // 深い反復でも、制御スタック・束縛が残らない
+    try expectValue(&e, "(let ((n 0)) (dotimes (i 10000 n) (block b (tagbody (if (oddp i) (go x)) (incf n) x)) (catch 'c (unwind-protect nil))))", "5000");
+    try expectClean(&e, "deep iteration");
+    try expectValue(&e, "(let ((n 0)) (tagbody a (incf n) (if (< n 5000) (funcall (lambda () (go a))))) n)", "5000");
+    try expectClean(&e, "nonlocal go loop");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -888,7 +1068,6 @@ test "errors" {
         .{ "(- -2305843009213693952)", .unimplemented },
         .{ "(* 1e30 1e30)", .floating_point_overflow },
         .{ "(+ 1d308 1d308)", .floating_point_overflow },
-        .{ "(loop)", .unimplemented },
         .{ "(quote)", .program_error },
         .{ "(if)", .program_error },
         .{ "(let ((t 1)) t)", .program_error },

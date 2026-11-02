@@ -203,9 +203,13 @@ const Mode = enum { value, discard, multi };
 /// block の出口（Phase 18）。Zig のラベル付きブロック b番号 で表す
 const NLabel = struct { blk: *ir.Block, id: u32, mode: Mode };
 
+/// tagbody（Phase 19）。Zig のラベル付き switch s番号 で表し、タグ k の後ろの部分を k+1 の分岐にする
+const NTag = struct { tb: *ir.Tagbody, id: u32 };
+
 /// ジャンプ（break）で抜けるときに戻す必要がある、動的な範囲
 const NDyn = union(enum) {
     block: *const NLabel,
+    tagbody: *const NTag,
     catch_,
     /// 動的束縛。束縛の前の深さを置いた t番号
     bind: u32,
@@ -359,6 +363,7 @@ const FnGen = struct {
             .block => |b| _ = try f.genBlock(b.blk, b.body, .discard),
             .catch_ => |c| _ = try f.genCatch(c.tag, c.body, .discard),
             .unwind_protect => |u| _ = try f.genUnwindProtect(u.protected, u.cleanup, .discard),
+            .tagbody => |t| try f.genTagbody(t.tb, t.items),
             else => _ = try f.gen(n),
         }
     }
@@ -435,6 +440,9 @@ const FnGen = struct {
                     }
                     if (l.blk.needs_entry) pops += 1;
                 },
+                .tagbody => |t| if (t.tb.needs_entry) {
+                    pops += 1;
+                },
                 .catch_ => pops += 1,
                 .bind => |t| unbind = t,
             }
@@ -448,6 +456,84 @@ const FnGen = struct {
         } else {
             try f.w().print("    if (true) break :b{d} {s};\n", .{ l.id, if (val) |x| x.s() else "Value.nil" });
         }
+        return Expr.of("Value.nil", .{});
+    }
+
+    /// (tagbody ...)（Phase 19）：ラベル付き switch にする。0 番の分岐は最初のタグの前の部分、k+1 番の分岐はタグ k の後ろの部分。
+    /// 同じ lambda の中の go は `continue :s番号 k+1`。実行時の go の脱出先なら、switch をループで囲み、
+    /// Value.unwind を受け取ったら N.land で着地して（エントリは残る）、タグの分岐から switch に入り直す
+    fn genTagbody(f: *FnGen, tb: *ir.Tagbody, items: []ir.TagItem) Error!void {
+        const e = f.e;
+        const id = f.temp();
+        const label: NTag = .{ .tb = tb, .id = id };
+        var state: u32 = 0;
+        var result: u32 = 0;
+        if (tb.needs_entry) {
+            const tok = try e.varId(tb.token);
+            try f.markUsed(tok);
+            try f.w().print("    const v{d} = N.tagbodyEnter(th);\n    if (v{d} == Value.unwind) ", .{ tok, tok });
+            var buf: [16]u8 = undefined;
+            try f.writeExit(std.fmt.bufPrint(&buf, "v{d}", .{tok}) catch unreachable);
+            state = f.temp();
+            result = f.temp();
+            try f.w().print("    var t{d}: u32 = 0;\n    l{d}: while (true) {{\n    const t{d}: Value = b{d}: {{\n    s{d}: switch (t{d}) {{\n", .{ state, id, result, id, id, state });
+        } else {
+            try f.w().print("    s{d}: switch (@as(u32, 0)) {{\n", .{id});
+        }
+        const saved = f.unwind_exit;
+        if (tb.needs_entry) f.unwind_exit = id;
+        try f.dyn.append(e.gpa, .{ .tagbody = &label });
+        var seg: u32 = 0;
+        try f.w().writeAll("    0 => {\n");
+        for (items) |item| switch (item) {
+            .tag => {
+                seg += 1;
+                try f.w().print("    continue :s{d} {d};\n    }},\n    {d} => {{\n", .{ id, seg, seg });
+            },
+            .form => |x| try f.genDiscard(x),
+        };
+        try f.w().print("    break :s{d};\n    }},\n    else => unreachable,\n    }}\n", .{id});
+        _ = f.dyn.pop();
+        f.unwind_exit = saved;
+        if (tb.needs_entry) {
+            const idx = f.temp();
+            try f.w().print("    break :b{d} Value.nil;\n    }};\n    if (t{d} == Value.unwind) {{\n    const t{d} = N.land(th);\n    if (t{d} == Value.unwind) ", .{ id, result, idx, idx });
+            var buf: [16]u8 = undefined;
+            try f.writeExit(std.fmt.bufPrint(&buf, "t{d}", .{idx}) catch unreachable);
+            try f.w().print("    t{d} = @intCast(t{d}.asFixnum() + 1);\n    continue :l{d};\n    }}\n    N.controlPop(th, 1);\n    break;\n    }}\n", .{ state, idx, id });
+        }
+    }
+
+    fn genGo(f: *FnGen, tb: *ir.Tagbody, index: u32, nonlocal: bool) Error!Expr {
+        if (nonlocal) {
+            const tok = try f.loadRaw(tb.token);
+            return f.checked("N.goTo(th, {s}, {d})", .{ tok.s(), index });
+        }
+        var label: ?*const NTag = null;
+        var pops: u32 = 0;
+        var unbind: ?u32 = null;
+        var i = f.dyn.items.len;
+        while (i > 0) {
+            i -= 1;
+            switch (f.dyn.items[i]) {
+                .tagbody => |t| {
+                    if (t.tb == tb) {
+                        label = t;
+                        break;
+                    }
+                    if (t.tb.needs_entry) pops += 1;
+                },
+                .block => |l| if (l.blk.needs_entry) {
+                    pops += 1;
+                },
+                .catch_ => pops += 1,
+                .bind => |t| unbind = t,
+            }
+        }
+        const l = label orelse unreachable;
+        if (unbind) |t| try f.w().print("    N.unbindTo(th, t{d});\n", .{t});
+        if (pops > 0) try f.w().print("    N.controlPop(th, {d});\n", .{pops});
+        try f.w().print("    if (true) continue :s{d} {d};\n", .{ l.id, index + 1 });
         return Expr.of("Value.nil", .{});
     }
 
@@ -615,7 +701,7 @@ const FnGen = struct {
             .block => |b| return (try f.genBlock(b.blk, b.body, .multi)).?,
             .catch_ => |c| return (try f.genCatch(c.tag, c.body, .multi)).?,
             .unwind_protect => |u| return (try f.genUnwindProtect(u.protected, u.cleanup, .multi)).?,
-            .return_from, .throw_ => return f.gen(n),
+            .return_from, .throw_, .go_ => return f.gen(n),
             .mv_prog1 => |p| {
                 const first = try f.genM(p.first);
                 const saved = try f.checked("N.mvList(th, {s})", .{first.s()});
@@ -705,6 +791,11 @@ const FnGen = struct {
             .catch_ => |c| return (try f.genCatch(c.tag, c.body, .value)).?,
             .unwind_protect => |u| return (try f.genUnwindProtect(u.protected, u.cleanup, .value)).?,
             .return_from => |rf| return f.genReturnFrom(rf.blk, rf.value, rf.nonlocal),
+            .tagbody => |t| {
+                try f.genTagbody(t.tb, t.items);
+                return Expr.of("Value.nil", .{});
+            },
+            .go_ => |x| return f.genGo(x.tb, x.index, x.nonlocal),
             .throw_ => |t| {
                 const tag = try f.gen(t.tag);
                 const val = try f.genM(t.value);

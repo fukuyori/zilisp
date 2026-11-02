@@ -26,7 +26,7 @@ pub const Binding = struct { sym: Value, old: Value };
 /// 制御スタックのエントリ（§6.4。Phase 18）
 pub const ControlEntry = struct {
     kind: Kind,
-    /// block：実行時の識別子（fixnum）。catch：タグ。unwind-protect：NIL
+    /// block・tagbody：実行時の識別子（fixnum）。catch：タグ。unwind-protect：NIL
     token: Value,
     /// エントリを積んだ時点の動的束縛の深さ（脱出先・cleanup で、ここまで戻す）
     binding_depth: u32,
@@ -35,7 +35,8 @@ pub const ControlEntry = struct {
     sp: u32 = 0,
     ip: u32 = 0,
 
-    pub const Kind = enum(u8) { block, catch_tag, unwind_protect };
+    /// tagbody は、脱出先として着地した後もエントリを残す（tagbody の中で続けるため。Phase 19）
+    pub const Kind = enum(u8) { block, catch_tag, unwind_protect, tagbody };
 };
 
 /// 処理途中の非局所脱出（§6.4 の Transfer）。th.unwinds にスタックとして積む
@@ -136,6 +137,8 @@ pub const Thread = struct {
     vm: vm_mod.Vm,
     /// *standard-output*（Phase 23 でストリームにする）
     out: *std.Io.Writer,
+    /// out に最後に書いたのが改行か（行の先頭にいるか。format の ~& が使う。Phase 19）
+    line_start: bool = true,
     /// Zig の関数から関数を呼んでいる入れ子の深さ（Thread.call で数える）
     native_depth: u32 = 0,
     /// 動的束縛のスタック（§6.5）
@@ -471,6 +474,14 @@ pub const Thread = struct {
         return th.startTransfer(target, primary);
     }
 
+    /// (go タグ) の実行時の脱出（Phase 19）。運ぶ値はタグの番号（fixnum）
+    pub fn goTo(th: *Thread, token: Value, index: u32) Value {
+        const target = th.findEntry(.tagbody, token) orelse
+            return th.signal(.control_error, "GO の脱出先の TAGBODY は、既に抜けています", Value.unbound, Value.unbound);
+        th.mv_count = 1;
+        return th.startTransfer(target, Value.fromFixnum(index));
+    }
+
     /// (throw タグ 値)
     pub fn throwTo(th: *Thread, tag: Value, primary: Value) Value {
         const target = th.findEntry(.catch_tag, tag) orelse
@@ -518,10 +529,12 @@ pub const Thread = struct {
         return th.fault == .unwind and th.unwind_depth > 0 and th.unwinds[th.unwind_depth - 1].target == th.control_depth - 1;
     }
 
-    /// 先頭のエントリを脱出先として、脱出を終える：エントリと Transfer を取り除き、動的束縛を戻し、運んだ値を多値にして主値を返す
+    /// 先頭のエントリを脱出先として、脱出を終える：エントリと Transfer を取り除き、動的束縛を戻し、運んだ値を多値にして主値を返す。
+    /// tagbody のエントリは残す（主値はタグの番号。tagbody の中で、そのタグから続ける）
     pub fn landTransfer(th: *Thread) Value {
-        th.control_depth -= 1;
-        th.unbindTo(th.control[th.control_depth].binding_depth);
+        const e = th.control[th.control_depth - 1];
+        if (e.kind != .tagbody) th.control_depth -= 1;
+        th.unbindTo(e.binding_depth);
         th.unwind_depth -= 1;
         const t = th.unwinds[th.unwind_depth];
         th.fault = .none;

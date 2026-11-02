@@ -6,6 +6,13 @@
 
 ### Added
 - README（英語・日本語）を加え、変更履歴を英語（`CHANGELOG.md`）と日本語（`CHANGELOG.ja.md`）に分けた
+- Phase 19：`tagbody`・`go`（同じ関数の中はジャンプ、それ以外は実行時の脱出。着地してもエントリは残る。VM の命令
+  `TAGBODY_ENTER`・`GO_NL`、ネイティブはラベル付き switch）、`psetq`・`dolist`・`dotimes`・`do`・`do*`、`loop`（独自実装。主な句）、
+  `mapcar`・`mapc`・`mapcan`・`nconc`・`reduce`、`evenp`・`oddp`・`zerop`・`plusp`・`minusp`・`max`・`min`・`abs`・`mod`・`rem`、
+  `reverse`・`nreverse`・`copy-list`・`last`・`endp`、`symbol-name`・`string=`・`string-upcase`・`string-downcase`・`char=`、`princ`、
+  `format` の最小版（`T`・`NIL`、`~A ~S ~D ~% ~& ~~`。それ以外は明示的なエラー）。試験：SBCL 2.6.7 の結果と比べる139通り
+  （GC stress でも実行）、言語試験 `iteration.lisp`（と gc-stress 版）・`iteration-cases.lisp`（ネイティブでも一致）。
+  反復の教材（Level 6）は Zilisp だけがエラーのブロックが 0 に。教材のブロックの一致は 244 から 347 に
 - 詳細設計書の英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）と、Zig 0.17.0 の照合結果の英語版（`docs/zig-std-usage.md`。日本語版は `docs/zig-std-usage.ja.md` に移した）
 
 ## 0.2.0 - 2026-11-02

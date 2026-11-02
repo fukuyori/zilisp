@@ -50,6 +50,9 @@ const FnBinding = struct { name: Value, v: *Var };
 /// block の名前の束縛（Phase 18）
 const BlockBinding = struct { name: Value, blk: *ir.Block };
 
+/// tagbody のタグの束縛（Phase 19）
+const TagBinding = struct { name: Value, tb: *ir.Tagbody, index: u32 };
+
 /// レキシカルな範囲（let・lambda・flet・labels ごとに1つ）
 const Scope = struct {
     parent: ?*const Scope,
@@ -61,6 +64,8 @@ const Scope = struct {
     inline_decls: []const InlineDecl = &.{},
     /// block の名前（Phase 18）
     blocks: []const BlockBinding = &.{},
+    /// tagbody のタグ（Phase 19）
+    tags: []const TagBinding = &.{},
     /// unwind-protect の保護したフォーム・cleanup の範囲。この範囲の外の block への return-from は、
     /// 実行時の脱出にする（cleanup の実行と、止まっている脱出の取り消しを、ランタイムで行うため）
     barrier: bool = false,
@@ -128,6 +133,12 @@ pub const Resolver = struct {
     fn assignBlockTokens(l: *Lambda) void {
         for (l.blocks.items) |b| {
             if (b.needs_entry) b.token.slot = l.newSlotAtEnd();
+        }
+        for (l.tagbodies.items) |t| {
+            if (t.needs_entry) {
+                t.token.slot = l.newSlotAtEnd();
+                t.index_slot = l.newSlotAtEnd();
+            }
         }
     }
 
@@ -366,6 +377,8 @@ pub const Resolver = struct {
                 return r.resolveBlock(args[0], args[1..], scope);
             }
             if (head == y.@"return-from") return r.resolveReturnFrom(form, args, scope);
+            if (head == y.tagbody) return r.resolveTagbody(args, scope);
+            if (head == y.go) return r.resolveGo(form, args, scope);
             if (head == y.@"catch") {
                 if (args.len < 1) return r.failForm("CATCH にはタグが必要です", form);
                 const tag = try r.resolve(args[0], scope);
@@ -501,6 +514,62 @@ pub const Resolver = struct {
         const inner: Scope = .{ .parent = scope, .lambda = l, .vars = &.{}, .blocks = bindings };
         const body = if (forms.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(forms, &inner);
         return r.node(.{ .block = .{ .blk = blk, .body = body } });
+    }
+
+    /// (tagbody {タグ | フォーム}...)（Phase 19）。タグはシンボルか整数（fixnum）、フォームは複合フォーム（CLHS tagbody）。
+    /// それ以外のアトムと、同じタグの重複は program-error（SBCL 2.6.7 と同じ）
+    fn resolveTagbody(r: *Resolver, args: []Value, scope: *const Scope) Error!*Node {
+        const l = scope.lambda;
+        const token = try r.arena.create(Var);
+        token.* = .{ .name = Value.unbound, .owner = l, .slot = ir.no_slot };
+        const tb = try r.arena.create(ir.Tagbody);
+        tb.* = .{ .lambda = l, .token = token };
+        try l.tagbodies.append(r.arena, tb);
+        var bindings: std.ArrayList(TagBinding) = .empty;
+        for (args) |a| {
+            if (a.isCons()) continue;
+            if (!(isSymbol(a) or a.isFixnum())) return r.failForm("TAGBODY のタグはシンボルか整数でなければなりません", a);
+            for (bindings.items) |b| if (b.name == a) return r.failForm("TAGBODY に同じタグが2回あります", a);
+            try bindings.append(r.arena, .{ .name = a, .tb = tb, .index = @intCast(bindings.items.len) });
+        }
+        tb.ntags = @intCast(bindings.items.len);
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = &.{}, .tags = bindings.items };
+        const items = try r.arena.alloc(ir.TagItem, args.len);
+        var tag: u32 = 0;
+        for (args, 0..) |a, i| {
+            if (a.isCons()) {
+                items[i] = .{ .form = try r.resolve(a, &inner) };
+            } else {
+                items[i] = .{ .tag = tag };
+                tag += 1;
+            }
+        }
+        return r.node(.{ .tagbody = .{ .tb = tb, .items = items } });
+    }
+
+    /// (go タグ)。同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出
+    fn resolveGo(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len != 1) return r.failForm("GO の引数はタグ1つです", form);
+        const name = args[0];
+        var crosses_barrier = false;
+        var found: ?TagBinding = null;
+        var s: ?*const Scope = scope;
+        search: while (s) |sc| : (s = sc.parent) {
+            for (sc.tags) |t| {
+                if (t.name == name) {
+                    found = t;
+                    break :search;
+                }
+            }
+            if (sc.barrier) crosses_barrier = true;
+        }
+        const t = found orelse return r.failForm("GO のタグが見えません", name);
+        const nonlocal = crosses_barrier or t.tb.lambda != scope.lambda;
+        if (nonlocal) {
+            t.tb.needs_entry = true;
+            try r.reference(t.tb.token, scope.lambda);
+        }
+        return r.node(.{ .go_ = .{ .tb = t.tb, .index = t.index, .nonlocal = nonlocal } });
     }
 
     /// (return-from 名前 [値])。同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出

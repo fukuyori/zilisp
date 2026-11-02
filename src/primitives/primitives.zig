@@ -13,6 +13,7 @@ const functions = @import("functions.zig");
 const macros = @import("macros.zig");
 const hashtables = @import("hashtables.zig");
 const arrays = @import("arrays.zig");
+const sequences = @import("sequences.zig");
 
 const any = function.any_args;
 
@@ -32,6 +33,30 @@ pub const table = [_]Entry{
     .{ .name = "1+", .impl = numbers.onePlus, .min = 1, .max = 1 },
     .{ .name = "1-", .impl = numbers.oneMinus, .min = 1, .max = 1 },
     .{ .name = "=", .impl = numbers.numEq, .min = 1, .max = any },
+    // Phase 19：反復の教材で使う数の関数
+    .{ .name = "EVENP", .impl = numbers.evenp, .min = 1, .max = 1 },
+    .{ .name = "ODDP", .impl = numbers.oddp, .min = 1, .max = 1 },
+    .{ .name = "ZEROP", .impl = numbers.zerop, .min = 1, .max = 1 },
+    .{ .name = "PLUSP", .impl = numbers.plusp, .min = 1, .max = 1 },
+    .{ .name = "MINUSP", .impl = numbers.minusp, .min = 1, .max = 1 },
+    .{ .name = "MAX", .impl = numbers.max, .min = 1, .max = any },
+    .{ .name = "MIN", .impl = numbers.min, .min = 1, .max = any },
+    .{ .name = "ABS", .impl = numbers.abs, .min = 1, .max = 1 },
+    .{ .name = "MOD", .impl = numbers.mod, .min = 2, .max = 2 },
+    .{ .name = "REM", .impl = numbers.rem, .min = 2, .max = 2 },
+    // Phase 19：列・文字列の一部（sequences.zig）と出力
+    .{ .name = "REVERSE", .impl = sequences.reverse, .min = 1, .max = 1 },
+    .{ .name = "NREVERSE", .impl = sequences.nreverse, .min = 1, .max = 1 },
+    .{ .name = "COPY-LIST", .impl = sequences.copyList, .min = 1, .max = 1 },
+    .{ .name = "LAST", .impl = sequences.last, .min = 1, .max = 2 },
+    .{ .name = "ENDP", .impl = sequences.endp, .min = 1, .max = 1 },
+    .{ .name = "SYMBOL-NAME", .impl = sequences.symbolName, .min = 1, .max = 1 },
+    .{ .name = "STRING=", .impl = sequences.stringEq, .min = 2, .max = any },
+    .{ .name = "STRING-UPCASE", .impl = sequences.stringUpcase, .min = 1, .max = any },
+    .{ .name = "STRING-DOWNCASE", .impl = sequences.stringDowncase, .min = 1, .max = any },
+    .{ .name = "CHAR=", .impl = sequences.charEq, .min = 1, .max = any },
+    .{ .name = "PRINC", .impl = functions.princ, .min = 1, .max = 1 },
+    .{ .name = "FORMAT", .impl = functions.format, .min = 2, .max = any },
     .{ .name = "/=", .impl = numbers.numNe, .min = 1, .max = any },
     .{ .name = "<", .impl = numbers.lessThan, .min = 1, .max = any },
     .{ .name = ">", .impl = numbers.greaterThan, .min = 1, .max = any },
@@ -165,6 +190,7 @@ pub const sys_table = [_]Entry{
     .{ .name = "%SVSET", .impl = arrays.sysSvset, .min = 3, .max = 3 },
     .{ .name = "%SET-CHAR", .impl = arrays.sysSetChar, .min = 3, .max = 3 },
     .{ .name = "%SET-FDEFINITION", .impl = functions.sysSetFdefinition, .min = 2, .max = 2 },
+    .{ .name = "%HASH-PAIRS", .impl = hashtables.sysHashPairs, .min = 1, .max = 1 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -194,10 +220,11 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
     for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind", rt.syms.@"multiple-value-bind", rt.syms.@"multiple-value-list" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
     // Resolver が直接解釈する特殊演算子
-    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when", rt.syms.@"multiple-value-prog1", rt.syms.@"multiple-value-call", rt.syms.block, rt.syms.@"return-from", rt.syms.@"catch", rt.syms.throw, rt.syms.@"unwind-protect" }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when", rt.syms.@"multiple-value-prog1", rt.syms.@"multiple-value-call", rt.syms.block, rt.syms.@"return-from", rt.syms.@"catch", rt.syms.throw, rt.syms.@"unwind-protect", rt.syms.tagbody, rt.syms.go }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {
     _ = numbers;
     _ = macros;
+    _ = sequences;
 }

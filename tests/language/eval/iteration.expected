@@ -1,0 +1,27 @@
+
+(5 4 3 2 1) 
+(CLEANUP ESCAPED) APPLE
+BANANA
+CHERRY
+0 1 2 3 4 
+
+10 
+7 
+(0 1 4 9 16) 1 2 3 4 5 
+
+25 
+(2 4 6 8 10) 
+(2 4 6 8 10) 
+9 
+(ALICE CAROL) 
+(0 2 6) 
+(:TOTAL 10) 
+(1 4 9 16 25 36 49) 
+((A 1)) 
+(11 22 33) 
+("APPLE" "BANANA") 
+110 
+12 
+list has 3 items, "quoted"
+
+"LEFT-RIGHT" 

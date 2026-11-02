@@ -67,6 +67,7 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | 大域のアセンブリ（`comptime { asm (…); }`） | Zig 自前のコード生成器（x86_64-linux の Debug）では出力されず、そこで定義した関数が未定義のシンボルになる。LLVM（Windows の全モード、Linux の ReleaseFast）では使える。`builtin.zig_backend == .stage2_llvm` で分ける | Phase 18 |
 | Linux のスタックの範囲 | libc なしでは pthread の関数を使えないので、`std.os.linux.open`・`read` で `/proc/self/maps` を読み、今のフレームを含む行の終わりをスタックの先頭とする（メインスレッド）。macOS は libSystem の `pthread_get_stackaddr_np` | §3.4 |
 | `if (true) break :label 値;` | ラベル付きブロックの途中に書くと、後ろの文があってもコンパイルできる（「到達しないコード」のエラーにならない）。ネイティブバックエンドの return-from で使う | §6.4（Phase 18） |
+| 捕捉を捨てる書き方 | `switch` の分岐で `.tag => \|_\| { … }` と書くと、0.17.0 では「discard of capture; omit it instead」のコンパイルエラーになる。捕捉を書かない `.tag => { … }` にする | Phase 19 |
 | enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
 
 ## 3. 戻り値の返し方（詳細設計 §6.2 の要検証項目）

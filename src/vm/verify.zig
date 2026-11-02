@@ -37,6 +37,7 @@ const Ctl = struct {
     const block: u8 = 'b';
     const catch_tag: u8 = 'c';
     const uwp: u8 = 'u';
+    const tagbody: u8 = 't';
     /// unwind-protect の cleanup の実行中（エントリは取り除いてある）
     const cleanup: u8 = 'C';
 };
@@ -122,7 +123,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         is_start[at] = true;
         switch (insn.op) {
             .@"const", .load_special, .store_special, .load_function, .load_setf_function, .make_closure, .call_global, .bind_special => if (insn.index >= nconsts) return error.BadConstIndex,
-            .load_local, .store_local, .block_enter => if (insn.index >= nlocals) return error.BadLocalIndex,
+            .load_local, .store_local, .block_enter, .tagbody_enter => if (insn.index >= nlocals) return error.BadLocalIndex,
             .load_captured => if (insn.index >= ncaptured) return error.BadCapturedIndex,
             else => {},
         }
@@ -170,7 +171,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
                 .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special, .mv_list, .mv_push_n, .mv_restore, .catch_enter, .uwp_save => 1,
                 .values => insn.count,
                 .slide => insn.count + 1,
-                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind, .uwp_end, .return_from_nl, .throw => 2,
+                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind, .uwp_end, .return_from_nl, .throw, .go_nl => 2,
                 else => 0,
             };
             if (d < pops) return error.StackUnderflow;
@@ -180,12 +181,17 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
                 break;
             }
             // 脱出（この後には進まない）
-            if (insn.op == .return_from_nl or insn.op == .throw) break;
+            if (insn.op == .return_from_nl or insn.op == .throw or insn.op == .go_nl) break;
             // 制御スタックの並び。脱出したときに再開する位置の並びは land（エントリを取り除いた並び。cleanup なら印を加える）
             land.clearRetainingCapacity();
             try land.appendSlice(gpa, cur.items);
             switch (insn.op) {
                 .block_enter => try cur.append(gpa, Ctl.block),
+                .tagbody_enter => {
+                    // 着地した後もエントリは残る
+                    try cur.append(gpa, Ctl.tagbody);
+                    try land.append(gpa, Ctl.tagbody);
+                },
                 .catch_enter => try cur.append(gpa, Ctl.catch_tag),
                 .uwp_enter => {
                     try land.append(gpa, Ctl.cleanup);
@@ -194,7 +200,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
                 .control_pop => {
                     if (insn.count > cur.items.len) return error.BadControl;
                     for (cur.items[cur.items.len - insn.count ..]) |k| {
-                        if (k != Ctl.block and k != Ctl.catch_tag) return error.BadControl;
+                        if (k != Ctl.block and k != Ctl.catch_tag and k != Ctl.tagbody) return error.BadControl;
                     }
                     cur.shrinkRetainingCapacity(cur.items.len - insn.count);
                 },

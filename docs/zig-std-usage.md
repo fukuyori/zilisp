@@ -67,6 +67,7 @@ When Zig is updated, redo these checks (`docs/version-update-checklist.md` §3).
 | Global assembly (`comptime { asm (…); }`) | Not emitted by Zig's own code generator (x86_64-linux Debug); functions defined there become undefined symbols. Usable with LLVM (all modes on Windows, ReleaseFast on Linux). Distinguish with `builtin.zig_backend == .stage2_llvm` | Phase 18 |
 | Stack range on Linux | Without libc the pthread functions are not available, so read `/proc/self/maps` with `std.os.linux.open` and `read`, and use the end of the line that contains the current frame as the top of the stack (main thread). On macOS, use `pthread_get_stackaddr_np` from libSystem | §3.4 |
 | `if (true) break :label value;` | Written in the middle of a labeled block, it compiles even when statements follow (no "unreachable code" error). Used for return-from in the native backend | §6.4 (Phase 18) |
+| Discarding a capture | Writing `.tag => \|_\| { … }` in a `switch` prong is a compile error in 0.17.0 ("discard of capture; omit it instead"). Omit the capture: `.tag => { … }` | Phase 19 |
 | Converting between enums and integers | `@intFromEnum` / `@enumFromInt` are replaced by `@backingInt` / `@fromBackingInt` in 0.17.0. `zig fmt` rewrites the old forms automatically (`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`) | §2 (used when Value is an `enum(u64)`) |
 
 ## 3. How return values are returned (item to be verified in detailed design §6.2)

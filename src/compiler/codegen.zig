@@ -50,9 +50,21 @@ const BlockLabel = struct {
     exits: std.ArrayList(usize) = .empty,
 };
 
+/// tagbody のタグの位置（Phase 19）
+const TagbodyLabel = struct {
+    tb: *ir.Tagbody,
+    /// tagbody に入る前のスタックの深さ（タグの位置の深さ）
+    depth: i64,
+    /// タグの命令の位置（まだ出していなければ null）
+    positions: []?usize,
+    /// まだ位置の分からないタグへのジャンプの、書き換える位置
+    forward: []std.ArrayList(usize),
+};
+
 /// ジャンプで抜けるときに戻す必要がある、動的な範囲（内側から順に積む）
 const Dyn = union(enum) {
     block: *BlockLabel,
+    tagbody: *TagbodyLabel,
     /// catch のエントリ
     catch_,
     /// 動的束縛。束縛の前の深さを置いた局所変数
@@ -154,6 +166,14 @@ const Gen = struct {
         try g.int(i32, 0);
         g.adjust(ops.stackEffect(op, 0));
         return at;
+    }
+
+    /// 位置の分かっている命令（後ろへのジャンプ）へジャンプする
+    fn jumpTo(g: *Gen, op: Op, target: usize) Error!void {
+        try g.byte(@backingInt(op));
+        const end: i64 = @intCast(g.buf.items.len + 4);
+        try g.int(i32, @intCast(@as(i64, @intCast(target)) - end));
+        g.adjust(ops.stackEffect(op, 0));
     }
 
     fn patch(g: *Gen, at: usize) void {
@@ -277,6 +297,8 @@ const Gen = struct {
             .catch_ => |c| try g.genCatch(c.tag, c.body, false),
             .throw_ => |t| try g.genThrow(t.tag, t.value),
             .unwind_protect => |u| try g.genUnwindProtect(u.protected, u.cleanup, false),
+            .tagbody => |t| try g.genTagbody(t.tb, t.items),
+            .go_ => |x| try g.genGo(x.tb, x.index, x.nonlocal),
             // 多値（Phase 17）。単値の位置では主値だけを使う
             .values => |args| {
                 // 引数はすべて左から順に評価する。主値は最初の引数（なければ NIL）
@@ -354,6 +376,9 @@ const Gen = struct {
                         }
                         if (l.blk.needs_entry) pops += 1;
                     },
+                    .tagbody => |t| if (t.tb.needs_entry) {
+                        pops += 1;
+                    },
                     .catch_ => pops += 1,
                     .bind => |s| unbind_slot = s,
                 }
@@ -368,6 +393,105 @@ const Gen = struct {
             if (extra > 0) try g.opCount(.slide, @intCast(extra));
             if (pops > 0) try g.opCount(.control_pop, pops);
             try l.exits.append(g.gpa, try g.jump(.jump));
+        }
+        // この後のコードには進まないが、生成は値が1つ積まれた深さで続ける
+        g.depth = before + 1;
+        g.max_depth = @max(g.max_depth, g.depth);
+    }
+
+    /// (tagbody ...)（Phase 19）。値は NIL。タグの位置の深さは tagbody に入る前の深さ。
+    /// 実行時の go の脱出先なら、エントリを積み、着地したときはタグの番号でタグの位置へ分岐する
+    fn genTagbody(g: *Gen, tb: *ir.Tagbody, items: []ir.TagItem) Error!void {
+        const positions = try g.gpa.alloc(?usize, tb.ntags);
+        defer g.gpa.free(positions);
+        @memset(positions, null);
+        const forward = try g.gpa.alloc(std.ArrayList(usize), tb.ntags);
+        defer {
+            for (forward) |*f| f.deinit(g.gpa);
+            g.gpa.free(forward);
+        }
+        @memset(forward, .empty);
+        var label: TagbodyLabel = .{ .tb = tb, .depth = g.depth, .positions = positions, .forward = forward };
+        const d = g.depth;
+        const enter_at: ?usize = if (tb.needs_entry) try g.jumpIndex(.tagbody_enter, tb.token.slot) else null;
+        try g.dyn.append(g.gpa, .{ .tagbody = &label });
+        for (items) |item| switch (item) {
+            .tag => |i| {
+                g.depth = d; // 前のフォームが go で終わっていても、タグの位置の深さは d
+                positions[i] = g.buf.items.len;
+                for (forward[i].items) |at| g.patch(at);
+            },
+            .form => |f| try g.genDiscard(f),
+        };
+        _ = g.dyn.pop();
+        g.depth = d;
+        if (enter_at) |at| {
+            try g.opCount(.control_pop, 1);
+            const skip = try g.jump(.jump);
+            // 着地：タグの番号が積まれている。番号を局所変数に置き、タグの位置へ分岐する
+            g.patch(at);
+            g.depth = d + 1;
+            g.max_depth = @max(g.max_depth, g.depth);
+            try g.opIndex(.store_local, tb.index_slot);
+            try g.op0(.pop);
+            for (positions, 0..) |p, i| {
+                try g.opIndex(.load_local, tb.index_slot);
+                try g.genConstant(Value.fromFixnum(@intCast(i)));
+                try g.op0(.numeq2);
+                const next_tag = try g.jump(.jump_if_nil);
+                try g.jumpTo(.jump, p.?);
+                g.patch(next_tag);
+            }
+            try g.jumpTo(.jump, positions[0].?);
+            g.patch(skip);
+            g.depth = d;
+        }
+        try g.op0(.nil);
+    }
+
+    fn genGo(g: *Gen, tb: *ir.Tagbody, index: u32, nonlocal: bool) Error!void {
+        const before = g.depth;
+        if (nonlocal) {
+            try g.loadVarRaw(tb.token);
+            try g.genConstant(Value.fromFixnum(@intCast(index)));
+            try g.op0(.go_nl);
+        } else {
+            // ジャンプ：途中の値を捨て、横切る動的束縛を戻し、横切るエントリを取り除く
+            var label: ?*TagbodyLabel = null;
+            var pops: u32 = 0;
+            var unbind_slot: ?u32 = null;
+            var i = g.dyn.items.len;
+            while (i > 0) {
+                i -= 1;
+                switch (g.dyn.items[i]) {
+                    .tagbody => |t| {
+                        if (t.tb == tb) {
+                            label = t;
+                            break;
+                        }
+                        if (t.tb.needs_entry) pops += 1;
+                    },
+                    .block => |b| if (b.blk.needs_entry) {
+                        pops += 1;
+                    },
+                    .catch_ => pops += 1,
+                    .bind => |s| unbind_slot = s,
+                }
+            }
+            const l = label orelse unreachable; // Resolver が見えることを確かめている
+            while (g.depth > l.depth) try g.op0(.pop);
+            if (unbind_slot) |s| {
+                try g.op0(.nil);
+                try g.opIndex(.load_local, s);
+                try g.op0(.unbind_to);
+                try g.op0(.pop);
+            }
+            if (pops > 0) try g.opCount(.control_pop, pops);
+            if (l.positions[index]) |p| {
+                try g.jumpTo(.jump, p);
+            } else {
+                try l.forward[index].append(g.gpa, try g.jump(.jump));
+            }
         }
         // この後のコードには進まないが、生成は値が1つ積まれた深さで続ける
         g.depth = before + 1;
@@ -446,7 +570,7 @@ const Gen = struct {
             .catch_ => |c| try g.genCatch(c.tag, c.body, true),
             .unwind_protect => |u| try g.genUnwindProtect(u.protected, u.cleanup, true),
             // 脱出は、この後に進まないので個数を書く必要はない
-            .return_from, .throw_ => try g.gen(n),
+            .return_from, .throw_, .go_ => try g.gen(n),
             .mv_prog1 => |p| {
                 // 最初のフォームの全部の値をリストに退避し、残りを評価した後で戻す（§6.3）
                 try g.genMulti(p.first);

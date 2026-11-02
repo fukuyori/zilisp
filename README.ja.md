@@ -36,7 +36,13 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - `setf` と場所（`defsetf`・`define-setf-expander`・`(defun (setf 名前) ...)`）、`incf` `decf` `push` `pop`
 - ハッシュ表（`eq`・`eql`・`equal`）と1次元の配列（単純ベクタと文字列）
 
-未実装（後の版で実装する予定）：`loop`・`dolist`・`dotimes`・`tagbody`/`go`・`format`・`mapcar` と多くの列の関数・
+0.2.0 の後に実装したもの（`main` にあり、まだリリースしていない）
+
+- `tagbody`/`go`、`do`・`do*`・`dolist`・`dotimes`・`psetq`、`loop`（主な句）
+- `mapcar`・`mapc`・`mapcan`・`nconc`・`reduce`・`reverse`・`nreverse`・`copy-list`・`last`・`max`・`min`・
+  `evenp`・`oddp`・`mod`・`rem`・`string=`・`string-upcase`・`princ`、`format` の最小版（`T`・`NIL` への `~A ~S ~D ~% ~& ~~`）
+
+未実装（後の版で実装する予定）：多くの列の関数（`find`・`remove-if`・`sort`・`subseq` など）・`format` の全体・
 bignum と有理数・ストリームとファイル・パッケージ（`defpackage`・`in-package`）・`defstruct`・CLOS・condition
 （`handler-case`・restart）。
 

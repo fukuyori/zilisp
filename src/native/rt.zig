@@ -156,6 +156,17 @@ pub fn blockEnter(th: *Thread) Value {
     return token;
 }
 
+/// tagbody に入る：識別子を作ってエントリを積み、識別子を返す（Phase 19）
+pub fn tagbodyEnter(th: *Thread) Value {
+    const token = th.newBlockToken();
+    if (th.pushControl(.tagbody, token, 0, 0, 0) == Value.unwind) return Value.unwind;
+    return token;
+}
+
+pub fn goTo(th: *Thread, token: Value, index: u32) Value {
+    return th.goTo(token, index);
+}
+
 pub fn catchEnter(th: *Thread, tag: Value) Value {
     return th.pushControl(.catch_tag, tag, 0, 0, 0);
 }

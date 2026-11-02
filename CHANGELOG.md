@@ -6,6 +6,14 @@
 
 ### Added
 - README in English and Japanese; the changelog is split into English (`CHANGELOG.md`) and Japanese (`CHANGELOG.ja.md`)
+- Phase 19: `tagbody` and `go` (a jump within the same function, otherwise a run-time exit; the entry stays after landing; VM
+  instructions `TAGBODY_ENTER` and `GO_NL`; a labeled switch in the native backend), `psetq`, `dolist`, `dotimes`, `do`, `do*`, `loop`
+  (our own implementation; the main clauses), `mapcar`, `mapc`, `mapcan`, `nconc`, `reduce`, `evenp`, `oddp`, `zerop`, `plusp`, `minusp`,
+  `max`, `min`, `abs`, `mod`, `rem`, `reverse`, `nreverse`, `copy-list`, `last`, `endp`, `symbol-name`, `string=`, `string-upcase`,
+  `string-downcase`, `char=`, `princ`, and a minimal `format` (`T` and `NIL`; `~A ~S ~D ~% ~& ~~`; anything else is an explicit error).
+  Tests: 139 cases compared with SBCL 2.6.7 (also under GC stress), language tests `iteration.lisp` (and a gc-stress version) and
+  `iteration-cases.lisp` (matches natively too). No iteration curriculum block (Level 6) fails only on Zilisp any more. Matching
+  curriculum blocks went from 244 to 347
 - English versions of the detailed design (`docs/Zilisp_Detailed_Design_v0.2.md`) and of the Zig 0.17.0 notes (`docs/zig-std-usage.md`; the Japanese version moves to `docs/zig-std-usage.ja.md`)
 
 ## 0.2.0 - 2026-11-02

@@ -168,6 +168,21 @@ fn node(l: *const Lambda, n: *const Node, enc: ?*const Enclosing) IrError!void {
             try node(l, u.protected, enc);
             for (u.cleanup) |f| try node(l, f, enc);
         },
+        .tagbody => |t| {
+            if (t.tb.lambda != l) return error.BadBlock;
+            if (t.tb.needs_entry and (t.tb.token.slot >= l.nlocals or t.tb.index_slot >= l.nlocals)) return error.BadSlot;
+            for (t.items) |item| switch (item) {
+                .tag => |i| if (i >= t.tb.ntags) return error.BadBlock,
+                .form => |f| try node(l, f, enc),
+            };
+        },
+        .go_ => |x| {
+            if (x.index >= x.tb.ntags) return error.BadBlock;
+            if (x.nonlocal) {
+                if (!x.tb.needs_entry) return error.BadBlock;
+                try visible(l, x.tb.token);
+            } else if (x.tb.lambda != l) return error.BadBlock;
+        },
         .lambda => |child| {
             if (child.parent != l) return error.BadParent;
             for (child.captures.items) |c| try visible(l, c);

@@ -53,6 +53,11 @@
   `#<FUNCTION 名前>` と印字する。COMMON-LISP パッケージのシンボルの関数の定義は package-error）、`fboundp`、`symbol-function`。
   VM のフレームの上限を値スタックの 1/4（既定 262144）に。再帰・相互再帰・再定義・高階関数の試験（SBCL 2.6.7 の結果と比べる）、
   言語試験 `tests/language/eval/functions.lisp`（と gc-stress 版）
+- Phase 11：`flet`・`labels`（局所関数）。関数の名前空間の束縛を Resolver の範囲に持ち、関数の値は名前の見えない局所変数に入れる。
+  `labels` の互いに参照する関数は value_cell に入れる。局所関数は大域の関数・マクロより優先し、`#'名前` でも参照できる。
+  COMMON-LISP パッケージのシンボルと特殊演算子の名前は局所関数にできない（SBCL 2.6.7 と同じく program-error）。
+  印字は `#<FUNCTION (FLET 名前) {アドレス}>`。flet・labels とクロージャの寿命の試験（SBCL 2.6.7 の結果と比べる20通り、
+  GC の後も closure と共有した変数が正しいこと）、言語試験 `tests/language/eval/local-functions.lisp`（と gc-stress 版）
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

@@ -29,6 +29,8 @@ pub const Syms = struct {
     function: Value,
     declare: Value,
     defun: Value,
+    flet: Value,
+    labels: Value,
     // ラムダリストのキーワード
     @"&optional": Value,
     @"&rest": Value,

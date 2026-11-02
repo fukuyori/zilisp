@@ -36,8 +36,12 @@ pub const Lambda = struct {
     captures: std.ArrayList(*Var) = .empty,
     /// ラムダリスト（印字用の名前 (LAMBDA ラムダリスト) に使う）
     name: Value = Value.nil,
-    /// defun などで付けた関数の名前（シンボル）。NIL なら無名の lambda
+    /// defun・flet・labels で付けた関数の名前（シンボル）。NIL なら無名の lambda
     fn_name: Value = Value.nil,
+    /// 名前の付け方（印字用の名前：global は 名前、flet・labels は (FLET 名前)・(LABELS 名前)）
+    fn_kind: FnKind = .none,
+
+    pub const FnKind = enum { none, global, flet, labels };
 
     pub fn newSlot(l: *Lambda) u32 {
         const s = l.next_slot;

@@ -60,8 +60,11 @@ fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
                 try w.writeAll("(LAMBDA ");
                 if (ll == Value.nil) try w.writeAll("()") else try prin1(rt, w, ll);
                 try w.writeByte(')');
+            } else if (name.isCons()) {
+                // 局所関数：(FLET 名前)・(LABELS 名前) とアドレス
+                try prin1(rt, w, name);
             } else {
-                // 名前の付いた関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
+                // 名前の付いた大域の関数（defun）はアドレスを書かない（SBCL 2.6.7：#<FUNCTION FACT>）
                 try prin1(rt, w, name);
                 return w.writeByte('>');
             }

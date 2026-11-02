@@ -273,6 +273,96 @@ test "defun, function calls and recursion like SBCL 2.6.7 (Phase 10)" {
     try expectValue(&e, "(progn (defun p10-depth (n) (if (= n 0) 0 (+ 1 (p10-depth (- n 1))))) (p10-depth 100000))", "100000");
 }
 
+/// Phase 11：flet・labels とクロージャ（SBCL 2.6.7 の結果）
+const local_fn_cases = [_][2][]const u8{
+    .{ "(flet ((f (x) (* x 2))) (f 5))", "10" },
+    .{ "(flet ((f (x) (* x 2)) (g (y) (+ y 1))) (list (f 5) (g 5)))", "(10 6)" },
+    .{ "(flet () 1)", "1" },
+    .{ "(flet ((f () 1)) (flet ((f () (+ 1 (f)))) (f)))", "2" },
+    .{ "(progn (defun p11-f () 'global) (flet ((p11-f () 'local) (g () (p11-f))) (list (p11-f) (g))))", "(LOCAL GLOBAL)" },
+    .{ "(progn (defun p11-f () 'global) (labels ((p11-f () 'local) (g () (p11-f))) (list (p11-f) (g))))", "(LOCAL LOCAL)" },
+    .{ "(labels ((fact (n) (if (<= n 1) 1 (* n (fact (- n 1)))))) (fact 10))", "3628800" },
+    .{ "(labels ((ev (n) (if (= n 0) t (od (- n 1)))) (od (n) (if (= n 0) nil (ev (- n 1))))) (list (ev 10) (od 7)))", "(T T)" },
+    .{ "(flet ((f (x) x)) (funcall #'f 3))", "3" },
+    .{ "(let ((n 10)) (flet ((add (x) (+ x n))) (setq n 20) (add 1)))", "21" },
+    .{ "(let ((fs (labels ((mk (i) (lambda () i))) (list (mk 1) (mk 2) (mk 3))))) (list (funcall (car fs)) (funcall (car (cdr fs))) (funcall (car (cdr (cdr fs))))))", "(1 2 3)" },
+    .{ "(flet ((f (x) \"doc\" (declare (ignore x)) 1)) (f 2))", "1" },
+    .{ "(flet ((f (x) x)) (declare (notinline f)) (f 4))", "4" },
+    .{ "(labels ((sum (l) (if (null l) 0 (+ (car l) (sum (cdr l)))))) (sum '(1 2 3 4)))", "10" },
+    .{ "(progn (defun p11-make-counter () (let ((c 0)) (list (lambda () (setq c (+ c 1))) (lambda () c)))) (let* ((p (p11-make-counter)) (inc (car p)) (get (car (cdr p)))) (funcall inc) (funcall inc) (funcall get)))", "2" },
+    .{ "(progn (defun p11-make-counter () (let ((c 0)) (list (lambda () (setq c (+ c 1))) (lambda () c)))) (let* ((p1 (p11-make-counter)) (p2 (p11-make-counter))) (funcall (car p1)) (funcall (car p1)) (funcall (car p2)) (list (funcall (car (cdr p1))) (funcall (car (cdr p2))))))", "(2 1)" },
+    .{ "(flet ((f (x) (labels ((g (y) (if (= y 0) x (g (- y 1))))) (g 3)))) (f 'done))", "DONE" },
+    .{ "(labels ((f (n acc) (if (= n 0) acc (f (- n 1) (+ acc n))))) (f 10000 0))", "50005000" },
+    .{ "(flet ((f (x) x) (f (y) y)) (f 1))", "1" },
+    .{ "(labels ((f (x) x) (f (y) y)) (f 1))", "1" },
+};
+
+test "flet and labels like SBCL 2.6.7 (Phase 11)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (local_fn_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (local_fn_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // flet の関数は自分自身を見ない（本体の中の f は大域の関数 f）。labels は見る
+    try expectError(&e, "(flet ((p11-self (n) (if (= n 0) 0 (p11-self (- n 1))))) (p11-self 3))", .undefined_function);
+    try expectValue(&e, "(labels ((p11-self (n) (if (= n 0) 0 (p11-self (- n 1))))) (p11-self 3))", "0");
+    // SBCL 2.6.7 で program-error になるもの
+    for ([_][]const u8{
+        "(flet ((car (x) x)) (car 1))",
+        "(flet ((if (x) x)) (if 1))",
+        "(labels ((get () 1)) (get))",
+        "(flet ((f (x) x)) (f))",
+        "(flet (f) 1)",
+        "(flet ((1 () 1)) 1)",
+        "(flet ((f)) 1)",
+        "(flet)",
+    }) |t| try expectError(&e, t, .program_error);
+    try expectError(&e, "(flet (((setf f) (v) v)) 1)", .unimplemented);
+    // 印字：#<FUNCTION (FLET FOO) {アドレス}>（SBCL 2.6.7 は (FLET FOO :IN ファイル) と書く）
+    for ([_][2][]const u8{
+        .{ "(flet ((foo () 1)) #'foo)", "#<FUNCTION (FLET FOO) {" },
+        .{ "(labels ((foo () 1)) #'foo)", "#<FUNCTION (LABELS FOO) {" },
+    }) |c| {
+        const v = try evalText(&e, c[0]);
+        var buf: std.Io.Writer.Allocating = .init(testing.allocator);
+        defer buf.deinit();
+        try printer.prin1(e.rt, &buf.writer, v);
+        try testing.expect(std.mem.startsWith(u8, buf.written(), c[1]));
+    }
+}
+
+test "closures outlive their creators and survive collections (Phase 11)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // 1000 個の closure を作り、それぞれが別の束縛を捕捉する。作った関数から戻った後も、GC の後も値が正しい
+    _ = try evalText(&e,
+        \\(setq p11-keep
+        \\  (labels ((mk (i) (if (= i 0) nil (cons (let ((x i)) (lambda () x)) (mk (- i 1))))))
+        \\    (mk 1000)))
+    );
+    e.rt.collect();
+    e.rt.collect();
+    try expectValue(&e, "(labels ((sum (l) (if (null l) 0 (+ (funcall (car l)) (sum (cdr l)))))) (sum p11-keep))", "500500");
+    // 2 つの closure が共有する変数（value_cell）も、GC の後で共有されたまま
+    _ = try evalText(&e,
+        \\(defun p11-account (balance)
+        \\  (list (lambda (x) (setq balance (+ balance x))) (lambda () balance)))
+        \\(setq p11-acc (p11-account 100))
+    );
+    e.rt.collect();
+    try expectValue(&e, "(progn (funcall (car p11-acc) 50) (funcall (car (cdr p11-acc))))", "150");
+    e.rt.collect();
+    try expectValue(&e, "(progn (funcall (car p11-acc) -30) (funcall (car (cdr p11-acc))))", "120");
+    // 再帰の各段で作った closure は、その段の束縛を捕捉する
+    try expectValue(&e,
+        \\(labels ((collect (n) (if (= n 0) nil (cons (lambda () n) (collect (- n 1))))))
+        \\  (let ((fs (collect 3))) (list (funcall (car fs)) (funcall (car (cdr fs))) (funcall (car (cdr (cdr fs)))))))
+    , "(3 2 1)");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();

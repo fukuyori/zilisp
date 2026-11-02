@@ -438,6 +438,7 @@ pub const Node = union(enum) {
 ```
 
 - `defun` は、Zig で書いたブートストラップ用のマクロ（§11.1 の 6）として Resolver が直接展開する（Phase 10）。`(defun 名前 ラムダリスト 本体…)` は `(zl-sys::%defun '名前 (lambda ラムダリスト 本体…))` になり、lambda には関数の名前を付ける（印字は `#<FUNCTION 名前>`。SBCL 2.6.7 と同じ）。本体を `(block 名前 …)` で囲む処理は、`block` を実装する Phase 18 で加える。COMMON-LISP パッケージのシンボルの関数の定義は `package-error` にする（CLHS 11.1.2.1.2。SBCL ではパッケージのロックのエラー）。マクロ展開器（Phase 15）ができた後も、`defun` はこの形に展開する。
+- `flet`・`labels`（Phase 11）：Resolver の範囲に関数の名前空間の束縛（名前と、関数の値を入れる名前の見えない局所変数）を持つ。`flet` は `(let ((f (lambda …)) …) 本体)`、`labels` は `(let ((f nil) …) (setq f (lambda …)) … 本体)` と同じ IR にする。`labels` で互いに（または自分を）参照する関数の変数は、捕捉され代入されるので value_cell に入る。局所関数は大域の関数・マクロより優先する（CLHS 3.1.2.1.2.3）。COMMON-LISP パッケージのシンボルと特殊演算子の名前は局所関数にできない（SBCL 2.6.7 と同じく `program-error`）。関数の本体を `(block 名前 …)` で囲む処理は Phase 18 で加える。
 - `let*` は、変数1つの `let_` を入れ子にして表す（Phase 09）。各初期値は、それより前の変数が見える範囲で解決する。`let` と違い、同じ名前の変数を2回束縛してよい（後の束縛が前を隠す。SBCL 2.6.7 で確認）。`let`・`let*` の変数の局所変数の番号は、本体を抜けた後で再利用する（closure は作った時点の値か value_cell を捕捉するので、番号の再利用の影響を受けない）。
 - `Var` は `captured` と `assigned` を持つ。両方が真の変数だけを `value_cell` に入れる（assignment conversion）。
 - `Var` と `Node` は推論した型（`TypeId`：fixnum、double-float、cons、simple-vector、`t` など）を持つ。ネイティブバックエンドは型に応じてボックス化と型検査を省く（§7A.3）。

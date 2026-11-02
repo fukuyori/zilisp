@@ -96,3 +96,28 @@ pub fn eql2(a: Value, b: Value) bool {
 pub fn eql(th: *Thread, args: []const Value) Value {
     return th.rt.boolean(eql2(args[0], args[1]));
 }
+
+/// append：最後以外のリストを写してつなぐ（最後のリストは共有する。CLHS append）
+pub fn append(th: *Thread, args: []const Value) Value {
+    if (args.len == 0) return Value.nil;
+    var head = Value.nil;
+    var tail = Value.nil;
+    for (args[0 .. args.len - 1]) |l| {
+        var x = l;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const c = th.rt.cons(Runtime.consPtr(x).car, Value.nil) catch return th.outOfMemory();
+            if (tail == Value.nil) head = c else Runtime.consPtr(tail).cdr = c;
+            tail = c;
+        }
+        if (x != Value.nil) return th.typeError(l, th.rt.syms.list);
+    }
+    const last = args[args.len - 1];
+    if (tail == Value.nil) return last;
+    Runtime.consPtr(tail).cdr = last;
+    return head;
+}
+
+/// vector：引数を要素とする単純ベクタ
+pub fn vector(th: *Thread, args: []const Value) Value {
+    return th.rt.makeVector(args) catch th.outOfMemory();
+}

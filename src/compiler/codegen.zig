@@ -295,9 +295,13 @@ pub fn compileLambda(rt: *Runtime, gpa: std.mem.Allocator, pins: *Pins, l: *Lamb
     var name = Value.nil;
     switch (l.fn_kind) {
         .global => name = l.fn_name,
-        .flet, .labels => {
+        .flet, .labels, .macro => {
             name = try rt.cons(l.fn_name, Value.nil);
-            name = try rt.cons(if (l.fn_kind == .flet) rt.syms.flet else rt.syms.labels, name);
+            name = try rt.cons(switch (l.fn_kind) {
+                .flet => rt.syms.flet,
+                .labels => rt.syms.labels,
+                else => try rt.internKeyword("MACRO"),
+            }, name);
         },
         .none => if (l.parent != null) {
             name = try rt.cons(l.name, Value.nil);

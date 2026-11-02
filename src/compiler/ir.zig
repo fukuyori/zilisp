@@ -44,7 +44,7 @@ pub const Lambda = struct {
     /// 名前の付け方（印字用の名前：global は 名前、flet・labels は (FLET 名前)・(LABELS 名前)）
     fn_kind: FnKind = .none,
 
-    pub const FnKind = enum { none, global, flet, labels };
+    pub const FnKind = enum { none, global, flet, labels, macro };
 
     pub fn newSlot(l: *Lambda) u32 {
         const s = l.next_slot;

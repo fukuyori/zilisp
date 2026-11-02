@@ -29,6 +29,8 @@ pub const Syms = struct {
     function: Value,
     declare: Value,
     defun: Value,
+    defmacro: Value,
+    @"destructuring-bind": Value,
     defvar: Value,
     defparameter: Value,
     progv: Value,
@@ -126,6 +128,14 @@ pub const Runtime = struct {
     sys_defun: Value = Value.nil,
     /// ZILISP-SYSTEM::%PROCLAIM-SPECIAL（defvar・defparameter の展開先。実行した時点で特殊変数と宣言する）
     sys_proclaim_special: Value = Value.nil,
+    /// ZILISP-SYSTEM::%DEFMACRO（defmacro の展開先）
+    sys_defmacro: Value = Value.nil,
+    /// ZILISP-SYSTEM:QUASIQUOTE（Reader が backquote を読んだ形）
+    sys_quasiquote: Value = Value.nil,
+    /// ZILISP-SYSTEM::%MISSING（分解束縛で、キーワード引数がないことを表す印）
+    sys_missing: Value = Value.nil,
+    /// 標準ライブラリ（src/lisp/boot.lisp）を読み込んでいる間は真（CL のシンボルにマクロ・関数を定義してよい）
+    booting: bool = false,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
     thread: ?*thread_mod.Thread = null,
 
@@ -594,6 +604,7 @@ test "strings narrow and wide" {
 /// Syms のフィールド名を CL のシンボル名にする（大文字に）
 fn upperName(comptime name: []const u8) []const u8 {
     comptime {
+        @setEvalBranchQuota(10000);
         var buf: [name.len]u8 = undefined;
         for (name, 0..) |c, i| buf[i] = std.ascii.toUpper(c);
         const out = buf;

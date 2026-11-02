@@ -83,6 +83,12 @@
   - 値を捨てる位置の `let`・`progv` から生成した Zig のコードに、使われない変数が残っていた
   - 検証器が、添字・個数のオペランドを持たない命令の前の `WIDE` を受け付けていた
   - 生成したネイティブのプログラムを GC stress で試験していなかった（`--gc-stress`。`native-test` は通常と両方で実行）
+- Phase 15：マクロ展開器（Resolver。トップレベルの展開結果もトップレベル）、`defmacro`（トップレベルならコンパイルの時点でも定義）、
+  分解束縛（必須・`&optional`・`&rest`・`&body`・`&key`・`&allow-other-keys`・`&aux`・`&whole`・`&environment`・入れ子）と
+  `destructuring-bind`、backquote の展開（`,`・`,@`・`,.`・ベクタ・入れ子）、`macroexpand-1`・`macroexpand`・`macro-function`・`gensym`・
+  `append`・`vector`。Lisp で書く標準ライブラリ `src/lisp/boot.lisp`（`when`・`unless`・`cond`・`and`・`or`・`case`・`prog1`・`prog2`、
+  変数の場所の `incf`・`decf`・`push`・`pop`）を起動時に読み込む。試験：SBCL 2.6.7 の結果と比べる57通り（GC stress でも実行）、
+  言語試験 `tests/language/eval/macros.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 100 から 179 に
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

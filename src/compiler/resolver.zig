@@ -21,6 +21,8 @@ const thread_mod = @import("../runtime/thread.zig");
 const Thread = thread_mod.Thread;
 const ErrorKind = thread_mod.ErrorKind;
 const ir = @import("ir.zig");
+const macros = @import("macros.zig");
+const codegen = @import("codegen.zig");
 const Node = ir.Node;
 const Var = ir.Var;
 const Lambda = ir.Lambda;
@@ -72,11 +74,18 @@ pub const Resolver = struct {
     th: *Thread,
     rt: *Runtime,
     arena: std.mem.Allocator,
+    /// マクロの展開結果と、Resolver が作ったフォームを GC から守る（§5.4）
+    pins: *codegen.Pins,
     /// 今から解決するフォームがトップレベルのフォームか（CLHS 3.2.3.1：トップレベルの progn の中のフォームもトップレベル）
     at_toplevel: bool = false,
 
-    pub fn init(th: *Thread, arena: std.mem.Allocator) Resolver {
-        return .{ .th = th, .rt = th.rt, .arena = arena };
+    pub fn init(th: *Thread, arena: std.mem.Allocator, pins: *codegen.Pins) Resolver {
+        return .{ .th = th, .rt = th.rt, .arena = arena, .pins = pins };
+    }
+
+    /// 形の誤り（program-error）
+    pub fn failForm(r: *Resolver, message: []const u8, datum: Value) Error {
+        return r.fail(.program_error, message, datum);
     }
 
     fn fail(r: *Resolver, kind: ErrorKind, message: []const u8, datum: Value) Error {
@@ -310,6 +319,12 @@ pub const Resolver = struct {
             if (head == y.defvar) return r.resolveDefvar(form, args, scope, false, toplevel_form);
             if (head == y.defparameter) return r.resolveDefvar(form, args, scope, true, toplevel_form);
             if (head == y.progv) return r.resolveProgv(form, args, scope);
+            if (head == y.defmacro) return r.resolveDefmacro(form, args, scope, toplevel_form);
+            if (head == y.@"destructuring-bind") return r.resolve(try macros.expandDestructuringBind(r, form, args), scope);
+            if (head == r.rt.sys_quasiquote) {
+                if (args.len != 1) return r.failForm("QUASIQUOTE の引数は1つです", form);
+                return r.resolve(try macros.expandQuasiquote(r, args[0]), scope);
+            }
             if (head == y.flet) return r.resolveLocalFunctions(form, args, scope, false);
             if (head == y.labels) return r.resolveLocalFunctions(form, args, scope, true);
             // 局所関数の呼び出し（大域の関数・マクロより優先：CLHS 3.1.2.1.2.3）
@@ -324,8 +339,14 @@ pub const Resolver = struct {
             const s = r.rt.symbolPtr(head);
             if (s.hasFlag(SymbolFlags.special_operator))
                 return r.fail(.unimplemented, "この特殊演算子は未実装です", head);
-            if (s.hasFlag(SymbolFlags.macro))
-                return r.fail(.unimplemented, "このマクロは未実装です（defmacro とマクロ展開は Phase 15 で実装予定）", head);
+            if (s.hasFlag(SymbolFlags.macro)) {
+                if (s.function == Value.unbound) return r.fail(.unimplemented, "このマクロは未実装です", head);
+                // マクロを展開して、その結果を解決する。トップレベルのフォームの展開結果もトップレベル（CLHS 3.2.3.1）
+                const expansion = try r.macroexpand(form, s.function);
+                r.at_toplevel = toplevel_form;
+                defer r.at_toplevel = false;
+                return r.resolve(expansion, scope);
+            }
             return r.resolveCall(head, args, scope);
         }
         if (head.isCons() and Runtime.consPtr(head).car == y.lambda) {
@@ -582,6 +603,39 @@ pub const Resolver = struct {
         }
         forms[defs.len] = body_node;
         return r.node(.{ .let_ = .{ .vars = vars, .inits = inits, .body = try r.node(.{ .progn = forms }) } });
+    }
+
+    /// マクロ関数を (form env) で呼んで展開する。展開の結果は Pins に積む
+    fn macroexpand(r: *Resolver, form: Value, macro_fn: Value) Error!Value {
+        const argv = [_]Value{ form, Value.nil };
+        const expansion = r.th.call(macro_fn, &argv);
+        if (expansion == Value.unwind) return error.LispError;
+        try r.pins.pin(expansion);
+        return expansion;
+    }
+
+    /// defmacro（Zig で書いたブートストラップ用のマクロ：§11.1 の 6。Phase 15）。
+    /// (defmacro 名前 ラムダリスト 本体...) → (zl-sys::%defmacro '名前 (lambda (#:whole #:env) (let* (分解の束縛...) 本体...)))
+    /// トップレベルのフォームなら、コンパイルの時点でもマクロを定義する（同じフォームの後ろの部分や後のフォームで使えるように。
+    /// CLHS 3.2.3.1、defmacro「the compiler must store the macro definition at compile time」）
+    fn resolveDefmacro(r: *Resolver, form: Value, args: []Value, scope: *const Scope, toplevel_form: bool) Error!*Node {
+        if (args.len < 2) return r.failForm("DEFMACRO には名前とラムダリストが必要です", form);
+        const name = args[0];
+        if (!isSymbol(name) or name == Value.nil) return r.failForm("マクロの名前はシンボルでなければなりません", name);
+        const lam_form = try macros.macroLambda(r, args[1], args[2..]);
+        if (toplevel_form) {
+            const b: macros.Builder = .{ .r = r };
+            const def_form = try b.list(&.{ r.rt.sys_defmacro, try b.quote(name), lam_form });
+            const eval_mod = @import("eval.zig");
+            if (eval_mod.eval(r.th, def_form) == Value.unwind) return error.LispError;
+        }
+        // 実行時の定義（名前の付いた関数にする：印字は #<FUNCTION (:MACRO 名前) …>）
+        const parts = try r.listItems(Runtime.consPtr(lam_form).cdr, "LAMBDA の形が正しくありません");
+        const l = try r.resolveLambdaParts(parts, name, .macro, scope);
+        const call_args = try r.arena.alloc(*Node, 2);
+        call_args[0] = try r.node(.{ .constant = name });
+        call_args[1] = try r.node(.{ .lambda = l });
+        return r.node(.{ .call_global = .{ .sym = r.rt.sys_defmacro, .args = call_args } });
     }
 
     const Binding = struct { name: Value, init_form: Value };

@@ -438,6 +438,94 @@ test "Codex review of Phase 14: progv slots, defvar outside the toplevel" {
     try expectValue(&e, "(let ((rv-late 1)) (list rv-late (boundp 'rv-late) (symbol-value 'rv-late)))", "(1 T 1)");
 }
 
+/// Phase 15：backquote・defmacro・分解束縛・標準マクロ（SBCL 2.6.7 の結果）
+const macro_cases = [_][2][]const u8{
+    .{ "`(a b ,(+ 1 2))", "(A B 3)" },
+    .{ "`(a ,@(list 1 2) c)", "(A 1 2 C)" },
+    .{ "`(a . ,(+ 1 1))", "(A . 2)" },
+    .{ "`(1 ,@nil 2)", "(1 2)" },
+    .{ "`#(1 ,(+ 1 1))", "#(1 2)" },
+    .{ "`,(+ 1 2)", "3" },
+    .{ "`(,@'(1 2) . 3)", "(1 2 . 3)" },
+    .{ "`(a ,@(list 1) ,@(list 2 3))", "(A 1 2 3)" },
+    .{ "`(x (y ,(+ 1 1)) z)", "(X (Y 2) Z)" },
+    .{ "`(1 ,.(list 2 3) 4)", "(1 2 3 4)" },
+    .{ "(let ((x '(b c))) `(a ,@x d))", "(A B C D)" },
+    .{ "`abc", "ABC" },
+    .{ "`(a)", "(A)" },
+    .{ "(progn (defmacro p15-inc (x) `(+ ,x 1)) (p15-inc 5))", "6" },
+    .{ "(defmacro p15-inc (x) `(+ ,x 1))", "P15-INC" },
+    .{ "(progn (defmacro p15-when (test &body body) `(if ,test (progn ,@body))) (list (p15-when t 1 2) (p15-when nil 1)))", "(2 NIL)" },
+    .{ "(progn (defmacro p15-swap (a b) (let ((tmp (gensym))) `(let ((,tmp ,a)) (setq ,a ,b) (setq ,b ,tmp)))) (let ((x 1) (y 2)) (p15-swap x y) (list x y)))", "(2 1)" },
+    .{ "(progn (defmacro p15-opt (a &optional (b 10)) `(list ,a ,b)) (list (p15-opt 1) (p15-opt 1 2)))", "((1 10) (1 2))" },
+    .{ "(progn (defmacro p15-kw (&key (x 1) y) `(list ,x ,y)) (list (p15-kw :y 2) (p15-kw :x 5 :y 6) (p15-kw)))", "((1 2) (5 6) (1 NIL))" },
+    .{ "(progn (defmacro p15-wh (&whole w a) (declare (ignore a)) `(quote ,w)) (p15-wh 1))", "(P15-WH 1)" },
+    .{ "(progn (defmacro p15-dm ((a b) c) `(list ,a ,b ,c)) (p15-dm (1 2) 3))", "(1 2 3)" },
+    .{ "(progn (defmacro p15-inc (x) `(+ ,x 1)) (macroexpand-1 '(p15-inc 5)))", "(+ 5 1)" },
+    .{ "(progn (defmacro p15-inc (x) `(+ ,x 1)) (defmacro p15-m2 (x) `(p15-inc ,x)) (list (p15-m2 1) (macroexpand-1 '(p15-m2 1)) (macroexpand '(p15-m2 1))))", "(2 (P15-INC 1) (+ 1 1))" },
+    .{ "(macroexpand-1 '(car x))", "(CAR X)" },
+    .{ "(destructuring-bind (a (b c) &rest d) '(1 (2 3) 4 5) (list a b c d))", "(1 2 3 (4 5))" },
+    .{ "(destructuring-bind (a &optional (b 2 b-p) &key (c 3)) '(1) (list a b b-p c))", "(1 2 NIL 3)" },
+    .{ "(destructuring-bind (a &optional (b 2 b-p) &key (c 3)) '(1 5 :c 7) (list a b b-p c))", "(1 5 T 7)" },
+    .{ "(destructuring-bind (a . b) '(1 2 3) (list a b))", "(1 (2 3))" },
+    .{ "(destructuring-bind (&rest all) '(1 2) all)", "(1 2)" },
+    .{ "(when t 1 2)", "2" },
+    .{ "(when nil 1)", "NIL" },
+    .{ "(unless nil 1 2)", "2" },
+    .{ "(unless t 1)", "NIL" },
+    .{ "(cond)", "NIL" },
+    .{ "(cond (1))", "1" },
+    .{ "(cond ((= 1 2) 'a) (t 'b))", "B" },
+    .{ "(cond ((= 1 1) 'a 'c) (t 'b))", "C" },
+    .{ "(cond (nil 1) ((+ 1 2)))", "3" },
+    .{ "(and)", "T" },
+    .{ "(or)", "NIL" },
+    .{ "(and 1 2)", "2" },
+    .{ "(and 1 nil 2)", "NIL" },
+    .{ "(or nil 3)", "3" },
+    .{ "(or nil nil)", "NIL" },
+    .{ "(case 2 (1 'one) ((2 3) 'two-three) (otherwise 'other))", "TWO-THREE" },
+    .{ "(case 'z (a 1) (t 2))", "2" },
+    .{ "(case 5 (1 'one))", "NIL" },
+    .{ "(case 'nil ((nil) 'is-nil) (t 'other))", "IS-NIL" },
+    .{ "(prog1 1 2 3)", "1" },
+    .{ "(prog2 1 2 3)", "2" },
+    .{ "(let ((x 1)) (incf x) (incf x 10) x)", "12" },
+    .{ "(let ((x 10)) (decf x) (decf x 3) x)", "6" },
+    .{ "(let ((l nil)) (push 1 l) (push 2 l) (list (pop l) l))", "(2 (1))" },
+    .{ "(let ((l '(1 2))) (list (pop l) (pop l) (pop l) l))", "(1 2 NIL NIL)" },
+    .{ "(not (null (macro-function 'when)))", "T" },
+    .{ "(macro-function 'car)", "NIL" },
+    .{ "(progn (defmacro p15-lm (x) `(* ,x 2)) (flet ((p15-lm (x) (+ x 100))) (p15-lm 1)))", "101" },
+};
+
+test "macros and backquote like SBCL 2.6.7 (Phase 15)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (macro_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = true;
+    for (macro_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(funcall 'when t 1)", .undefined_function);
+    try expectError(&e, "(defmacro car (x) x)", .package_error);
+    try expectError(&e, "(destructuring-bind (a b) '(1) (list a b))", .program_error);
+    try expectError(&e, "(destructuring-bind (a) '(1 2) a)", .program_error);
+    try expectError(&e, "(progn (defmacro p15-two (a b) `(list ,a ,b)) (p15-two 1))", .program_error);
+    try expectError(&e, "(flet ((when (x) x)) 1)", .program_error);
+    try expectError(&e, "(destructuring-bind (&key a) '(:b 1) a)", .program_error);
+    try expectError(&e, "(destructuring-bind (&key a) '(:a) a)", .program_error);
+    try expectValue(&e, "(destructuring-bind (&key a &allow-other-keys) '(:b 1 :a 2) a)", "2");
+    try expectValue(&e, "(destructuring-bind (&key a) '(:b 1 :allow-other-keys t) a)", "NIL");
+    // 一般の場所は Phase 16
+    try expectError(&e, "(let ((l (list 1))) (incf (car l)))", .unimplemented);
+    // マクロの展開の中のエラーは、そのフォームのエラーとして報告する
+    try expectError(&e, "(progn (defmacro p15-bad () (car 1)) (p15-bad))", .type_error);
+    // マクロ関数の印字
+    try expectValue(&e, "(progn (defmacro p15-pm () 1) (not (null (macro-function 'p15-pm))))", "T");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -490,7 +578,7 @@ test "errors" {
         .{ "(- -2305843009213693952)", .unimplemented },
         .{ "(* 1e30 1e30)", .floating_point_overflow },
         .{ "(+ 1d308 1d308)", .floating_point_overflow },
-        .{ "(defmacro m ())", .unimplemented },
+        .{ "(loop)", .unimplemented },
         .{ "(block nil)", .unimplemented },
         .{ "(quote)", .program_error },
         .{ "(if)", .program_error },

@@ -1,0 +1,21 @@
+
+(A B 3) 
+(A 1 2 C) 
+(A . 2) 
+#(1 2) 
+(A B C D) 
+(6 7) 
+(MY-INC (MY-INC 5)) 
+(+ (MY-INC 5) 1) 
+(2 NIL) 
+((1 10 NONE) (1 2 YES)) 
+6 
+(2 1) 
+200 
+(1 2 3 (4 5)) 
+(YES NIL) 
+(NEGATIVE ZERO POSITIVE) 
+(3 NIL 2 NIL) 
+(WEEKEND WEEKDAY UNKNOWN) 
+(1 2) 
+(9 B (A)) 

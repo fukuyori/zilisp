@@ -79,6 +79,8 @@ pub const LispError = struct {
     datum: Value = Value.unbound,
     /// type-error の期待する型（シンボル）。なければ unbound
     expected: Value = Value.unbound,
+    /// Lisp の文字列の説明（message の代わりに使う。Lisp で書いた標準ライブラリが報告するエラー）。なければ unbound
+    detail: Value = Value.unbound,
 };
 
 pub const Thread = struct {
@@ -119,6 +121,8 @@ pub const Thread = struct {
         errdefer rt.gpa.free(bindings);
         th.* = .{ .rt = rt, .out = out, .vm = try vm_mod.Vm.init(rt.gpa, options.stack_size, options.frame_count), .bindings = bindings };
         rt.thread = th;
+        // 標準ライブラリ（Lisp で書いた標準マクロなど）を読み込む（§11.1 の 7）
+        try @import("../compiler/boot.zig").load(th);
         return th;
     }
 
@@ -136,6 +140,7 @@ pub const Thread = struct {
         for (th.mv[1..@min(th.mv_count, mv_limit)]) |v| f(ctx, v);
         f(ctx, th.err.datum);
         f(ctx, th.err.expected);
+        f(ctx, th.err.detail);
         for (th.backtrace[0..th.backtrace_len]) |v| f(ctx, v);
         for (th.bindings[0..th.binding_depth]) |b| {
             f(ctx, b.sym);
@@ -210,7 +215,9 @@ pub const Thread = struct {
                 }
             },
             else => {
-                try w.writeAll(e.message);
+                if (e.detail != Value.unbound and e.detail.isOther() and Runtime.kindOf(e.detail) == .string) {
+                    try Runtime.writeStringUtf8(e.detail, w);
+                } else try w.writeAll(e.message);
                 if (e.datum != Value.unbound) {
                     try w.writeAll(": ");
                     try printer.prin1(rt, w, e.datum);

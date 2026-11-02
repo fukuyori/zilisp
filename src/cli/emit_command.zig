@@ -33,6 +33,8 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
     defer _ = rt.roots.unregister(root);
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
+    var pins = @import("../compiler/codegen.zig").Pins.init(rt) catch return oom(stderr);
+    defer pins.deinit();
     var em = emit.Emitter.init(rt, gpa);
     defer em.deinit();
     var toplevels: std.ArrayList(emit.ToplevelForm) = .empty;
@@ -52,7 +54,7 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
         const list = rt.cons(form, rt.roots.get(root).?) catch return oom(stderr);
         _ = rt.roots.set(root, list);
 
-        var res = resolver_mod.Resolver.init(s.th, arena.allocator());
+        var res = resolver_mod.Resolver.init(s.th, arena.allocator(), &pins);
         const lambda = res.toplevel(form) catch |err| {
             if (err == error.OutOfMemory) return oom(stderr);
             try stderr.print("{s}:{d}:{d}: ", .{ path, loc.line, loc.col });

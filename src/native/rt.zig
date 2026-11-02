@@ -202,7 +202,7 @@ pub const LambdaSpec = struct {
     entry: Entry,
     nparams: u32,
     /// 名前の付け方（ir.Lambda.FnKind と同じ）
-    kind: enum { none, global, flet, labels },
+    kind: enum { none, global, flet, labels, macro },
     /// 関数の名前（kind が none 以外）、またはラムダリスト（none）の定数の番号
     name_k: u32,
     /// Code を置く定数の番号
@@ -251,9 +251,13 @@ fn buildConstants(th: *Thread, prog: *const Program) !void {
         var name = K[l.name_k];
         switch (l.kind) {
             .global => {},
-            .flet, .labels => {
+            .flet, .labels, .macro => {
                 name = try rt.cons(name, Value.nil);
-                name = try rt.cons(if (l.kind == .flet) rt.syms.flet else rt.syms.labels, name);
+                name = try rt.cons(switch (l.kind) {
+                    .flet => rt.syms.flet,
+                    .labels => rt.syms.labels,
+                    else => try rt.internKeyword("MACRO"),
+                }, name);
             },
             .none => {
                 name = try rt.cons(name, Value.nil);

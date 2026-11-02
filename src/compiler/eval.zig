@@ -29,7 +29,7 @@ pub fn compile(th: *Thread, form: Value) Value {
     var arena: std.heap.ArenaAllocator = .init(rt.gpa);
     defer arena.deinit();
 
-    var r = resolver_mod.Resolver.init(th, arena.allocator());
+    var r = resolver_mod.Resolver.init(th, arena.allocator(), &pins);
     const lambda = r.toplevel(form) catch |err| return switch (err) {
         error.LispError => Value.unwind,
         error.OutOfMemory => th.outOfMemory(),

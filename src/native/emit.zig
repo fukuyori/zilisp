@@ -146,6 +146,7 @@ pub const Emitter = struct {
                 .global => "global",
                 .flet => "flet",
                 .labels => "labels",
+                .macro => "macro",
             };
             const name_k = try e.constant(if (l.fn_kind == .none) l.name else l.fn_name);
             try w.print("    .{{ .entry = &@\"{s}\", .nparams = {d}, .kind = .{s}, .name_k = {d}, .code_k = CODE_BASE + {d}, .closure_k = ", .{ li.fn_name, l.params.len, kind, name_k, li.id });

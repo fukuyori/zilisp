@@ -72,7 +72,7 @@ pub fn sysDefun(th: *Thread, args: []const Value) Value {
     if (!isSymbol(name) or name == Value.nil) return th.typeError(name, th.rt.syms.symbol);
     const s = th.rt.symbolPtr(name);
     // CL パッケージのシンボルの関数は再定義できない（CLHS 11.1.2.1.2。SBCL 2.6.7 ではパッケージのロックのエラー）
-    if (s.package == th.rt.cl.obj)
+    if (s.package == th.rt.cl.obj and !th.rt.booting)
         return th.signal(.package_error, "COMMON-LISP パッケージのシンボルの関数は定義できません", name, Value.unbound);
     s.function = f;
     return name;

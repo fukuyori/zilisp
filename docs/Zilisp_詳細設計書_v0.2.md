@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記13） | 2026-11-02 | Phase 15：マクロ展開器、defmacro、分解束縛、backquote の展開、Lisp で書く標準ライブラリの読み込み（§5.2・§11.2） |
 | 0.2（追記12） | 2026-11-02 | Phase 14：動的束縛の実装（束縛のスタック、VM の命令、エラーで抜けるときの復元、special 宣言の表し方、defvar・defparameter のコンパイル時の宣言。§6.5） |
 | 0.2（追記11） | 2026-11-02 | Phase 13：教材のブロックの実行と SBCL との比較（`zig build eval-check`。§13.1）、エラーの報告の呼び出しの履歴（§9.4） |
 | 0.2（追記10） | 2026-11-02 | Phase 12：IR の検証器、ネイティブバックエンドの最小実装（§7A.8）、VM とネイティブの一致の試験（`zig build native-test`）、VM とネイティブの速度と、`Value.unwind` の検査の費用の計測（§6.4・§7A.8） |
@@ -442,6 +443,11 @@ pub const Node = union(enum) {
 
 - `defun` は、Zig で書いたブートストラップ用のマクロ（§11.1 の 6）として Resolver が直接展開する（Phase 10）。`(defun 名前 ラムダリスト 本体…)` は `(zl-sys::%defun '名前 (lambda ラムダリスト 本体…))` になり、lambda には関数の名前を付ける（印字は `#<FUNCTION 名前>`。SBCL 2.6.7 と同じ）。本体を `(block 名前 …)` で囲む処理は、`block` を実装する Phase 18 で加える。COMMON-LISP パッケージのシンボルの関数の定義は `package-error` にする（CLHS 11.1.2.1.2。SBCL ではパッケージのロックのエラー）。マクロ展開器（Phase 15）ができた後も、`defun` はこの形に展開する。
 - `flet`・`labels`（Phase 11）：Resolver の範囲に関数の名前空間の束縛（名前と、関数の値を入れる名前の見えない局所変数）を持つ。`flet` は `(let ((f (lambda …)) …) 本体)`、`labels` は `(let ((f nil) …) (setq f (lambda …)) … 本体)` と同じ IR にする。`labels` で互いに（または自分を）参照する関数の変数は、捕捉され代入されるので value_cell に入る。局所関数は大域の関数・マクロより優先する（CLHS 3.1.2.1.2.3）。COMMON-LISP パッケージのシンボルと特殊演算子の名前は局所関数にできない（SBCL 2.6.7 と同じく `program-error`）。関数の本体を `(block 名前 …)` で囲む処理は Phase 18 で加える。
+- **マクロ展開**（Phase 15）：Resolver は、フォームの先頭がマクロのシンボルなら、マクロ関数を `(フォーム 環境)` で呼んで展開し、その結果を解決する（局所関数はマクロより優先する。特殊演算子はマクロより先に判定する）。トップレベルのフォームの展開結果もトップレベル（CLHS 3.2.3.1）。展開の結果と、Resolver が作るフォームは Pins に積む（§5.4）。Phase 15 では、環境の引数は常に NIL（大域の環境）。
+- **defmacro**：`(zl-sys::%defmacro '名前 (lambda (#:whole #:env) (let ((#:args (cdr #:whole))) (let* (分解の束縛…) 本体…))))` にする。トップレベルの `defmacro` は、コンパイルの時点でも定義する（同じファイルの後のフォーム・ネイティブバックエンドの生成でも展開できるように）。マクロ関数の印字は `#<FUNCTION (:MACRO 名前) {…}>`。
+- **分解束縛**（`defmacro`・`destructuring-bind` のラムダリスト。CLHS 3.4.4・3.4.5）：必須・`&optional`（既定値・供給の変数）・`&rest`・`&body`・ドット対の末尾・`&key`（`((:k v) …)`、`&allow-other-keys`、`:allow-other-keys t`）・`&aux`・`&whole`・`&environment`・入れ子のラムダリストを、`let*` の束縛の並びにする。引数の数の誤り・奇数個のキーワード引数・知らないキーワードは `program-error`。
+- **backquote**：`zl-sys:quasiquote` を、`list`・`list*`・`append`・`(apply #'vector …)` の呼び出しにする（CLHS 2.4.6）。unquote を含まない部分は `quote` にする（共有してよい：CLHS 2.4.6）。`,.` は `,@` と同じく、壊さずにつなぐ。入れ子の backquote は深さを数えて扱う。
+- **Phase 15 で実装しなかったもの**（§5.2 の当初の予定から外した。Phase 30 で行う：tque #341）：`macrolet`、`symbol-macrolet`、`define-symbol-macro`、環境のオブジェクト（`&environment` の値。今は NIL）、`compiler-macro`。教材のブロックで使っているものは0件（Phase 15 の時点）。
 - `let*` は、変数1つの `let_` を入れ子にして表す（Phase 09）。各初期値は、それより前の変数が見える範囲で解決する。`let` と違い、同じ名前の変数を2回束縛してよい（後の束縛が前を隠す。SBCL 2.6.7 で確認）。`let`・`let*` の変数の局所変数の番号は、本体を抜けた後で再利用する（closure は作った時点の値か value_cell を捕捉するので、番号の再利用の影響を受けない）。
 - `Var` は `captured` と `assigned` を持つ。両方が真の変数だけを `value_cell` に入れる（assignment conversion）。
 - `Var` と `Node` は推論した型（`TypeId`：fixnum、double-float、cons、simple-vector、`t` など）を持つ。ネイティブバックエンドは型に応じてボックス化と型検査を省く（§7A.3）。
@@ -1086,6 +1092,8 @@ instance                      rack
 8. `*package*` を `CL-USER` にして、REPL・スクリプト・エントリ関数を開始する。
 
 ### 11.2 Lisp で書く標準ライブラリのロード順
+
+**Phase 15 の時点**：`src/lisp/boot.lisp`（実行ファイルに埋め込む）を、スレッドを作るたびに VM で読み込む（`src/compiler/boot.zig`）。中身は Zig で書いた `defmacro`・`defun` の上に作る標準マクロ（`when`・`unless`・`cond`・`and`・`or`・`case`・`prog1`・`prog2`、場所が変数の場合の `incf`・`decf`・`push`・`pop`）。読み込みの間は、CL パッケージのシンボルに定義してよい（`Runtime.booting`）。起動時間の増加は約 1 ms（ReleaseFast、x86_64-windows：`zilisp --eval nil` が 6.1 ms から 7.1 ms）。標準ライブラリが大きくなったら、§11.3 の2段階ビルド（ネイティブにして組み込む）に移る。
 
 | 順序 | ファイル（`lisp/bootstrap/`） | 内容 |
 |---|---|---|

@@ -10,6 +10,7 @@ const function = @import("../runtime/function.zig");
 const numbers = @import("numbers.zig");
 const lists = @import("lists.zig");
 const functions = @import("functions.zig");
+const macros = @import("macros.zig");
 
 const any = function.any_args;
 
@@ -66,12 +67,25 @@ pub const table = [_]Entry{
     .{ .name = "SYMBOL-VALUE", .impl = functions.symbolValue, .min = 1, .max = 1 },
     .{ .name = "SET", .impl = functions.set, .min = 2, .max = 2 },
     .{ .name = "MAKUNBOUND", .impl = functions.makunbound, .min = 1, .max = 1 },
+    // マクロ（Phase 15）
+    .{ .name = "MACROEXPAND-1", .impl = macros.macroexpand1, .min = 1, .max = 2 },
+    .{ .name = "MACROEXPAND", .impl = macros.macroexpand, .min = 1, .max = 2 },
+    .{ .name = "MACRO-FUNCTION", .impl = macros.macroFunction, .min = 1, .max = 2 },
+    .{ .name = "GENSYM", .impl = macros.gensym, .min = 0, .max = 1 },
+    .{ .name = "APPEND", .impl = lists.append, .min = 0, .max = any },
+    .{ .name = "VECTOR", .impl = lists.vector, .min = 0, .max = any },
 };
 
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
 pub const sys_table = [_]Entry{
     .{ .name = "%DEFUN", .impl = functions.sysDefun, .min = 2, .max = 2 },
     .{ .name = "%PROCLAIM-SPECIAL", .impl = functions.sysProclaimSpecial, .min = 1, .max = 1 },
+    .{ .name = "%DEFMACRO", .impl = macros.sysDefmacro, .min = 2, .max = 2 },
+    .{ .name = "%DBIND-ERROR", .impl = macros.sysDbindError, .min = 2, .max = 2 },
+    .{ .name = "%GETF-KEY", .impl = macros.sysGetfKey, .min = 2, .max = 2 },
+    .{ .name = "%CHECK-KEYS", .impl = macros.sysCheckKeys, .min = 4, .max = 4 },
+    .{ .name = "%MACRO-FORM-ERROR", .impl = macros.sysMacroFormError, .min = 2, .max = 2 },
+    .{ .name = "%UNIMPLEMENTED-ERROR", .impl = macros.sysUnimplementedError, .min = 2, .max = 2 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -89,13 +103,20 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     }
     rt.sys_defun = rt.findSymbol(rt.sys, "%DEFUN").?.symbol;
     rt.sys_proclaim_special = rt.findSymbol(rt.sys, "%PROCLAIM-SPECIAL").?.symbol;
+    rt.sys_defmacro = rt.findSymbol(rt.sys, "%DEFMACRO").?.symbol;
+    rt.sys_quasiquote = try rt.intern(rt.sys, "QUASIQUOTE");
+    // 分解束縛の展開が引用するシンボル
+    rt.sys_missing = try rt.intern(rt.sys, "%MISSING");
+    _ = try rt.intern(rt.sys, "TOO-FEW");
+    _ = try rt.intern(rt.sys, "TOO-MANY");
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
-    for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
     // Resolver が直接解釈する特殊演算子
     rt.symbolPtr(rt.syms.progv).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {
     _ = numbers;
+    _ = macros;
 }

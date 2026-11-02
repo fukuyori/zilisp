@@ -51,6 +51,9 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | ビルドの種類 | `@import("builtin").mode` の型は `std.lang.Optimize` で、値は `.debug`・`.safe`・`.fast`・`.small`（旧 `.Debug`・`.ReleaseSafe` など） | Phase 07 |
 | `@frameAddress()` | 最適化ありのビルドでは、その関数自身のローカル変数が `@frameAddress()` より高いアドレスに置かれることがある。GC の保守的走査の上端に、値を持つ関数自身のフレームの位置を使ってはならない（詳細設計 §3.4） | §3.4 |
 | スタックの上端（Windows） | `std.os.windows.teb().NtTib.StackBase` | §3.4 |
+| 構造体のフィールドの一覧 | `std.meta.fields` は 0.17.0 で廃止（`@compileError`）。`@typeInfo(T).@"struct".field_names`（名前の配列）と `field_types` を使う | Phase 08 |
+| 1 行ずつの入力 | `std.Io.File.Reader.init(.stdin(), io, &buf)` の `interface` に `takeDelimiter('\n')`（終わりで null、行がバッファより長ければ `error.StreamTooLong`） | Phase 08 の REPL |
+| 書き捨ての Writer | `std.Io.Writer.discarding` はない。`.fixed(&buf)` を使う（あふれると `error.WriteFailed`） | Phase 08 のベンチマーク |
 | enum と整数の変換 | `@intFromEnum` / `@enumFromInt` は、0.17.0 では `@backingInt` / `@fromBackingInt` に置き換わっている。`zig fmt` が旧い書き方を自動で書き換える（`@enumFromInt(x)` → `@fromBackingInt(@intCast(x))`） | §2（Value を `enum(u64)` にする場合に使う） |
 
 ## 3. 戻り値の返し方（詳細設計 §6.2 の要検証項目）

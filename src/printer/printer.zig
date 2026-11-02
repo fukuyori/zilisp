@@ -20,6 +20,7 @@ pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Error!void {
     if (v == Value.unbound) return w.writeAll("#<unbound>");
     if (v == Value.unwind) return w.writeAll("#<unwind>");
     if (v.isCons()) return printList(rt, w, v);
+    if (v.isFunctionPointer()) return printFunction(rt, w, v);
     switch (Runtime.kindOf(v) orelse return w.print("#<object {x}>", .{v.raw()})) {
         .symbol => return printSymbol(rt, w, v),
         .string => return printString(w, v),
@@ -33,7 +34,36 @@ pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Error!void {
             return w.writeByte(')');
         },
         .package => return w.print("#<PACKAGE \"{s}\">", .{Runtime.packageData(v).name}),
+        .closure, .native_function => return w.print("#<object {x}>", .{v.raw()}),
+        .code => return w.print("#<CODE {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
+        .value_cell => return w.print("#<VALUE-CELL {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
         _ => return w.print("#<object {x}>", .{v.raw()}),
+    }
+}
+
+/// 関数（SBCL 2.6.7 と同じ形：#<FUNCTION CAR>、#<FUNCTION (LAMBDA (X)) {アドレス}>）
+fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
+    const function = @import("../runtime/function.zig");
+    switch (function.kindOfFunction(v)) {
+        .native_function => {
+            try w.writeAll("#<FUNCTION ");
+            try prin1(rt, w, function.nativePtr(v).name);
+            try w.writeByte('>');
+        },
+        .closure => {
+            const code = function.closurePtr(v).codePtr();
+            try w.writeAll("#<FUNCTION ");
+            const name = code.name;
+            if (name.isCons() and Runtime.consPtr(name).car == rt.syms.lambda) {
+                // 空のラムダリストは () と書く（SBCL 2.6.7：#<FUNCTION (LAMBDA ()) {…}>）
+                const ll = Runtime.consPtr(Runtime.consPtr(name).cdr).car;
+                try w.writeAll("(LAMBDA ");
+                if (ll == Value.nil) try w.writeAll("()") else try prin1(rt, w, ll);
+                try w.writeByte(')');
+            } else try prin1(rt, w, name);
+            try w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+        },
+        else => try w.print("#<FUNCTION {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
     }
 }
 

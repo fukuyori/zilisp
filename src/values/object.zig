@@ -1,6 +1,7 @@
 //! ヒープ上のオブジェクトの形（詳細設計 §2.3・§2.4）。
 //! Phase 05 では、シンボル・文字列・単純ベクタ・double-float・パッケージを定義する。
-//! 他の種類（bignum、ハッシュ表、関数など）は、それぞれの Phase で追加する。
+//! Phase 08 で、関数（code・closure・native_function。形は src/runtime/function.zig）と value_cell を追加した。
+//! 他の種類（bignum、ハッシュ表など）は、それぞれの Phase で追加する。
 
 const std = @import("std");
 const Value = @import("value.zig").Value;
@@ -11,6 +12,14 @@ pub const ObjKind = enum(u8) {
     simple_vector,
     double_float,
     package,
+    /// バイトコードと定数表（同じ lambda から作った closure すべてが共有する）
+    code,
+    /// VM の closure（function タグ）
+    closure,
+    /// Zig で書いたプリミティブ（function タグ）
+    native_function,
+    /// 捕捉され、かつ代入される変数の箱
+    value_cell,
     _,
 };
 
@@ -35,6 +44,8 @@ pub const SymbolFlags = struct {
     pub const macro: u8 = 1 << 3;
     pub const global_symbol_macro: u8 = 1 << 4;
     pub const unimplemented: u8 = 1 << 5;
+    /// CL の特殊演算子（Resolver が直接解釈する）
+    pub const special_operator: u8 = 1 << 6;
 };
 
 /// 詳細設計 §8.1。64 バイト（ヘッダ 8 ＋ 7 語）
@@ -103,4 +114,10 @@ pub const SimpleVector = extern struct {
 pub const Package = extern struct {
     header: ObjHeader,
     data: *anyopaque,
+};
+
+/// 捕捉され、かつ代入される変数の箱（詳細設計 §5.2 の assignment conversion）
+pub const ValueCell = extern struct {
+    header: ObjHeader,
+    value: Value,
 };

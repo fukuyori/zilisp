@@ -5,6 +5,7 @@ const Io = std.Io;
 const version = @import("version.zig");
 const args_mod = @import("cli/args.zig");
 const read_command = @import("cli/read_command.zig");
+const eval_command = @import("cli/eval_command.zig");
 const runtime = @import("runtime/runtime.zig");
 
 /// コマンドの実行に必要な環境
@@ -69,15 +70,22 @@ pub fn run(ctx: Context, options: args_mod.Options, command: args_mod.Command, s
             try printHelp(stdout);
             return .success;
         },
-        .none => {
-            try stderr.writeAll("zilisp: REPL は未実装です（Phase 08 で実装予定）。--help で使い方を表示します。\n");
-            return .usage;
-        },
+        .none => return exit(try eval_command.runRepl(ctx.gpa, ctx.io, options, null, stdout, stderr)),
+        .load => |path| return exit(try eval_command.runRepl(ctx.gpa, ctx.io, options, path, stdout, stderr)),
+        .script => |path| return exit(try eval_command.runScript(ctx.gpa, ctx.io, options, path, stdout, stderr)),
+        .eval => |text| return exit(try eval_command.runEval(ctx.gpa, ctx.io, options, text, stdout, stderr)),
         .unsupported => |arg| {
             try stderr.print("zilisp: '{s}' は未実装、または不明なオプションです。--help で使い方を表示します。\n", .{arg});
             return .usage;
         },
     }
+}
+
+fn exit(r: eval_command.Result) ExitCode {
+    return switch (r) {
+        .ok => .success,
+        .failed => .failure,
+    };
 }
 
 pub fn printVersion(w: *Io.Writer) Io.Writer.Error!void {
@@ -89,6 +97,11 @@ pub fn printHelp(w: *Io.Writer) Io.Writer.Error!void {
         \\{s} {s} - Zig で実装する Common Lisp 互換処理系
         \\
         \\使い方:
+        \\  zilisp                  REPL を始める（入力が終われば終わる）
+        \\  zilisp FILE             FILE のフォームを順に評価する（--script FILE と同じ）
+        \\  zilisp --script FILE    FILE のフォームを順に評価する。エラーで止まり、終了コード 1
+        \\  zilisp --eval TEXT      TEXT のフォームを順に評価する（値は印字しない）
+        \\  zilisp --load FILE      FILE を評価してから REPL を始める
         \\  zilisp --version, -v    バージョンを表示する
         \\  zilisp --help, -h       このヘルプを表示する
         \\  zilisp --read FILE      FILE のデータを読み、1つずつ印字する（Reader と印字の確認用）
@@ -98,11 +111,6 @@ pub fn printHelp(w: *Io.Writer) Io.Writer.Error!void {
         \\  --gc-stats              終了時に GC の統計を標準エラー出力に表示する
         \\
         \\未実装（今後の Phase で実装予定）:
-        \\  zilisp                  REPL
-        \\  zilisp FILE.lisp        ソースの実行
-        \\  zilisp --script FILE    スクリプトの実行
-        \\  zilisp --eval FORM      式の評価
-        \\  zilisp --load FILE      ファイルの読み込み
         \\  zilisp build FILE -o OUT  実行ファイルの生成
         \\
     , .{ version.name, version.version });
@@ -135,7 +143,6 @@ test "run unsupported returns usage" {
     var err_buf: [512]u8 = undefined;
     var err: Io.Writer = .fixed(&err_buf);
     try std.testing.expectEqual(ExitCode.usage, try run(test_ctx, .{}, .{ .unsupported = "x.lisp" }, &out, &err));
-    try std.testing.expectEqual(ExitCode.usage, try run(test_ctx, .{}, .none, &out, &err));
 }
 
 test {
@@ -150,4 +157,8 @@ test {
     _ = @import("support/os_memory.zig");
     _ = @import("runtime/roots.zig");
     _ = @import("runtime/gc.zig");
+    _ = @import("primitives/primitives.zig");
+    _ = @import("vm/verify.zig");
+    _ = @import("compiler/eval_test.zig");
+    _ = eval_command;
 }

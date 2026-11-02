@@ -1,12 +1,20 @@
 //! コマンドライン引数の解析。
-//! 全体のオプション（--gc-stress、--gc-stats）の後に、コマンド（--version、--help、--read FILE）を置く。
-//! その他のコマンド（REPL、ソース実行、--eval、build など。基本設計 §12.1）は未実装として明示的に拒否する。
+//! 全体のオプション（--gc-stress、--gc-stats）の後に、コマンドを置く（基本設計 §12.1）。
+//!   （なし）REPL    FILE・--script FILE ソースの実行    --eval TEXT 式の評価    --load FILE 読み込んでから REPL
+//!   --version  --help  --read FILE（Reader と印字の確認用）
+//! その他（build、compile-file など）は未実装として明示的に拒否する。
 
 const std = @import("std");
 
 pub const Command = union(enum) {
-    /// 引数なし（将来は REPL を起動する）
+    /// 引数なし：REPL
     none,
+    /// FILE、--script FILE：ソースの実行
+    script: []const u8,
+    /// --eval TEXT：式の評価
+    eval: []const u8,
+    /// --load FILE：読み込んでから REPL
+    load: []const u8,
     version,
     help,
     /// --read FILE：ファイルのデータを読み、1つずつ印字する（Reader と印字の確認用）
@@ -48,9 +56,18 @@ fn parseCommand(rest: []const [:0]const u8) Command {
     const first = rest[0];
     if (eql(first, "--version") or eql(first, "-v")) return .version;
     if (eql(first, "--help") or eql(first, "-h")) return .help;
-    if (eql(first, "--read")) {
+    if (eql(first, "--read") or eql(first, "--script") or eql(first, "--eval") or eql(first, "--load")) {
         if (rest.len < 2) return .{ .missing_argument = first };
-        return .{ .read = rest[1] };
+        if (rest.len > 2) return .{ .unsupported = rest[2] };
+        if (eql(first, "--read")) return .{ .read = rest[1] };
+        if (eql(first, "--script")) return .{ .script = rest[1] };
+        if (eql(first, "--eval")) return .{ .eval = rest[1] };
+        return .{ .load = rest[1] };
+    }
+    // オプションでない最初の引数はソースのファイル（後ろの引数は、スクリプトへの引数として Phase 31 で扱う）
+    if (first.len > 0 and first[0] != '-') {
+        if (rest.len > 1) return .{ .unsupported = rest[1] };
+        return .{ .script = first };
     }
     return .{ .unsupported = first };
 }
@@ -82,7 +99,15 @@ test "global options" {
     try std.testing.expect(!parse(&.{ "zilisp", "--read", "x" }).options.gc_stress);
 }
 
+test "script, eval, load" {
+    try std.testing.expectEqualStrings("hello.lisp", parse(&.{ "zilisp", "hello.lisp" }).command.script);
+    try std.testing.expectEqualStrings("a.lisp", parse(&.{ "zilisp", "--script", "a.lisp" }).command.script);
+    try std.testing.expectEqualStrings("(+ 1 2)", parse(&.{ "zilisp", "--eval", "(+ 1 2)" }).command.eval);
+    try std.testing.expectEqualStrings("a.lisp", parse(&.{ "zilisp", "--load", "a.lisp" }).command.load);
+    try std.testing.expectEqualStrings("--eval", parse(&.{ "zilisp", "--eval" }).command.missing_argument);
+}
+
 test "unsupported" {
-    const c = parse(&.{ "zilisp", "hello.lisp" }).command;
-    try std.testing.expectEqualStrings("hello.lisp", c.unsupported);
+    try std.testing.expectEqualStrings("--build", parse(&.{ "zilisp", "--build" }).command.unsupported);
+    try std.testing.expectEqualStrings("b.lisp", parse(&.{ "zilisp", "a.lisp", "b.lisp" }).command.unsupported);
 }

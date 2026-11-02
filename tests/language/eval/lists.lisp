@@ -1,0 +1,12 @@
+;; リスト（Phase 08）
+(print (list 1 2 3))
+(print (cons 1 2))
+(print (cons 1 '(2 3)))
+(print (car '(a b c)))
+(print (cdr '(a b c)))
+(print (car (cdr '(a b c))))
+(print (list* 1 2 '(3 4)))
+(print (list (null nil) (null '(1)) (atom 'a) (consp '(1)) (listp nil) (eq 'a 'a) (eql 1.0 1.0)))
+(print (apply #'list 1 2 '(3 4)))
+(print (funcall #'cons 'x 'y))
+(terpri)

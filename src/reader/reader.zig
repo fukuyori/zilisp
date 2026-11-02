@@ -101,6 +101,8 @@ pub fn Reader(comptime Builder: type) type {
         bq_depth: usize = 0,
         /// *read-suppress*（#+ / #- で読み飛ばしている間）
         suppress: bool = false,
+        /// 直前の read で読んだデータの始まりの位置（行コメントと空白を除く。エラーの報告に使う）
+        start_loc: ?SourceLoc = null,
 
         pub fn init(gpa: std.mem.Allocator, src: *Source, builder: *Builder, options: Options) Self {
             return .{ .src = src, .builder = builder, .gpa = gpa, .options = options };
@@ -128,6 +130,7 @@ pub fn Reader(comptime Builder: type) type {
 
         /// 次のデータを1つ読む。データの前でテキストが終われば null を返す。
         pub fn read(self: *Self) Error!?Datum {
+            self.start_loc = null;
             const obj = (try self.readObj()) orelse return null;
             return switch (obj) {
                 .datum => |d| d,
@@ -141,6 +144,7 @@ pub fn Reader(comptime Builder: type) type {
             while (true) {
                 const ch = (try self.peek()) orelse return null;
                 const loc = self.src.loc();
+                if (self.start_loc == null and ch.cp != ';' and syntax.syntaxType(ch.cp) != .whitespace) self.start_loc = loc;
                 switch (syntax.syntaxType(ch.cp)) {
                     .invalid => return self.fail(loc, "この文字はトークンに使えません（Backspace・Rubout）"),
                     .whitespace => self.src.advance(ch),

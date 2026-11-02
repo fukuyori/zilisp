@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記8） | 2026-11-02 | Phase 08 の実装に合わせて、condition ができるまでのエラーの扱い（§6.6）、`call-arguments-limit` の解釈（§7.3）、Phase 08 で実装した命令とフレームの形（§7.4）、CLI の動作（§19）を追記 |
 | 0.2（追記7） | 2026-11-02 | Phase 07 の実装に対する Codex のレビュー（10件）を受けて、レジスタの退避の方法と走査の下端を確定（§3.4）。実装側では §3.5 の規則（Zig のヒープに Lisp の値を置くなら明示的なルートに登録する）への違反を修正 |
 | 0.2（追記6） | 2026-11-01 | Phase 01 の照合結果（`docs/zig-std-usage.md`）を受けて、Value を `enum(u64)` で定義（§2.1）、戻り値の規約を案 A に変更（主値だけをレジスタで返し、個数は `th.mv_count`、非局所脱出・エラーは特別な即値 `Value.unwind` と `th.fault`。§2.2・§6.1〜§6.4・§6.6・§7A.2）、汎用の入口を `callconv(.c)` に（§6.2） |
 | 0.2（追記5） | 2026-11-01 | agy（Antigravity）によるレビューの指摘15件を反映（本文では「agy #番号」）。closure を作り直さず code にネイティブの入口を設定（§2.4・§6.2・§7A.6）、cleanup の前の動的環境の巻き戻し（§6.4）、派生したポインタの規則（§3.4）、動的環境を深さで戻す方式に統一（§6.4）、`call-next-method` の引数と `:after` の扱い（§10.3）、トップレベルフォームの再帰的な処理（§4.1・§16.1）、`setf` 関数と高速入口をシンボルの欄に（§6.2・§8.1）、Phase 12〜34 は `.zfasl` を介さない（§5.1・§15.2）、自己再帰のループ化と `musttail` の型の制約（§6.2・§7A.3）、まとめてコンパイル・プロセス数の上限・キャッシュの掃除（§7A.6）、CL 関数の直接呼び出し（§5.2）、`equalp` のハッシュ（§2.6）、`defconstant`（§8.1・§16.1）、`unintern`・シャドウイング（§8.2）、`&environment`・`define-symbol-macro` の時期（§5.2） |
@@ -635,6 +636,7 @@ pub const Fault = enum(u8) {
     unwind,         // 非局所脱出の途中（異常ではない。th.unwinds の先頭が脱出先）
     out_of_memory,  // 確保の失敗。可能であれば storage-condition に変換する
     internal,       // 処理系の内部故障（バグ）。Lisp の condition にはしない
+    lisp_error,     // Phase 08〜24 の暫定：Lisp のエラー。内容は th.err（種類・説明・値）
 };
 
 // ランタイムの内部（Zig の関数どうし）でだけ使うエラー集合
@@ -645,6 +647,7 @@ pub const Error = error{ LispUnwind, OutOfMemory, VmInternal };
 - ランタイムの内部で、速さが問題にならない処理（ロード、コンパイラ、FFI の準備など）は、Zig のエラー集合 `Error!T` を使ってよい。入口の境界で `Value.unwind` と `th.fault` に変換する（`fault` の値はエラーの種類に対応させる）。
 - Zig のプリミティブで CL のエラーが起きた場合は、`return th.signalError(class, initargs)` を呼ぶ。handler を巻き戻さずに実行し（§9）、最終的に必ず `Value.unwind` を返す。
 - `th.fault = .internal` は、診断情報を出力して処理系を停止する。
+- **condition ができるまで（Phase 08〜24）の暫定の扱い**（Phase 08 で決定）：プリミティブ・VM・コンパイラが見つけた Lisp のエラーは、`th.signal(kind, message, datum, expected)` で `th.fault = .lisp_error` と `th.err` に記録し、`Value.unwind` を返す。`kind` は CL の condition 型に対応させる（`type-error`、`unbound-variable`、`undefined-function`、`program-error`、`division-by-zero`、`floating-point-overflow`、`storage-condition` など。未実装の機能は Zilisp の拡張の `zilisp:unimplemented`）。トップレベル（REPL・スクリプト・`--eval`）まで戻って、型の名前と説明を1行で報告する。Phase 25 で、`th.signal` を handler を探して呼ぶ処理に置き換え、最後は toplevel の `abort` restart へ脱出する形にする。
 
 ### 6.7 スタックの大きさ
 
@@ -679,6 +682,7 @@ pub const VmFrame = struct {
 - オペコードは u8 とする。オペランドはリトルエンディアンで、命令ごとに幅を固定する（`k` = 定数表の添字 u16、`i` = 局所変数の添字 u16、`n` = 個数 u8、`rel` = 相対ジャンプ i32）。
 - 添字と**個数**が u16・u8 を超える場合は、接頭命令 `WIDE` で、添字を u32、個数を u32 にする（レビュー #17）。これにより、`call-arguments-limit`（65536）までの引数を直接の呼び出しで渡せる。
 - 試験では、引数の個数が 255・256・65535・65536・65537 の場合（u8 の境界、上限の直前・上限・超過）を確かめる。
+- **`call-arguments-limit` の解釈**（Phase 08 で確定）：CLHS の `call-arguments-limit` は「引数の個数の上限（この値を含まない）」なので、`call-arguments-limit` = 65536 では、渡せる引数は **65535 個まで**である。65536 個・65537 個の呼び出しは、コンパイル時（`apply` では実行時）に `program-error` にする。上の試験の「上限」（65536）は、エラーになることを確かめる。
 - バイトコードは内部形式で、互換性を保証しない。`.zfasl` のヘッダの形式バージョンが一致しない場合は、ロードを拒否する。
 
 ### 7.4 命令表
@@ -706,6 +710,12 @@ pub const VmFrame = struct {
 | 条件 | `HANDLER_PUSH` / `HANDLER_POP` / `RESTART_PUSH` / `RESTART_POP` | — | §9 |
 | 高速経路 | `CONS` `CAR` `CDR` `EQ` `NULL` `ADD2` `SUB2` `LT2` `GT2` `NUMEQ2` 等 | — | fixnum の高速経路と汎用処理へのフォールバック |
 | その他 | `LOAD_TIME_VALUE` / `WIDE` | k / — | |
+
+**Phase 08 で実装した命令**（`src/vm/opcodes.zig`）：`CONST` `NIL` `T` `SMALLINT` `POP` `LOAD_LOCAL` `STORE_LOCAL` `LOAD_CAPTURED` `MAKE_CELL` `CELL_REF` `CELL_SET` `LOAD_SPECIAL` `STORE_SPECIAL` `LOAD_FUNCTION` `MAKE_CLOSURE` `CALL` `CALL_GLOBAL` `RETURN` `JUMP` `JUMP_IF_NIL`、高速経路の `CONS` `CAR` `CDR` `EQ` `NOT`（`null` と `not`）`ADD2` `SUB2` `LT2` `GT2` `LE2` `GE2` `NUMEQ2` `ADD1` `SUB1`、`WIDE`。
+- `STORE_LOCAL`・`STORE_SPECIAL` は、書いた値をスタックに残す（`setq` の値になる）。値が要らない場所では、続けて `POP` を出す。
+- 値スタックのフレームの形：`[base, base+nlocals)` が局所変数（引数が先頭から並ぶ）、その上の `max_stack` 個が式の評価に使う領域。フレームには `extent`（`base + nlocals + max_stack`）を記録し、GC は値スタックを `max(sp, 最上位のフレームの extent)` まで正確に走査する（実行ループは `sp` を局所変数に持つため）。値スタックは起動時に NIL で埋める。
+- 捕捉のない `lambda` の closure は、コンパイル時に1つだけ作って定数表に置く（実行時に確保しない）。
+- **`(funcall f …)` は `CALL` 命令にする**（関数の値を直接呼ぶ）。VM の closure を呼ぶ場合は、同じ実行ループの中でフレームを積む。
 
 **検証器**（レビュー #20）
 - コンパイラが生成した直後のバイトコードは、デバッグビルドで、スタックの深さの整合、ジャンプ先の範囲、定数表の添字の範囲を検証する。
@@ -1307,6 +1317,8 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 | 06 | `src/runtime/heap.zig`（ページ表、サイズクラス、確保の高速経路）、`roots.zig`（明示的ルート、FFI handle） | 確保と参照が安全にできる。確保速度をベンチマークで記録する |
 | 07 | `src/runtime/gc.zig`（ビット表によるマーク、遅延スイープ、保守的スタック走査、`--gc-stress`、poison、統計） | 循環構造を回収できる。stress モードで単体テストが通る。停止時間を記録する |
 | 08 | 最小の Resolver ＋ IR ＋ バイトコード生成 ＋ VM（`quote` `if` `progn` `let` `setq` `lambda` `funcall`、算術、リスト）、REPL | `(+ 1 2)`、`(list 1 2 3)`、クロージャの例題が REPL とファイル実行で動く |
+
+**Phase 08 の CLI**（基本設計 §12.1）：`zilisp`（REPL。入力が終われば終わる）、`zilisp FILE` と `zilisp --script FILE`（フォームを1つ読むごとに評価する。エラーで止まり、終了コード 1。SBCL の `--script` と同じ）、`zilisp --eval TEXT`（値は印字しない。SBCL の `--eval` と同じ）、`zilisp --load FILE`（評価してから REPL）。エラーは標準エラー出力に `ファイル:行:列: 型の名前: 説明` の形で出す。
 
 Phase 12 で、ネイティブバックエンドの最小実装（IR → Zig）を作り、VM とネイティブの結果の一致、Zig によるコンパイル時間、性能、単一の実行ファイルにできること（§16.3）を確認する（基本設計 §15）。
 

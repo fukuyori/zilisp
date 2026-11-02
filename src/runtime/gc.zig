@@ -15,6 +15,7 @@ const heap_mod = @import("heap.zig");
 const object = @import("../values/object.zig");
 const Value = @import("../values/value.zig").Value;
 const Runtime = @import("runtime.zig").Runtime;
+const function = @import("function.zig");
 
 const Heap = heap_mod.Heap;
 
@@ -78,6 +79,24 @@ const Marker = struct {
                 .simple_vector => {
                     const v: *object.SimpleVector = @ptrFromInt(e);
                     for (v.items()) |x| m.markValue(x);
+                },
+                .code => {
+                    const c: *function.Code = @ptrFromInt(e);
+                    m.markValue(c.consts);
+                    m.markValue(c.name);
+                },
+                .closure => {
+                    const c: *function.Closure = @ptrFromInt(e);
+                    m.markValue(c.code);
+                    for (c.captured()) |x| m.markValue(x);
+                },
+                .native_function => {
+                    const f: *function.NativeFunction = @ptrFromInt(e);
+                    m.markValue(f.name);
+                },
+                .value_cell => {
+                    const c: *object.ValueCell = @ptrFromInt(e);
+                    m.markValue(c.value);
                 },
                 // 文字列の中身はバッファ（finalize 待ちの一覧で管理）、double-float は値だけ、
                 // パッケージの本体は Runtime.packages が持つ（ルートとして別に走査する）
@@ -290,6 +309,7 @@ pub fn collect(rt: *Runtime) void {
     }
     rt.roots.forEach(&m, markValueCb);
     rt.handles.forEach(&m, markValueCb);
+    if (rt.thread) |th| th.forEachRoot(&m, markValueCb);
     // 保守的なルート（ネイティブのスタックとレジスタ）
     scanStack(&m, stackTop(rt));
 

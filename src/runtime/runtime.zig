@@ -7,6 +7,8 @@ const object = @import("../values/object.zig");
 const heap_mod = @import("heap.zig");
 const roots_mod = @import("roots.zig");
 const cl_symbols = @import("cl_symbols.zig");
+const thread_mod = @import("thread.zig");
+const primitives = @import("../primitives/primitives.zig");
 
 pub const Value = value_mod.Value;
 pub const ObjKind = object.ObjKind;
@@ -14,6 +16,60 @@ pub const Symbol = object.Symbol;
 pub const SymbolFlags = object.SymbolFlags;
 
 pub const Error = error{OutOfMemory};
+
+/// 処理系がよく使う CL のシンボル（起動時に引いておく）。フィールド名と CL の名前の対応は sym_names
+pub const Syms = struct {
+    quote: Value,
+    @"if": Value,
+    progn: Value,
+    let: Value,
+    setq: Value,
+    lambda: Value,
+    function: Value,
+    declare: Value,
+    // ラムダリストのキーワード
+    @"&optional": Value,
+    @"&rest": Value,
+    @"&key": Value,
+    @"&aux": Value,
+    @"&body": Value,
+    @"&whole": Value,
+    @"&environment": Value,
+    @"&allow-other-keys": Value,
+    // 宣言
+    special: Value,
+    ignore: Value,
+    ignorable: Value,
+    type: Value,
+    ftype: Value,
+    optimize: Value,
+    @"inline": Value,
+    notinline: Value,
+    @"dynamic-extent": Value,
+    // 型の名前（type-error の期待する型）
+    list: Value,
+    number: Value,
+    real: Value,
+    symbol: Value,
+    integer: Value,
+    cons: Value,
+    // 高速経路にする関数（§7.4）
+    car: Value,
+    cdr: Value,
+    eq: Value,
+    null: Value,
+    not: Value,
+    @"+": Value,
+    @"-": Value,
+    @"<": Value,
+    @">": Value,
+    @"<=": Value,
+    @">=": Value,
+    @"=": Value,
+    @"1+": Value,
+    @"1-": Value,
+    funcall: Value,
+};
 
 /// main が記録するスタックの先頭（Windows 以外で、GC の保守的走査の範囲に使う。§3.4）
 pub var main_stack_top: usize = 0;
@@ -56,6 +112,10 @@ pub const Runtime = struct {
     io: ?std.Io = null,
     /// GC の保守的走査の範囲の上端（0 なら OS から取得する。試験で明示的に設定する）
     stack_top: usize = 0,
+    /// よく使う CL のシンボル
+    syms: Syms = undefined,
+    /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
+    thread: ?*thread_mod.Thread = null,
 
     pub fn create(gpa: std.mem.Allocator) Error!*Runtime {
         const rt = try gpa.create(Runtime);
@@ -158,12 +218,21 @@ pub const Runtime = struct {
                 .constant => so.header.flags |= SymbolFlags.constant,
                 .variable => so.header.flags |= SymbolFlags.special,
                 // 関数・マクロ・特殊演算子は、実装するまで「未実装」とする（詳細設計 §8.1）
-                .function, .macro, .special_operator => so.header.flags |= SymbolFlags.unimplemented,
+                .function => so.header.flags |= SymbolFlags.unimplemented,
+                // マクロと特殊演算子は、種類の印も付ける（Resolver が「未実装」の理由を示すため）
+                .macro => so.header.flags |= SymbolFlags.unimplemented | SymbolFlags.macro,
+                .special_operator => so.header.flags |= SymbolFlags.unimplemented | SymbolFlags.special_operator,
                 .other => {},
             }
         }
         rt.t = (rt.findSymbol(rt.cl, "T") orelse unreachable).symbol;
         rt.symbolPtr(rt.t).value = rt.t;
+
+        inline for (@typeInfo(Syms).@"struct".field_names) |field| {
+            const name = comptime upperName(field);
+            @field(rt.syms, field) = (rt.findSymbol(rt.cl, name) orelse @panic("CL のシンボルがありません: " ++ name)).symbol;
+        }
+        try primitives.install(rt);
 
         for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
             const s = try rt.intern(rt.sys, n);
@@ -216,6 +285,11 @@ pub const Runtime = struct {
 
     pub fn cons(rt: *Runtime, car: Value, cdr: Value) Error!Value {
         return rt.heap.cons(car, cdr);
+    }
+
+    /// Zig の真偽値を T・NIL にする
+    pub inline fn boolean(rt: *const Runtime, b: bool) Value {
+        return if (b) rt.t else Value.nil;
     }
 
     pub fn consPtr(v: Value) *object.Cons {
@@ -406,7 +480,10 @@ test "bootstrap creates standard packages and 978 CL symbols" {
     try testing.expect(rt.findPackage("cl") == null);
     const car = rt.findSymbol(rt.cl_user, "CAR").?;
     try testing.expectEqual(SymbolStatus.inherited, car.status);
-    try testing.expect(rt.symbolPtr(car.symbol).hasFlag(SymbolFlags.unimplemented));
+    // 実装済みのプリミティブは「未実装」の印が外れ、まだのものは残る
+    try testing.expect(!rt.symbolPtr(car.symbol).hasFlag(SymbolFlags.unimplemented));
+    try testing.expect(rt.symbolPtr(rt.findSymbol(rt.cl, "MAPCAR").?.symbol).hasFlag(SymbolFlags.unimplemented));
+    try testing.expect(rt.symbolPtr(rt.syms.let).hasFlag(SymbolFlags.special_operator));
     try testing.expectEqual(Value.nil, rt.findSymbol(rt.cl_user, "NIL").?.symbol);
     try testing.expect(rt.symbolPtr(rt.t).value == rt.t);
 }
@@ -482,4 +559,14 @@ test "strings narrow and wide" {
     try testing.expectEqual(@as(u16, 4), Runtime.stringPtr(b).width());
     try testing.expectEqual(@as(usize, 3), Runtime.stringPtr(b).length());
     try testing.expectEqual(@as(u21, 'λ'), Runtime.stringPtr(b).charAt(2));
+}
+
+/// Syms のフィールド名を CL のシンボル名にする（大文字に）
+fn upperName(comptime name: []const u8) []const u8 {
+    comptime {
+        var buf: [name.len]u8 = undefined;
+        for (name, 0..) |c, i| buf[i] = std.ascii.toUpper(c);
+        const out = buf;
+        return &out;
+    }
 }

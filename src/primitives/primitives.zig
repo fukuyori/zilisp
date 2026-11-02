@@ -1,0 +1,76 @@
+//! Zig で書いたプリミティブの登録表（詳細設計 §11.1 の 4）。
+//! 起動時に、CL のシンボルの関数セルに native_function を置き、「未実装」の印を外す。
+
+const std = @import("std");
+const Value = @import("../values/value.zig").Value;
+const runtime = @import("../runtime/runtime.zig");
+const Runtime = runtime.Runtime;
+const SymbolFlags = @import("../values/object.zig").SymbolFlags;
+const function = @import("../runtime/function.zig");
+const numbers = @import("numbers.zig");
+const lists = @import("lists.zig");
+const functions = @import("functions.zig");
+
+const any = function.any_args;
+
+pub const Entry = struct {
+    name: []const u8,
+    impl: function.Impl,
+    min: u32,
+    max: u32,
+};
+
+pub const table = [_]Entry{
+    // 数（numbers.zig）
+    .{ .name = "+", .impl = numbers.plus, .min = 0, .max = any },
+    .{ .name = "-", .impl = numbers.minus, .min = 1, .max = any },
+    .{ .name = "*", .impl = numbers.times, .min = 0, .max = any },
+    .{ .name = "/", .impl = numbers.divide, .min = 1, .max = any },
+    .{ .name = "1+", .impl = numbers.onePlus, .min = 1, .max = 1 },
+    .{ .name = "1-", .impl = numbers.oneMinus, .min = 1, .max = 1 },
+    .{ .name = "=", .impl = numbers.numEq, .min = 1, .max = any },
+    .{ .name = "/=", .impl = numbers.numNe, .min = 1, .max = any },
+    .{ .name = "<", .impl = numbers.lessThan, .min = 1, .max = any },
+    .{ .name = ">", .impl = numbers.greaterThan, .min = 1, .max = any },
+    .{ .name = "<=", .impl = numbers.lessEq, .min = 1, .max = any },
+    .{ .name = ">=", .impl = numbers.greaterEq, .min = 1, .max = any },
+    // リストと述語（lists.zig）
+    .{ .name = "CONS", .impl = lists.cons, .min = 2, .max = 2 },
+    .{ .name = "CAR", .impl = lists.car, .min = 1, .max = 1 },
+    .{ .name = "CDR", .impl = lists.cdr, .min = 1, .max = 1 },
+    .{ .name = "FIRST", .impl = lists.car, .min = 1, .max = 1 },
+    .{ .name = "REST", .impl = lists.cdr, .min = 1, .max = 1 },
+    .{ .name = "LIST", .impl = lists.list, .min = 0, .max = any },
+    .{ .name = "LIST*", .impl = lists.listStar, .min = 1, .max = any },
+    .{ .name = "NULL", .impl = lists.null_, .min = 1, .max = 1 },
+    .{ .name = "NOT", .impl = lists.null_, .min = 1, .max = 1 },
+    .{ .name = "ATOM", .impl = lists.atom, .min = 1, .max = 1 },
+    .{ .name = "CONSP", .impl = lists.consp, .min = 1, .max = 1 },
+    .{ .name = "LISTP", .impl = lists.listp, .min = 1, .max = 1 },
+    .{ .name = "SYMBOLP", .impl = lists.symbolp, .min = 1, .max = 1 },
+    .{ .name = "NUMBERP", .impl = lists.numberp, .min = 1, .max = 1 },
+    .{ .name = "FUNCTIONP", .impl = lists.functionp, .min = 1, .max = 1 },
+    .{ .name = "EQ", .impl = lists.eq, .min = 2, .max = 2 },
+    .{ .name = "EQL", .impl = lists.eql, .min = 2, .max = 2 },
+    // 関数の呼び出しと印字（functions.zig）
+    .{ .name = "FUNCALL", .impl = functions.funcall, .min = 1, .max = any },
+    .{ .name = "APPLY", .impl = functions.apply, .min = 2, .max = any },
+    .{ .name = "PRIN1", .impl = functions.prin1, .min = 1, .max = 1 },
+    .{ .name = "PRINT", .impl = functions.print, .min = 1, .max = 1 },
+    .{ .name = "TERPRI", .impl = functions.terpri, .min = 0, .max = 0 },
+};
+
+pub fn install(rt: *Runtime) runtime.Error!void {
+    for (table) |e| {
+        const found = rt.findSymbol(rt.cl, e.name) orelse std.debug.panic("CL のシンボルがありません: {s}", .{e.name});
+        const sym = found.symbol;
+        const f = try function.makeNative(rt, sym, e.impl, e.min, e.max);
+        const s = rt.symbolPtr(sym);
+        s.function = f;
+        s.header.flags &= ~SymbolFlags.unimplemented;
+    }
+}
+
+test {
+    _ = numbers;
+}

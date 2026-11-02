@@ -8,3 +8,6 @@ pub const roots = @import("runtime/roots.zig");
 pub const runtime = @import("runtime/runtime.zig");
 pub const reader = @import("reader/reader.zig");
 pub const printer = @import("printer/printer.zig");
+pub const thread = @import("runtime/thread.zig");
+pub const value_builder = @import("reader/value_builder.zig");
+pub const eval = @import("compiler/eval.zig");

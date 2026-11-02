@@ -100,20 +100,163 @@ fn stackTop(rt: *Runtime) usize {
     @panic("zilisp: スタックの先頭が分かりません（Runtime.stack_top を設定してください）");
 }
 
-/// callee-saved レジスタをスタックに退避させてから、スタックを走査する（§3.4 手順1）
-noinline fn scanStack(m: *Marker, top: usize) void {
+/// 退避させるレジスタの数（64 ビットの語の数）。
+/// x86_64：rbx rbp rdi rsi r12–r15（rdi・rsi は Windows で callee-saved）＋ Windows の xmm6–xmm15（下位 64 ビット）
+/// aarch64：x19–x29 ＋ d8–d15
+const saved_words = switch (builtin.cpu.arch) {
+    .x86_64 => 8 + 10,
+    .aarch64 => 11 + 8,
+    else => 0,
+};
+
+/// callee-saved レジスタの値を `regs` に書き出し、現在のスタックポインタを返す（§3.4 手順1）。
+/// 呼び出し側のフレームにある値は、レジスタに残っていても、途中の関数がスタックに退避していても見つかる。
+/// メモリを指す書き方を使わず、レジスタを指定した出力だけで読む（Zig の x86_64 バックエンドでも使えるように）。
+inline fn saveRegisters(regs: *[saved_words]usize) usize {
     switch (builtin.cpu.arch) {
-        .x86_64 => asm volatile ("" ::: .{ .rbx = true, .rbp = true, .r12 = true, .r13 = true, .r14 = true, .r15 = true, .memory = true }),
-        .aarch64 => asm volatile ("" ::: .{ .x19 = true, .x20 = true, .x21 = true, .x22 = true, .x23 = true, .x24 = true, .x25 = true, .x26 = true, .x27 = true, .x28 = true, .memory = true }),
-        else => {},
+        .x86_64 => {
+            regs[0] = asm volatile (""
+                : [v] "={rbx}" (-> usize),
+            );
+            regs[1] = asm volatile ("movq %%rbp, %[v]"
+                : [v] "=r" (-> usize),
+            );
+            regs[2] = asm volatile (""
+                : [v] "={rdi}" (-> usize),
+            );
+            regs[3] = asm volatile (""
+                : [v] "={rsi}" (-> usize),
+            );
+            regs[4] = asm volatile (""
+                : [v] "={r12}" (-> usize),
+            );
+            regs[5] = asm volatile (""
+                : [v] "={r13}" (-> usize),
+            );
+            regs[6] = asm volatile (""
+                : [v] "={r14}" (-> usize),
+            );
+            regs[7] = asm volatile (""
+                : [v] "={r15}" (-> usize),
+            );
+            if (builtin.os.tag == .windows) {
+                regs[8] = asm volatile ("movq %%xmm6, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[9] = asm volatile ("movq %%xmm7, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[10] = asm volatile ("movq %%xmm8, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[11] = asm volatile ("movq %%xmm9, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[12] = asm volatile ("movq %%xmm10, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[13] = asm volatile ("movq %%xmm11, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[14] = asm volatile ("movq %%xmm12, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[15] = asm volatile ("movq %%xmm13, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[16] = asm volatile ("movq %%xmm14, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+                regs[17] = asm volatile ("movq %%xmm15, %[v]"
+                    : [v] "=r" (-> usize),
+                );
+            }
+            return asm volatile ("movq %%rsp, %[sp]"
+                : [sp] "=r" (-> usize),
+            );
+        },
+        .aarch64 => {
+            regs[0] = asm volatile (""
+                : [v] "={x19}" (-> usize),
+            );
+            regs[1] = asm volatile (""
+                : [v] "={x20}" (-> usize),
+            );
+            regs[2] = asm volatile (""
+                : [v] "={x21}" (-> usize),
+            );
+            regs[3] = asm volatile (""
+                : [v] "={x22}" (-> usize),
+            );
+            regs[4] = asm volatile (""
+                : [v] "={x23}" (-> usize),
+            );
+            regs[5] = asm volatile (""
+                : [v] "={x24}" (-> usize),
+            );
+            regs[6] = asm volatile (""
+                : [v] "={x25}" (-> usize),
+            );
+            regs[7] = asm volatile (""
+                : [v] "={x26}" (-> usize),
+            );
+            regs[8] = asm volatile (""
+                : [v] "={x27}" (-> usize),
+            );
+            regs[9] = asm volatile (""
+                : [v] "={x28}" (-> usize),
+            );
+            regs[10] = asm volatile ("mov %[v], x29"
+                : [v] "=r" (-> usize),
+            );
+            regs[11] = asm volatile ("fmov %[v], d8"
+                : [v] "=r" (-> usize),
+            );
+            regs[12] = asm volatile ("fmov %[v], d9"
+                : [v] "=r" (-> usize),
+            );
+            regs[13] = asm volatile ("fmov %[v], d10"
+                : [v] "=r" (-> usize),
+            );
+            regs[14] = asm volatile ("fmov %[v], d11"
+                : [v] "=r" (-> usize),
+            );
+            regs[15] = asm volatile ("fmov %[v], d12"
+                : [v] "=r" (-> usize),
+            );
+            regs[16] = asm volatile ("fmov %[v], d13"
+                : [v] "=r" (-> usize),
+            );
+            regs[17] = asm volatile ("fmov %[v], d14"
+                : [v] "=r" (-> usize),
+            );
+            regs[18] = asm volatile ("fmov %[v], d15"
+                : [v] "=r" (-> usize),
+            );
+            return asm volatile ("mov %[sp], sp"
+                : [sp] "=r" (-> usize),
+            );
+        },
+        else => {
+            // 未対応のアーキテクチャ：ローカル変数の位置を下端とする（レジスタは読めない）
+            var marker: usize = 0;
+            std.mem.doNotOptimizeAway(&marker);
+            return @intFromPtr(&marker);
+        },
     }
-    var marker: usize = 0;
-    std.mem.doNotOptimizeAway(&marker);
-    var p = std.mem.alignForward(usize, @intFromPtr(&marker), @sizeOf(usize));
+}
+
+/// callee-saved レジスタを書き出して走査し、現在のスタックポインタから上端までを走査する
+noinline fn scanStack(m: *Marker, top: usize) void {
+    var regs: [saved_words]usize = @splat(0);
+    const sp = saveRegisters(&regs);
+    for (regs) |w| m.markWord(w);
+    var p = std.mem.alignForward(usize, sp, @sizeOf(usize));
     while (p + @sizeOf(usize) <= top) : (p += @sizeOf(usize)) {
         const w = @as(*const usize, @ptrFromInt(p)).*;
         m.markWord(w);
     }
+    std.mem.doNotOptimizeAway(&regs);
 }
 
 pub fn collect(rt: *Runtime) void {
@@ -320,6 +463,91 @@ test "objects referenced only from the native stack survive (conservative scan)"
             try testing.expectEqual(@as(usize, 100), n);
             try testing.expect(rt.heap.stats.conservative_refs >= 1);
             std.mem.doNotOptimizeAway(&list);
+        }
+    }.body);
+}
+
+fn collectFromAsm(rt: *Runtime) callconv(.c) void {
+    collect(rt);
+}
+
+/// 100 個の cons のリストを作り、先頭のアドレスを反転して返す（参照はこの関数の中にしか残らない）
+noinline fn makeHiddenList(rt: *Runtime) !usize {
+    var list = Value.nil;
+    for (0..100) |i| list = try rt.cons(Value.fromFixnum(@intCast(i)), list);
+    return hide(@intFromPtr(list.pointer()));
+}
+
+/// `hidden` を元に戻したアドレスを callee-saved レジスタ（x86_64：r12、aarch64：x19）にだけ置いて GC を呼び、
+/// 戻ったときのそのレジスタの値を反転して返す。スタックにはアドレスが残らない
+noinline fn collectWithRegisterRoot(rt: *Runtime, hidden: usize) usize {
+    const f: *const fn (*Runtime) callconv(.c) void = &collectFromAsm;
+    switch (builtin.cpu.arch) {
+        .x86_64 => {
+            const arg = if (builtin.os.tag == .windows) "rcx" else "rdi";
+            // r15 にスタックポインタを保存し、red zone を避けて 16 バイト境界にそろえ、Windows の shadow space を空ける
+            return asm volatile ("movq %[h], %%r12\n" ++
+                    "notq %%r12\n" ++
+                    "movq %[rt], %%" ++ arg ++ "\n" ++
+                    "movq %%rsp, %%r15\n" ++
+                    "subq $128, %%rsp\n" ++
+                    "andq $-16, %%rsp\n" ++
+                    "subq $32, %%rsp\n" ++
+                    "callq *%[f]\n" ++
+                    "movq %%r15, %%rsp\n" ++
+                    "movq %%r12, %[out]\n" ++
+                    "notq %[out]\n"
+                : [out] "=r" (-> usize),
+                : [h] "r" (hidden),
+                  [rt] "r" (rt),
+                  [f] "r" (f),
+                : .{ .rax = true, .rcx = true, .rdx = true, .rsi = true, .rdi = true, .r8 = true, .r9 = true, .r10 = true, .r11 = true, .r12 = true, .r15 = true, .xmm0 = true, .xmm1 = true, .xmm2 = true, .xmm3 = true, .xmm4 = true, .xmm5 = true, .xmm6 = true, .xmm7 = true, .xmm8 = true, .xmm9 = true, .xmm10 = true, .xmm11 = true, .xmm12 = true, .xmm13 = true, .xmm14 = true, .xmm15 = true, .memory = true, .cc = true });
+        },
+        .aarch64 => {
+            return asm volatile (
+                \\mov x19, %[h]
+                \\mvn x19, x19
+                \\mov x0, %[rt]
+                \\blr %[f]
+                \\mvn %[out], x19
+                : [out] "=r" (-> usize),
+                : [h] "r" (hidden),
+                  [rt] "r" (rt),
+                  [f] "r" (f),
+                : .{ .x0 = true, .x1 = true, .x2 = true, .x3 = true, .x4 = true, .x5 = true, .x6 = true, .x7 = true, .x8 = true, .x9 = true, .x10 = true, .x11 = true, .x12 = true, .x13 = true, .x14 = true, .x15 = true, .x16 = true, .x17 = true, .x19 = true, .x30 = true, .v0 = true, .v1 = true, .v2 = true, .v3 = true, .v4 = true, .v5 = true, .v6 = true, .v7 = true, .v16 = true, .v17 = true, .v18 = true, .v19 = true, .v20 = true, .v21 = true, .v22 = true, .v23 = true, .v24 = true, .v25 = true, .v26 = true, .v27 = true, .v28 = true, .v29 = true, .v30 = true, .v31 = true, .memory = true, .nzcv = true });
+        },
+        else => unreachable,
+    }
+}
+
+/// 反転したアドレスのリストが、回収されずに元の内容のまま残っているか
+noinline fn hiddenListIntact(rt: *Runtime, hidden: usize) bool {
+    var x = Value.fromPointer(@ptrFromInt(unhide(hidden)), .cons);
+    var i: i64 = 99;
+    while (x != Value.nil) : (i -= 1) {
+        if (!isLive(rt, x)) return false;
+        const c = Runtime.consPtr(x);
+        if (c.car != Value.fromFixnum(i)) return false;
+        x = c.cdr;
+    }
+    return i == -1;
+}
+
+test "objects referenced only from a callee-saved register survive" {
+    if (builtin.cpu.arch != .x86_64 and builtin.cpu.arch != .aarch64) return error.SkipZigTest;
+    try withRuntime(struct {
+        fn body(rt: *Runtime) !void {
+            const hidden = try makeHiddenList(rt);
+            clobberStack();
+            const back = collectWithRegisterRoot(rt, hidden);
+            try testing.expectEqual(hidden, back);
+            rt.heap.finishSweep();
+            try testing.expect(hiddenListIntact(rt, hidden));
+            // 対照：どこからも参照しなければ回収される
+            clobberStack();
+            collect(rt);
+            rt.heap.finishSweep();
+            try testing.expect(!presentHidden(rt, hidden));
         }
     }.body);
 }

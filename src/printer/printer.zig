@@ -218,15 +218,15 @@ const testing = std.testing;
 const vb = @import("../reader/value_builder.zig");
 
 fn readPrint(rt: *Runtime, text: []const u8) ![]u8 {
-    var list: std.ArrayList(Value) = .empty;
-    defer list.deinit(testing.allocator);
     var diag: @import("../reader/reader.zig").Diagnostic = .{};
-    try vb.readAll(rt, testing.allocator, text, &list, &diag);
+    var x = try vb.readAll(rt, testing.allocator, text, &diag);
     var out: Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
-    for (list.items, 0..) |v, i| {
-        if (i > 0) try out.writer.writeByte('\n');
-        try prin1(rt, &out.writer, v);
+    var first = true;
+    while (x != Value.nil) : (x = Runtime.consPtr(x).cdr) {
+        if (!first) try out.writer.writeByte('\n');
+        first = false;
+        try prin1(rt, &out.writer, Runtime.consPtr(x).car);
     }
     return out.toOwnedSlice();
 }
@@ -274,6 +274,10 @@ test "symbols print like SBCL 2.6.7" {
         .{ "|A;B|", "|A;B|" },             .{ "nil", "NIL" },         .{ "t", "T" },
         .{ "1ab", "1AB" },                 .{ "|1A|", "|1A|" },       .{ "zl-sys::quasiquote", "ZILISP-SYSTEM:QUASIQUOTE" },
         .{ "zilisp::foo", "ZILISP::FOO" },
+        // 空のエスケープ（||）もエスケープとして扱う（SBCL 2.6.7 と同じ）
+        .{ "1||", "|1|" },         .{ ":||", ":||" },
+        .{ "(a .|| b)", "(A |.| B)" },     .{ "..||", "|..|" },       .{ "||1", "|1|" },
+        .{ "cl-user::||", "||" },
     };
     for (cases) |c| try expectPrint(rt, c[0], c[1]);
 }
@@ -293,6 +297,9 @@ test "other objects print like SBCL 2.6.7" {
         .{ "((a) (b))", "((A) (B))" },                     .{ "#(1 2)", "#(1 2)" },                             .{ "#()", "#()" },
         .{ "(nil)", "(NIL)" },                             .{ "0", "0" },                                       .{ "-5", "-5" },
         .{ "2305843009213693951", "2305843009213693951" }, .{ "-2305843009213693952", "-2305843009213693952" },
+        // 読み飛ばしの最中の #n= は値を返さず、続くオブジェクトが読み飛ばされる（SBCL 2.6.7）
+        .{ "#+nosuch #1=(a b) c", "C" },
+        .{ "(#+nosuch #1=(a b) c)", "(C)" },               .{ "#+nosuch #1=#2=(a) c", "C" },                    .{ "#+nosuch ## c", "C" },
     };
     for (cases) |c| try expectPrint(rt, c[0], c[1]);
 }
@@ -300,12 +307,9 @@ test "other objects print like SBCL 2.6.7" {
 test "read errors from the value builder" {
     const rt = try Runtime.create(testing.allocator);
     defer rt.destroy();
-    var list: std.ArrayList(Value) = .empty;
-    defer list.deinit(testing.allocator);
     var diag: @import("../reader/reader.zig").Diagnostic = .{};
-    for ([_][]const u8{ "nosuchpkg:x", "cl:nosuchsym123", "2305843009213693952", "1/2" }) |t| {
-        list.clearRetainingCapacity();
-        testing.expectError(error.ReaderError, vb.readAll(rt, testing.allocator, t, &list, &diag)) catch |e| {
+    for ([_][]const u8{ "nosuchpkg:x", "cl:nosuchsym123", "2305843009213693952", "1/2", "||:x", "cl-user:" }) |t| {
+        testing.expectError(error.ReaderError, vb.readAll(rt, testing.allocator, t, &diag)) catch |e| {
             std.debug.print("input: {s}\n", .{t});
             return e;
         };
@@ -332,11 +336,13 @@ test "round trip: read, print, read gives an equal structure" {
 test "interned symbols are eq after reading" {
     const rt = try Runtime.create(testing.allocator);
     defer rt.destroy();
-    var list: std.ArrayList(Value) = .empty;
-    defer list.deinit(testing.allocator);
     var diag: @import("../reader/reader.zig").Diagnostic = .{};
-    try vb.readAll(rt, testing.allocator, "foo FOO |FOO| cl-user::foo #:foo car cl:car", &list, &diag);
-    const v = list.items;
+    var x = try vb.readAll(rt, testing.allocator, "foo FOO |FOO| cl-user::foo #:foo car cl:car", &diag);
+    var v: [7]Value = undefined;
+    for (&v) |*it| {
+        it.* = Runtime.consPtr(x).car;
+        x = Runtime.consPtr(x).cdr;
+    }
     try testing.expect(v[0] == v[1] and v[1] == v[2] and v[2] == v[3]);
     try testing.expect(v[4] != v[0]);
     try testing.expect(v[5] == v[6]);

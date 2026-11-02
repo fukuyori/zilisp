@@ -171,23 +171,38 @@ pub const Runtime = struct {
         }
     }
 
+    /// 必要な確保をすべて済ませてから、パッケージの一覧に登録する（途中で失敗しても一覧は変わらない）
     fn makePackage(rt: *Runtime, name: []const u8, nicknames: []const []const u8) Error!*PackageData {
         const p = try rt.gpa.create(PackageData);
         errdefer rt.gpa.destroy(p);
+        const name_copy = try rt.gpa.dupe(u8, name);
+        errdefer rt.gpa.free(name_copy);
         const nicks = try rt.gpa.alloc([]const u8, nicknames.len);
-        for (nicknames, 0..) |n, i| nicks[i] = try rt.gpa.dupe(u8, n);
-        p.* = .{ .name = try rt.gpa.dupe(u8, name), .nicknames = nicks };
-        try rt.packages.append(rt.gpa, p);
+        errdefer rt.gpa.free(nicks);
+        var copied: usize = 0;
+        errdefer for (nicks[0..copied]) |n| rt.gpa.free(n);
+        for (nicknames, 0..) |n, i| {
+            nicks[i] = try rt.gpa.dupe(u8, n);
+            copied = i + 1;
+        }
+        try rt.packages.ensureUnusedCapacity(rt.gpa, 1);
         const obj = try rt.heap.create(object.Package, 0);
+        p.* = .{ .name = name_copy, .nicknames = nicks };
         obj.* = .{ .header = .{ .kind = .package }, .data = p };
         p.obj = Value.fromPointer(obj, .other);
+        rt.packages.appendAssumeCapacity(p);
         return p;
     }
 
+    /// 表に名前とシンボルを入れる。キーは表が所有する複製。失敗しても表は変わらない
     fn putSymbol(rt: *Runtime, table: *std.StringHashMapUnmanaged(Value), name: []const u8, sym: Value) Error!void {
-        const gop = try table.getOrPut(rt.gpa, name);
-        if (!gop.found_existing) gop.key_ptr.* = try rt.gpa.dupe(u8, name);
-        gop.value_ptr.* = sym;
+        if (table.getPtr(name)) |v| {
+            v.* = sym;
+            return;
+        }
+        const key = try rt.gpa.dupe(u8, name);
+        errdefer rt.gpa.free(key);
+        try table.put(rt.gpa, key, sym);
     }
 
     // ------------------------------------------------------------------
@@ -257,6 +272,21 @@ pub const Runtime = struct {
             const n = std.unicode.utf8Encode(s.charAt(i), &b) catch unreachable;
             try w.writeAll(b[0..n]);
         }
+    }
+
+    /// リスト `list`（長さ `len`）の要素からベクタを作る。確保の間、list は呼び出し側が保持していること
+    /// （この関数の引数として生きているので、ネイティブのスタックかレジスタにある：§3.4）
+    pub fn makeVectorFromList(rt: *Runtime, list: Value, len: usize) Error!Value {
+        const v = try rt.heap.create(object.SimpleVector, len * @sizeOf(Value));
+        v.header = .{ .kind = .simple_vector, .len = @intCast(len) };
+        var x = list;
+        for (v.items()) |*it| {
+            const c = consPtr(x);
+            it.* = c.car;
+            x = c.cdr;
+        }
+        std.debug.assert(x == Value.nil);
+        return Value.fromPointer(v, .other);
     }
 
     pub fn makeVector(rt: *Runtime, items: []const Value) Error!Value {
@@ -359,8 +389,9 @@ pub const Runtime = struct {
         defer buf.deinit();
         writeStringUtf8(name_v, &buf.writer) catch return error.OutOfMemory;
         const name = buf.written();
-        if (pkg.internal.fetchRemove(name)) |kv| rt.gpa.free(kv.key);
+        // 外部の表に入れてから内部の表から除く（途中で失敗してもシンボルを失わない）
         try rt.putSymbol(&pkg.external, name, sym);
+        if (pkg.internal.fetchRemove(name)) |kv| rt.gpa.free(kv.key);
     }
 };
 
@@ -378,6 +409,43 @@ test "bootstrap creates standard packages and 978 CL symbols" {
     try testing.expect(rt.symbolPtr(car.symbol).hasFlag(SymbolFlags.unimplemented));
     try testing.expectEqual(Value.nil, rt.findSymbol(rt.cl_user, "NIL").?.symbol);
     try testing.expect(rt.symbolPtr(rt.t).value == rt.t);
+}
+
+fn createAndDestroy(gpa: std.mem.Allocator) !void {
+    const rt = try Runtime.create(gpa);
+    rt.destroy();
+}
+
+test "allocation failure at any point of bootstrap frees everything" {
+    try testing.checkAllAllocationFailures(testing.allocator, createAndDestroy, .{});
+}
+
+fn internAndExport(gpa: std.mem.Allocator, rt: *Runtime) !void {
+    _ = gpa;
+    const s = try rt.intern(rt.cl_user, "NEW-SYMBOL-FOR-OOM-TEST");
+    try rt.exportSymbol(rt.cl_user, s);
+}
+
+test "allocation failure in intern and export keeps the tables consistent" {
+    var i: usize = 0;
+    while (true) : (i += 1) {
+        var failing = testing.FailingAllocator.init(testing.allocator, .{ .fail_index = std.math.maxInt(usize) });
+        const rt = try Runtime.create(failing.allocator());
+        defer rt.destroy();
+        // 起動が終わってから i 回目の確保を失敗させる
+        failing.fail_index = failing.alloc_index + i;
+        internAndExport(failing.allocator(), rt) catch |err| {
+            try testing.expectEqual(error.OutOfMemory, err);
+            // 失敗しても、表は壊れていない（あるなら正しいシンボルを指す）
+            if (rt.findSymbol(rt.cl_user, "NEW-SYMBOL-FOR-OOM-TEST")) |f| {
+                try testing.expect(Runtime.kindOf(f.symbol) == .symbol);
+            }
+            continue;
+        };
+        try testing.expectEqual(SymbolStatus.external, rt.findSymbol(rt.cl_user, "NEW-SYMBOL-FOR-OOM-TEST").?.status);
+        break;
+    }
+    try testing.expect(i > 0);
 }
 
 test "intern identity (eq)" {

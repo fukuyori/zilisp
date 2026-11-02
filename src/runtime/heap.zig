@@ -51,6 +51,10 @@ pub const Page = struct {
     cursor: u32 = 0,
     /// large_head：ページ数。large_tail：先頭のページまでの距離
     large: u32 = 0,
+    /// 空きページの一覧（Heap.free_pages）に入っているか（同じページを重ねて入れないため）
+    in_free_list: bool = false,
+    /// large_head：オブジェクトの大きさ（バイト。4 GiB を超える場合もあるので usize）
+    large_bytes: usize = 0,
     /// ページの先頭のアドレス
     addr: usize = 0,
     alloc_bits: [bitmap_words]u64 = @splat(0),
@@ -147,8 +151,11 @@ pub const Heap = struct {
     current: [size_classes.len + 1]?*Page = @splat(null),
     /// サイズクラスごとの、空きの枠があるページ（Phase 07 のスイープで追加する）
     partial: [size_classes.len + 1]std.ArrayList(*Page) = @splat(.empty),
-    /// 空きページ（1 ページずつ使う場合）。新しいチャンクのページは、アドレスの若い順に取り出せるよう積む
+    /// 空きページ（1 ページずつ使う場合）。新しいチャンクのページは、アドレスの若い順に取り出せるよう積む。
+    /// 1 ページは多くても 1 回しか入らない（Page.in_free_list）。容量は全ページ数を確保しておくので、追加は失敗しない
     free_pages: std.ArrayList(*Page) = .empty,
+    /// すべてのチャンクのページ数の合計
+    total_pages: usize = 0,
     /// GC の後、まだ掃除していないページ（サイズクラスごと）
     unswept: [size_classes.len + 1]std.ArrayList(*Page) = @splat(.empty),
     finalizable: std.ArrayList(Finalizable) = .empty,
@@ -288,7 +295,8 @@ pub const Heap = struct {
             pg.alloc_bits = @splat(0);
             pg.mark_bits = @splat(0);
             pg.slots = 1;
-            pg.slot_size = @intCast(@min(size, std.math.maxInt(u32)));
+            pg.slot_size = 0;
+            pg.large_bytes = if (i == 0) size else 0;
             pg.used = 0;
         }
         Page.setBit(&p[0].alloc_bits, 0);
@@ -302,13 +310,14 @@ pub const Heap = struct {
     fn freePages(h: *Heap, n: usize) error{OutOfMemory}![]Page {
         if (n == 1) {
             while (h.free_pages.pop()) |p| {
+                p.in_free_list = false;
+                // 複数ページの確保で使われたページは一覧に残っているので読み飛ばす
                 if (p.kind == .free) return @as([*]Page, @ptrCast(p))[0..1];
             }
             const c = try h.newChunk(pages_per_chunk);
             // 先頭のページを返し、残りを空きページの一覧に（若い順に取り出せるよう逆順で）積む
-            try h.free_pages.ensureUnusedCapacity(h.gpa, c.pages.len - 1);
             var i: usize = c.pages.len;
-            while (i > 1) : (i -= 1) h.free_pages.appendAssumeCapacity(&c.pages[i - 1]);
+            while (i > 1) : (i -= 1) h.pushFree(&c.pages[i - 1]);
             return c.pages[0..1];
         }
         // 複数ページ：既存のチャンクの中から連続した空きを探す（大きいオブジェクトは少ないため単純に探す）
@@ -320,12 +329,16 @@ pub const Heap = struct {
             }
         }
         const c = try h.newChunk(@max(n, pages_per_chunk));
-        if (c.pages.len > n) {
-            try h.free_pages.ensureUnusedCapacity(h.gpa, c.pages.len - n);
-            var i: usize = c.pages.len;
-            while (i > n) : (i -= 1) h.free_pages.appendAssumeCapacity(&c.pages[i - 1]);
-        }
+        var i: usize = c.pages.len;
+        while (i > n) : (i -= 1) h.pushFree(&c.pages[i - 1]);
         return c.pages[0..n];
+    }
+
+    /// 空きページを一覧に入れる。既に入っていれば何もしない。容量は newChunk で確保済み
+    fn pushFree(h: *Heap, p: *Page) void {
+        if (p.in_free_list) return;
+        p.in_free_list = true;
+        h.free_pages.appendAssumeCapacity(p);
     }
 
     fn newChunk(h: *Heap, pages: usize) error{OutOfMemory}!*Chunk {
@@ -339,10 +352,13 @@ pub const Heap = struct {
         const c = try h.gpa.create(Chunk);
         errdefer h.gpa.destroy(c);
         c.* = .{ .region = region, .mem = mem, .pages = page_infos };
+        // 空きページの一覧が全ページを入れられるようにしておく（pushFree は失敗しない）
+        try h.free_pages.ensureTotalCapacity(h.gpa, h.total_pages + page_infos.len);
         // アドレスの順に並べる（findObject の二分探索のため）
         var idx: usize = h.chunks.items.len;
         while (idx > 0 and h.chunks.items[idx - 1].base() > c.base()) : (idx -= 1) {}
         try h.chunks.insert(h.gpa, idx, c);
+        h.total_pages += page_infos.len;
         h.stats.chunks += 1;
         return c;
     }
@@ -381,7 +397,7 @@ pub const Heap = struct {
             .large_head, .large_tail => {
                 if (p.kind == .large_tail) p = &c.pages[pi - p.large];
                 if (!Page.testBit(&p.alloc_bits, 0)) return null;
-                if (addr >= p.addr + p.slot_size) return null; // オブジェクトの末尾より後ろ
+                if (addr - p.addr >= p.large_bytes) return null; // オブジェクトの末尾より後ろ
                 return .{ .start = p.addr, .page = p, .slot = 0, .is_cons = false };
             },
         }
@@ -446,7 +462,7 @@ pub const Heap = struct {
         p.cursor = 0;
         if (used == 0) {
             p.kind = .free;
-            h.free_pages.append(h.gpa, p) catch {}; // 一覧に入れられなくても、確保の時に連続した空きとして見つかる
+            h.pushFree(p);
             return false;
         }
         return used < p.slots;
@@ -488,7 +504,8 @@ pub const Heap = struct {
                             if (h.poison) @memset(@as([*]u8, @ptrFromInt(pg.addr))[0..page_size], 0xAA);
                             pg.kind = .free;
                             pg.alloc_bits = @splat(0);
-                            h.free_pages.append(h.gpa, pg) catch {};
+                            pg.large_bytes = 0;
+                            h.pushFree(pg);
                         }
                     }
                 },
@@ -564,6 +581,36 @@ test "large objects span pages" {
     const ba = @intFromPtr(big);
     try testing.expectEqual(ba, h.findObject(ba + 7_999_999).?.start);
     try testing.expect(h.stats.chunks >= 2);
+}
+
+test "large objects record their exact size beyond u32" {
+    // 4 GiB を超える確保は試験では行わず、大きさの記録と途中のポインタの判定だけを確かめる
+    var h = Heap.init(testing.allocator);
+    defer h.deinit();
+    const v = try h.create(object.SimpleVector, 100_000);
+    const va = @intFromPtr(v);
+    const p = h.findObject(va).?.page;
+    try testing.expectEqual(@as(usize, @sizeOf(object.SimpleVector) + 100_000), p.large_bytes);
+    try testing.expect(h.findObject(va + p.large_bytes - 1) != null);
+    try testing.expect(h.findObject(va + p.large_bytes) == null);
+}
+
+test "free page list does not grow when large objects are reused" {
+    var h = Heap.init(testing.allocator);
+    defer h.deinit();
+    for (0..200) |_| {
+        _ = try h.create(object.SimpleVector, 3 * page_size);
+        // 何もマークせずに回収する（大きいオブジェクトはその場で空きページに戻る）
+        h.afterMark(0, 0);
+        h.finishSweep();
+    }
+    try testing.expect(h.free_pages.items.len <= h.total_pages);
+    var seen: std.AutoHashMapUnmanaged(*Page, void) = .empty;
+    defer seen.deinit(testing.allocator);
+    for (h.free_pages.items) |pg| {
+        const gop = try seen.getOrPut(testing.allocator, pg);
+        try testing.expect(!gop.found_existing);
+    }
 }
 
 test "many conses fill multiple pages and chunks" {

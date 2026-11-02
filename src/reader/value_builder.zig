@@ -118,29 +118,64 @@ pub const ValueBuilder = struct {
     }
 
     pub fn vectorEnd(b: *ValueBuilder, list: *List) Error!Value {
-        const items = try b.rt.gpa.alloc(Value, list.count);
-        defer b.rt.gpa.free(items);
-        var x = list.head;
-        for (items) |*it| {
-            const c = Runtime.consPtr(x);
-            it.* = c.car;
-            x = c.cdr;
-        }
-        return b.rt.makeVector(items);
+        // 要素を Zig のヒープに写さず、ベクタを確保してからリストから直接埋める
+        // （写した先は GC が走査しないため。§3.5）
+        return b.rt.makeVectorFromList(list.head, list.count);
     }
 };
 
-/// テキストから全てのデータを読む（試験・--read 用）
-pub fn readAll(rt: *Runtime, gpa: std.mem.Allocator, text: []const u8, out: *std.ArrayList(Value), diag: *Diagnostic) Error!void {
+/// テキストから全てのデータを読み、読んだ順のリスト（Lisp の値）で返す（試験用）。
+/// 読んでいる間は、それまでに読んだデータを明示的なルートに登録しておく（Zig のヒープには置かない：§3.5）。
+/// 返したリストは、呼び出し側が生かしておくこと（ネイティブのスタックにある値は GC のルートになる）。
+pub fn readAll(rt: *Runtime, gpa: std.mem.Allocator, text: []const u8, diag: *Diagnostic) Error!Value {
     var src = reader.Source.init(text, 0);
     var b: ValueBuilder = .{ .rt = rt };
     var r = reader.Reader(ValueBuilder).init(gpa, &src, &b, .{});
     defer r.deinit();
+    const root = try rt.roots.register(Value.nil);
+    defer _ = rt.roots.unregister(root);
+    var last = Value.nil;
     while (true) {
         const v = r.read() catch |err| {
             diag.* = r.diagnostic;
             return err;
-        };
-        try out.append(gpa, v orelse break);
+        } orelse break;
+        const c = try rt.cons(v, Value.nil);
+        if (last == Value.nil) {
+            _ = rt.roots.set(root, c);
+        } else {
+            Runtime.consPtr(last).cdr = c;
+        }
+        last = c;
     }
+    return rt.roots.get(root).?;
+}
+
+const testing = std.testing;
+
+test "vectors and lists of heap objects survive collection during reading (gc stress)" {
+    const rt = try Runtime.create(testing.allocator);
+    defer rt.destroy();
+    // 走査の上端はこの関数のフレーム。値を扱う本体は inline 展開しない別の関数で行う（gc.zig の withRuntime と同じ）
+    rt.stack_top = @frameAddress();
+    try @call(.never_inline, readVectorsUnderStress, .{rt});
+}
+
+fn readVectorsUnderStress(rt: *Runtime) !void {
+    rt.heap.stress = true;
+    defer rt.heap.stress = false;
+    var diag: Diagnostic = .{};
+    const text = "#(\"a\" #:b (c \"d\") 1.5d0 #(\"e\")) (\"f\" #:g) \"h\"";
+    var x = try readAll(rt, testing.allocator, text, &diag);
+    rt.heap.stress = false;
+    rt.collect();
+    rt.heap.finishSweep();
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    const printer = @import("../printer/printer.zig");
+    while (x != Value.nil) : (x = Runtime.consPtr(x).cdr) {
+        try printer.prin1(rt, &out.writer, Runtime.consPtr(x).car);
+        try out.writer.writeByte(' ');
+    }
+    try testing.expectEqualStrings("#(\"a\" #:B (C \"d\") 1.5d0 #(\"e\")) (\"f\" #:G) \"h\" ", out.written());
 }

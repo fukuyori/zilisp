@@ -45,7 +45,8 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | `@call(.always_tail, …)` | LLVM を使うビルドでは使える（x86_64-windows の Debug・ReleaseFast、全ターゲットの ReleaseFast）。**x86_64-linux の Debug ビルドではコンパイルエラーになる**（Zig 自前の x86_64 用コード生成器 `stage2_x86_64` が末尾呼び出しに対応していない）。末尾呼び出しを使うコードは、Debug ビルドでも LLVM を使う設定にするか、代わりの方式（詳細設計 §7A.3 のループ化・トランポリン）を用意する | §7A.3 |
 | `@"…"` の識別子 | 使える（`@"cl-user::foo-bar?"` の関数を定義・呼び出し）。生成したシンボル名がデバッガ・リンカでどう表示されるかは未確認 | §7A.5 C1 |
 | `std.mem.doNotOptimizeAway` | 使える（値・ポインタの両方） | §3.4 |
-| callee-saved レジスタの退避 | 空のインラインアセンブリに clobber を指定する書き方が使える：x86_64 は `asm volatile ("" ::: .{ .rbx = true, .rbp = true, .r12 = true, .r13 = true, .r14 = true, .r15 = true, .memory = true })`、aarch64 は `.x19`〜`.x28`。これで、コンパイラが該当のレジスタをスタックに退避する | §3.4 手順1 |
+| callee-saved レジスタの退避 | 空のインラインアセンブリに clobber を指定する書き方はコンパイルできるが、退避先がローカル変数より下に置かれない保証がない。Phase 07 のレビューを受けて、**レジスタの値を直接読む方式**に変更した：`asm volatile ("" : [v] "={rbx}" (-> usize))`。制約の文字列は文字列リテラルでなければならない（`"={" ++ r ++ "}"` はコンパイルエラー。命令の文字列の方は `++` で組み立ててよい） | §3.4 手順1 |
+| インラインアセンブリの制限 | (1) メモリを指す書き方 `movq %%rbx, 0(%[r])` は、Zig 自前の x86_64 用コード生成器（x86_64-linux の Debug）で `invalid memory operand` になる。(2) フレームポインタ `"={rbp}"`（ReleaseSafe・ReleaseFast）・`"={x29}"`（aarch64）は `Interference usage of base pointer/frame pointer`・`couldn't allocate output register` になるので、`movq %%rbp, %[v]` / `mov %[v], x29` と `"=r"` で読む。(3) スタックポインタは `movq %%rsp, %[sp]` / `mov %[sp], sp`。(4) clobber の名前は `std.lang.assembly.Clobbers`（x86_64 の条件コードは `.cc`、aarch64 は `.nzcv`） | §3.4 |
 | `extern struct` を含む error union、`callconv(.c)` | どちらもコンパイル・実行できる | §6.2 |
 | ビルドの種類 | `@import("builtin").mode` の型は `std.lang.Optimize` で、値は `.debug`・`.safe`・`.fast`・`.small`（旧 `.Debug`・`.ReleaseSafe` など） | Phase 07 |
 | `@frameAddress()` | 最適化ありのビルドでは、その関数自身のローカル変数が `@frameAddress()` より高いアドレスに置かれることがある。GC の保守的走査の上端に、値を持つ関数自身のフレームの位置を使ってはならない（詳細設計 §3.4） | §3.4 |

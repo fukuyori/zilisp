@@ -91,6 +91,10 @@ pub fn Reader(comptime Builder: type) type {
         options: Options = .{},
         diagnostic: Diagnostic = .{},
         token: std.ArrayList(TokenChar) = .empty,
+        /// 読んでいるトークンで | によるエスケープを通った位置（その時点の token の長さ）の最小と最大。
+        /// 空のエスケープ（||）は文字を増やさないので、エスケープを通った事実をここで持つ
+        escape_first: ?usize = null,
+        escape_last: ?usize = null,
         scratch: std.ArrayList(u8) = .empty,
         scratch2: std.ArrayList(u8) = .empty,
         /// backquote の入れ子の深さ
@@ -331,7 +335,10 @@ pub fn Reader(comptime Builder: type) type {
                 },
                 'P', 'S', 'C', 'A', '.', '=', '#' => {
                     if (self.suppress) {
-                        if (ch.cp != '#' and ch.cp != '=') _ = try self.readRequired(loc, "# の後");
+                        // #n= は値を返さず、続くオブジェクトがそのまま読み飛ばしの対象になる
+                        // （SBCL 2.6.7：#+nosuch #1=(a b) c → C）。## は NIL を返す
+                        if (ch.cp == '=') return null;
+                        if (ch.cp != '#') _ = try self.readRequired(loc, "# の後");
                         return try self.builder.nil(loc);
                     }
                     return self.fail(loc, switch (syntax.upcase(ch.cp)) {
@@ -528,6 +535,8 @@ pub fn Reader(comptime Builder: type) type {
         fn readToken(self: *Self, mode: TokenMode) Error!Obj {
             const start = self.src.loc();
             self.token.clearRetainingCapacity();
+            self.escape_first = null;
+            self.escape_last = null;
             var in_multiple = false;
             while (true) {
                 const ch_opt = try self.peek();
@@ -560,6 +569,9 @@ pub fn Reader(comptime Builder: type) type {
                     .multiple_escape => {
                         self.src.advance(ch);
                         in_multiple = true;
+                        const at = self.token.items.len;
+                        if (self.escape_first == null) self.escape_first = at;
+                        self.escape_last = at;
                     },
                     .invalid => {
                         if (self.suppress) {
@@ -581,9 +593,9 @@ pub fn Reader(comptime Builder: type) type {
 
         fn interpretToken(self: *Self, loc: SourceLoc, mode: TokenMode) Error!Obj {
             const tok = self.token.items;
-            var any_escaped = false;
+            var any_escaped = self.escape_first != null;
             var all_ascii = true;
-            var all_dots = true;
+            var all_dots = !any_escaped;
             for (tok) |c| {
                 if (c.escaped) any_escaped = true;
                 if (c.cp > 0x7F) all_ascii = false;
@@ -625,8 +637,12 @@ pub fn Reader(comptime Builder: type) type {
                 const used: usize = if (double) 2 else 1;
                 if (colons > used) return self.fail(loc, "トークンにコロンが多すぎます");
                 name_start = ci + used;
-                if (name_start >= tok.len) return self.fail(loc, "コロンの後にシンボル名がありません");
-                if (ci == 0) {
+                // :|| のように、コロンの後が空のエスケープなら名前は空文字列
+                const name_escaped = if (self.escape_last) |e| e >= name_start else false;
+                if (name_start >= tok.len and !name_escaped) return self.fail(loc, "コロンの後にシンボル名がありません");
+                // ||:x のように、コロンの前が空のエスケープならパッケージ名は空文字列
+                const pkg_escaped = if (self.escape_first) |e| e <= ci else false;
+                if (ci == 0 and !pkg_escaped) {
                     pkg = .keyword; // :name と ::name（SBCL 2.6.7 と同じく ::name もキーワードとする）
                 } else {
                     try self.encode(tok[0..ci], &self.scratch2);

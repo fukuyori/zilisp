@@ -460,7 +460,7 @@ seq	id	outcome	detail
 00472	chapters/18-Level 13.md#L455	zilisp-error	未実装：HANDLER-CASE
 00473	chapters/18-Level 13.md#L477	zilisp-error	未実装：DEFINE-CONDITION
 00474	chapters/18-Level 13.md#L510	zilisp-error	未実装：DEFINE-CONDITION
-00475	chapters/18-Level 13.md#L545	zilisp-error	未実装：UNWIND-PROTECT
+00475	chapters/18-Level 13.md#L545	zilisp-error	未実装：HANDLER-CASE
 00476	chapters/18-Level 13.md#L585	both-error	
 00477	chapters/18-Level 13.md#L592	zilisp-error	未実装：HANDLER-CASE
 00478	chapters/18-Level 13.md#L609	both-error	

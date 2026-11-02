@@ -194,7 +194,7 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
     for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind", rt.syms.@"multiple-value-bind", rt.syms.@"multiple-value-list" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;
     // Resolver が直接解釈する特殊演算子
-    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when", rt.syms.@"multiple-value-prog1", rt.syms.@"multiple-value-call" }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
+    for ([_]Value{ rt.syms.progv, rt.syms.@"eval-when", rt.syms.@"multiple-value-prog1", rt.syms.@"multiple-value-call", rt.syms.block, rt.syms.@"return-from", rt.syms.@"catch", rt.syms.throw, rt.syms.@"unwind-protect" }) |op| rt.symbolPtr(op).header.flags &= ~SymbolFlags.unimplemented;
 }
 
 test {

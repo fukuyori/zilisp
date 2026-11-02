@@ -45,6 +45,8 @@ pub const Lambda = struct {
     fn_kind: FnKind = .none,
     /// 最後の引数が、必須の引数の後ろの引数をまとめたリスト（&optional・&rest・&key・&aux があるとき。Phase 17）
     rest_param: bool = false,
+    /// この lambda の中の block（Phase 18）。脱出先のエントリが要る block の識別子の局所変数は、本体を解決した後で割り当てる
+    blocks: std.ArrayList(*Block) = .empty,
 
     pub const FnKind = enum { none, global, flet, labels, macro };
 
@@ -52,6 +54,14 @@ pub const Lambda = struct {
         const s = l.next_slot;
         l.next_slot += 1;
         l.nlocals = @max(l.nlocals, l.next_slot);
+        return s;
+    }
+
+    /// 他の局所変数と重ならない番号を、使っている番号の後ろに加える（本体を解決した後で使う）
+    pub fn newSlotAtEnd(l: *Lambda) u32 {
+        const s = l.nlocals;
+        l.nlocals += 1;
+        l.next_slot = @max(l.next_slot, l.nlocals);
         return s;
     }
 
@@ -64,6 +74,19 @@ pub const Lambda = struct {
 };
 
 pub const no_slot = std.math.maxInt(u32);
+
+/// block（Phase 18。§6.4）
+pub const Block = struct {
+    name: Value,
+    /// block を持つ lambda
+    lambda: *Lambda,
+    /// 実行時の識別子（制御スタックのエントリの token）を入れる局所変数。needs_entry のときだけ使う
+    token: *Var,
+    /// 実行時の脱出（別の lambda から、または unwind-protect を横切る return-from）があり、制御スタックにエントリを積む
+    needs_entry: bool = false,
+    /// 同じ lambda の中のジャンプで脱出する return-from がある
+    has_local: bool = false,
+};
 
 pub fn hasSpecial(vars: []const *Var) bool {
     for (vars) |v| if (v.special) return true;
@@ -109,5 +132,15 @@ pub const Node = struct {
         /// (multiple-value-bind (vars...) form body...)。vars の束縛は let_ と同じ（特殊変数を含む）
         mv_bind: struct { vars: []*Var, form: *Node, body: *Node, depth_slot: u32 = no_slot },
         lambda: *Lambda,
+        /// (block 名前 本体...)（Phase 18）
+        block: struct { blk: *Block, body: *Node },
+        /// (return-from 名前 値)。nonlocal なら実行時の脱出（制御スタックを使う）、そうでなければジャンプ
+        return_from: struct { blk: *Block, value: *Node, nonlocal: bool },
+        /// (catch タグ 本体...)
+        catch_: struct { tag: *Node, body: *Node },
+        /// (throw タグ 値)
+        throw_: struct { tag: *Node, value: *Node },
+        /// (unwind-protect 保護するフォーム cleanup...)
+        unwind_protect: struct { protected: *Node, cleanup: []*Node },
     };
 };

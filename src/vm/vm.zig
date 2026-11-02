@@ -130,6 +130,8 @@ pub fn run(th: *Thread, closure: Value, args: []const Value) Value {
     // エラーで抜けるときは、この実行の中で作った動的束縛を戻す（§6.5。handler・restart ができる Phase 25 までは
     // エラーはトップレベルまで戻るので、途中で受け止められることはない）
     const entry_binding = th.binding_depth;
+    // この実行の中で積む制御スタックのエントリは、この深さより上（§6.4）
+    const entry_control = th.control_depth;
     // 引数を値スタックの上に写す（args は呼び出し側の領域なので、後で上書きされても安全にする：§6.2 agy #9）
     if (vm.sp + args.len > vm.stack.len) return stackOverflow(th);
     const base = vm.sp;
@@ -139,13 +141,54 @@ pub fn run(th: *Thread, closure: Value, args: []const Value) Value {
         vm.sp = entry_sp;
         return Value.unwind;
     }
-    const r = execute(th, entry_fp);
+    var r = execute(th, entry_fp);
+    // 脱出・エラーで抜けてきたら、この実行が積んだエントリ（block・catch・unwind-protect）を内側から調べ、
+    // 再開する場所（脱出先、cleanup）があれば、そこから実行を続ける
+    while (r == Value.unwind and resumeAfterUnwind(th, entry_control)) r = execute(th, entry_fp);
     if (r == Value.unwind) {
         vm.fp = entry_fp;
         vm.sp = entry_sp;
         th.unbindTo(entry_binding);
     }
     return r;
+}
+
+/// Value.unwind で execute から抜けたとき、この run が積んだ制御スタックのエントリを内側から順に処理する。
+/// unwind-protect なら cleanup の先頭、脱出先の block・catch ならその後ろで再開するよう VM の状態を合わせて true を返す。
+/// どれもなければ（脱出先はこの run の外、またはエラー）、エントリを取り除いて false を返す
+fn resumeAfterUnwind(th: *Thread, entry_control: usize) bool {
+    const vm = &th.vm;
+    while (th.control_depth > entry_control) {
+        const e = th.control[th.control_depth - 1];
+        if (e.kind == .unwind_protect) {
+            th.control_depth -= 1;
+            restoreTo(th, e);
+            th.uwpBegin();
+            // cleanup の先頭の深さは、保護したフォームの値と印の2つを積んだ深さ（印 -1 は脱出・エラーの途中）
+            vm.stack[vm.sp] = Value.nil;
+            vm.stack[vm.sp + 1] = Value.fromFixnum(-1);
+            vm.sp += 2;
+            return true;
+        }
+        if (th.isTarget()) {
+            restoreTo(th, e);
+            const primary = th.landTransfer();
+            vm.stack[vm.sp] = primary;
+            vm.sp += 1;
+            return true;
+        }
+        th.control_depth -= 1;
+    }
+    return false;
+}
+
+/// エントリを積んだ時点の VM の状態（フレーム・値スタック・動的束縛）に戻し、再開する命令の位置を設定する
+fn restoreTo(th: *Thread, e: thread_mod.ControlEntry) void {
+    const vm = &th.vm;
+    vm.fp = e.fp;
+    vm.sp = e.sp;
+    th.unbindTo(e.binding_depth);
+    vm.frames[vm.fp - 1].ip = e.ip;
 }
 
 /// 添字・個数のオペランドを読む（WIDE の後なら 32 ビット）
@@ -198,7 +241,8 @@ fn execute(th: *Thread, entry_fp: usize) Value {
     var consts = code.constants();
     var base: usize = frame.base;
     var sp: usize = vm.sp;
-    var ip: usize = 0;
+    // 新しいフレームでは 0。脱出の後で再開するときは、再開する位置（resumeAfterUnwind が設定する）
+    var ip: usize = frame.ip;
     var wide = false;
 
     dispatch: switch (next(bc, &ip)) {
@@ -549,6 +593,68 @@ fn execute(th: *Thread, entry_fp: usize) Value {
         },
         .mv_restore => {
             stack[sp - 1] = th.listToValues(stack[sp - 1]);
+            continue :dispatch next(bc, &ip);
+        },
+        .block_enter => {
+            const w = wide;
+            wide = false;
+            const slot = readIndex(bc, &ip, w);
+            const rel = ops.readI32(bc, ip);
+            ip += 4;
+            const token = th.newBlockToken();
+            const resume_at: usize = @intCast(@as(i64, @intCast(ip)) + rel);
+            if (th.pushControl(.block, token, vm.fp, sp, resume_at) == Value.unwind) return Value.unwind;
+            stack[base + slot] = token;
+            continue :dispatch next(bc, &ip);
+        },
+        .catch_enter => {
+            const rel = ops.readI32(bc, ip);
+            ip += 4;
+            sp -= 1;
+            const resume_at: usize = @intCast(@as(i64, @intCast(ip)) + rel);
+            if (th.pushControl(.catch_tag, stack[sp], vm.fp, sp, resume_at) == Value.unwind) return Value.unwind;
+            continue :dispatch next(bc, &ip);
+        },
+        .uwp_enter => {
+            const rel = ops.readI32(bc, ip);
+            ip += 4;
+            const resume_at: usize = @intCast(@as(i64, @intCast(ip)) + rel);
+            if (th.pushControl(.unwind_protect, Value.nil, vm.fp, sp, resume_at) == Value.unwind) return Value.unwind;
+            continue :dispatch next(bc, &ip);
+        },
+        .control_pop => {
+            const w = wide;
+            wide = false;
+            th.control_depth -= readCount(bc, &ip, w);
+            continue :dispatch next(bc, &ip);
+        },
+        .uwp_save => {
+            vm.sp = sp;
+            stack[sp] = th.uwpSave(stack[sp - 1]);
+            sp += 1;
+            continue :dispatch next(bc, &ip);
+        },
+        .uwp_end => {
+            const r = th.uwpEnd(stack[sp - 2], stack[sp - 1]);
+            if (r == Value.unwind) return r;
+            sp -= 1;
+            stack[sp - 1] = r;
+            continue :dispatch next(bc, &ip);
+        },
+        .return_from_nl => {
+            vm.sp = sp;
+            return th.returnFrom(stack[sp - 2], stack[sp - 1]);
+        },
+        .throw => {
+            vm.sp = sp;
+            return th.throwTo(stack[sp - 2], stack[sp - 1]);
+        },
+        .slide => {
+            const w = wide;
+            wide = false;
+            const n = readCount(bc, &ip, w);
+            stack[sp - 1 - n] = stack[sp - 1];
+            sp -= n;
             continue :dispatch next(bc, &ip);
         },
         .wide => {

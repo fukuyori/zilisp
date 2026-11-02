@@ -16,6 +16,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記16） | 2026-11-02 | Phase 18：block・return-from・catch・throw・unwind-protect の実装（制御スタック、Transfer、cleanup の中の脱出、VM の再開、ネイティブのラベル付きブロック）、defun・flet・labels・defmacro の暗黙の block、非局所脱出の方式2の試作と計測（方式1を継続。§6.4・§7.4） |
 | 0.2（追記15） | 2026-11-02 | Phase 17：多値の実装（ValueMode、VM の命令、関数の本体の多値の位置、REPL の印字）と、&optional・&rest・&key・&aux の実装（§5.5・§6.2・§6.3） |
 | 0.2（追記14） | 2026-11-02 | Phase 16：setf と場所の展開、eval でのトップレベルのフォームの順の処理、eval-when、ハッシュ表と1次元の配列の最小版（§2.6・§5.2） |
 | 0.2（追記13） | 2026-11-02 | Phase 15：マクロ展開器、defmacro、分解束縛、backquote の展開、Lisp で書く標準ライブラリの読み込み（§5.2・§11.2） |
@@ -621,6 +622,17 @@ cleanup は、保護されたフォームから**どのように抜けた場合�
 - VM の実行ループは、`native_frame` 境界を越える脱出を受け取った場合に `Value.unwind` を返して抜ける。この仕組みで、VM → ネイティブ → VM のように入れ子になった呼び出しの間でも、脱出と cleanup が正しく行われる。
 - 脱出先が見つからない場合（block の動的エクステントが終わっている場合など）は `control-error` を通知する。
 
+**Phase 18 の実装**
+- `Thread` の制御スタック `control`（`ControlEntry`：種類、token、動的束縛の深さ、VM の再開の位置。既定 65536 要素）と、処理途中の脱出のスタック `unwinds`（`Transfer`：脱出先のエントリの番号、主値・個数・2つ目以降の値のリスト、cleanup で止まっている深さ `cleanup_at`、エラーの理由の退避）。どちらも GC のルート。
+- block の token は、block に入るたびに作る fixnum（`th.next_token`）。脱出は制御スタックを上から探し、見つからなければ `control-error`（動的エクステントの終わった block、対応する catch のない throw）。値の個数が 1 なら確保しない。
+- **Resolver**：`return-from` は、同じ lambda の中で unwind-protect（保護したフォーム・cleanup）の範囲を横切らなければ**ジャンプ**、そうでなければ**実行時の脱出**（block に `needs_entry` を付け、token の局所変数を捕捉させる）。エントリの要らない block は何も生成しない。token の局所変数の番号は、lambda の本体を解決した後で、使っている番号の後ろに割り当てる。`defun`（`(setf 名前)` なら 名前）・`flet`・`labels`・`defmacro` の本体は、名前の block で囲む。`return` は標準ライブラリのマクロ。
+- **ジャンプで抜ける return-from**：横切る動的束縛を、いちばん外側の束縛の前の深さまで戻し（`UNBIND_TO`）、横切るエントリ（catch、エントリのある block）を取り除き（`CONTROL_POP n`）、途中の値を捨てて（`SLIDE n`）、block の出口へジャンプする。
+- **VM**：命令 `BLOCK_ENTER i rel`・`CATCH_ENTER rel`・`UWP_ENTER rel`（エントリを積む。rel は脱出したときに再開する位置）、`CONTROL_POP n`、`UWP_SAVE`・`UWP_END`、`RETURN_FROM_NL`・`THROW`（この後には進まない）、`SLIDE n`。`vm.run` は、実行ループが `Value.unwind` で抜けてきたら、自分が積んだエントリを上から調べ、unwind-protect なら cleanup の先頭から、脱出先の block・catch ならその出口から、フレーム・値スタック・動的束縛をエントリの記録に戻して実行を続ける（`resumeAfterUnwind`）。自分のエントリがなくなれば `Value.unwind` を返す（ネイティブのコードや外側の `vm.run` が続きを処理する）。検証器は、エントリを積む命令の rel を「脱出したときの深さ（block・catch は値1つ、unwind-protect は値と印の2つを積んだ深さ）」で調べる。
+- **ネイティブ**：エントリのある block・catch・unwind-protect の本体は Zig のラベル付きブロックにし、本体の中で `Value.unwind` を受け取ったら（関数から返る代わりに）そのブロックを抜ける。block・catch の後で `N.land` が自分が脱出先かを確かめる。ジャンプで抜ける return-from は `if (true) break :bN 値;`（後ろのコードもそのまま生成できる形）。
+- **unwind-protect**：保護したフォームを抜けると、エントリを取り除いて値を退避する（`uwpSave`。値が1つなら fixnum 1、2つ以上なら全部の値のリスト。脱出・エラーの途中なら印 -1 で、動的束縛をエントリの深さまで戻し、進行中の脱出を止めるか、エラーの理由を Transfer に退避する）。cleanup の後の `uwpEnd` が、値を戻すか、止めていた脱出・エラーを続ける。エラーで抜けるときも cleanup を実行する（SBCL 2.6.7 の `--script` と同じ出力）。
+- **cleanup の中の脱出**：新しい脱出を始めるときと、エラーで cleanup に入るとき、`cleanup_at` が脱出先（エラーでは今の深さ）より深い、止まっている脱出を取り消す（その cleanup の外へ出るため）。cleanup の中で受け止められる脱出は、止まっている脱出を取り消さない。エラーでトップレベルまで戻ったときは、残った記録を消す（`clearError`）。
+- 試験：SBCL 2.6.7 の結果と比べる63通り（GC stress でも実行。毎回、制御スタック・脱出の記録・動的束縛が空に戻ることも確かめる）、エラーと cleanup の組み合わせ、言語試験 `exits.lisp`・`exit-cases.lisp`（63通りをネイティブでも実行）・`error-cleanup.lisp`。
+
 **動的環境を戻す方式の統一**（agy #4）
 
 動的束縛・handler・restart の解除は、Zig の `defer` / `errdefer` には頼らず、**すべて `Thread` のスタックの深さで戻す方式に統一する**（VM の `UNBIND_TO` と同じ考え方。ランタイムの関数 `th.unwindTo(depths)`）。
@@ -647,6 +659,24 @@ Zilisp の方式は、脱出しない通常の呼び出しにも分岐1つの費
 1. 特別な戻り値で伝える方式（本節の方式）
 2. `setjmp`/`longjmp` に相当する方式（脱出先でレジスタとスタック位置を保存し、直接戻る。Zig の後始末を飛ばすため、ランタイム側の `errdefer` に頼る処理を制御スタックに登録する必要がある）
 
+**Phase 18 の比較の結果（2026-11-02。tque #339）**
+- 方式2の試作（`tests/bench/nonlocal.zig`）：Zig 0.17.0 には `returns_twice` がないため、`setjmp` そのものではなく、「レジスタ（Windows x64 では rbx・rbp・rdi・rsi・r12〜r15・xmm6〜xmm15、System V では rbx・rbp・r12〜r15）とスタックの位置を保存してから関数を呼ぶ」までを1つのアセンブリの関数 `catchCall` にした。`jumpTo` で脱出すると、`catchCall` がその値で戻る。コンパイラから見ると `catchCall` は1回だけ戻る普通の呼び出しなので、呼び出し側のレジスタの扱いは正しい。
+  - 注意：アセンブリの関数（naked）は Zig の宣言では `noreturn` になるため、そのまま呼ぶと ReleaseSafe・ReleaseFast の最適化が「戻らない呼び出し」とみなして後ろのコードを消した（Debug では起きない）。関数ポインタを volatile で読んで、呼び出し先を最適化から隠す必要がある。
+- 計測（`zig build bench -- nonlocal`、ReleaseFast、x86_64-windows、7回の中央値。1回 = 脱出先を作る → 深さ D の呼び出し → 脱出または普通に戻る。どちらもタグの探索と制御スタックの出し入れを含む）
+
+| 処理 | 方式1 | 方式2 |
+|---|---|---|
+| 脱出先を作るだけ（D = 0、脱出しない） | 1.37 ns | 4.98 ns |
+| 深さ 10 まで呼んで普通に戻る | 9.36 ns | 10.07 ns |
+| 深さ 100 まで呼んで普通に戻る | 87.9 ns | 91.5 ns |
+| D = 0 で脱出 | 1.34 ns | 10.24 ns |
+| 深さ 10 から脱出 | 9.13 ns | 14.30 ns |
+| 深さ 100 から脱出 | 89.2 ns | 48.8 ns |
+| 深さ 1000 から脱出 | 811.5 ns | 406.6 ns |
+
+- 読み取り：方式2は、脱出先を作る費用が約 3.6 ns 多く（レジスタ 18 本の保存）、脱出そのものに深さに関係なく約 5 ns かかる。方式1の脱出は1段あたり約 0.4 ns。分かれ目は深さ約 12 段で、それより深い脱出だけ方式2が速い。呼び出しのたびの検査の費用は、この計測（関数ポインタ経由の呼び出し）では差がほとんど出なかった（Phase 12 の fib(30) では約12%）。
+- **決定：方式1を続ける**（2026-11-02）。理由：①block・catch・unwind-protect（`with-open-file`・`handler-case` などの展開にも現れる）に入るたびの費用は方式1が小さく、脱出しないで抜けることの方が多い。②方式2で呼び出しのたびの検査をなくすには、エラーも直接戻る必要があり、そうするとランタイムの Zig の後始末（`defer` によるルートの登録の解除など）を飛ばす。それをすべて制御スタックに登録し直す費用と危険が大きい。③深い脱出が多い処理（深い再帰からの `throw` など）で方式1が問題になる場合は、その時点で再計測する。
+
 ### 6.5 動的束縛
 
 - shallow binding とする。束縛では、シンボルの値セルの旧値を束縛スタックに退避してから新しい値を書く。解除と巻き戻しで旧値を戻す。
@@ -658,7 +688,7 @@ Zilisp の方式は、脱出しない通常の呼び出しにも分岐1つの費
 **Phase 14 の実装**
 - 束縛のスタックは `Thread.bindings`（シンボルと旧値の組。既定 65536 要素。溢れたら `storage-condition`）。GC のルートとして正確に走査する。
 - VM の命令：`BINDING_DEPTH`（深さを積む）、`BIND_SPECIAL k`、`UNBIND_TO`（[値 深さ] → [値]）、`PROGV_BIND`。`let`・`let*`・特殊変数の引数・`progv` は、束縛の前の深さを名前のない局所変数に置き、本体の後で `UNBIND_TO` で戻す。ネイティブバックエンドも同じ手順（`N.bindingDepth`・`N.bindSpecial`・`N.unbindTo`）。
-- **エラーで抜けるときの復元**：`vm.run` は、入った時点の束縛の深さを覚えておき、`Value.unwind` で抜けるときにそこまで戻す。block・catch・unwind-protect（Phase 18）ができた後は、脱出先が記録した深さまで戻す（§6.4）。
+- **エラーで抜けるときの復元**：`vm.run` は、入った時点の束縛の深さを覚えておき、`Value.unwind` で抜けるときにそこまで戻す。脱出先（block・catch）と unwind-protect は、制御スタックのエントリに記録した深さまで戻す（§6.4、Phase 18）。
 - Resolver：束縛を動的束縛にするのは、名前が特殊変数（`defvar`・`defparameter`・`proclaim`）のときと、束縛の `special` 宣言があるとき。範囲の中の特殊変数は、`special` の印の付いた変数で表す（`special` 宣言だけで束縛しない名前も、その範囲の変数として加える）。この変数への参照・代入は `global_ref`・`global_set` になり、内側の lambda からも同じ（SBCL 2.6.7 で確認）。特殊変数の引数は、名前の見えない局所変数で受け取り、本体を特殊変数の `let` で囲む。
 - `defvar`・`defparameter` は、Zig で書いたブートストラップ用のマクロ（§11.1 の 6）。名前を特殊変数と宣言するのは、**実行した時点**（`zl-sys::%proclaim-special`）と、**トップレベルのフォームなら、コンパイルの時点**（同じフォームの後ろの部分や、後のフォームのコンパイルで束縛が動的束縛になるように。CLHS 3.2.3.1。トップレベルの `progn` の中もトップレベル）。実行されないトップレベルでない `defvar`（`(if nil (defvar x) nil)`）は宣言しない（Codex のレビュー P14 #3。SBCL 2.6.7 で確認）。
 - **`load` と `compile-file` の違い**：関数の中の `defvar` を実行した後に、同じ名前を `let` で束縛するフォームは、VM（`--script`・REPL。フォームを1つずつコンパイルして実行する `load` の意味）では動的束縛、ネイティブバックエンド（ファイル全体を先にコンパイルする `compile-file` の意味）ではレキシカルな束縛になる。SBCL 2.6.7 も、`--script` では前者、`compile-file` では後者になる（CLHS 3.2.3.1 で許される違い）。このため、この形の試験は VM の単体テストだけで行う。
@@ -743,7 +773,7 @@ pub const VmFrame = struct {
 | 引数 | `ARG_SUPPLIED_P` | i | |
 | 制御 | `JUMP` / `JUMP_IF_NIL` / `JUMP_IF_NOT_NIL` | rel | |
 | 多値 | `TO_MV` / `MV_PRIMARY` / `VALUES` / `VALUES_LIST` / `MV_SAVE` / `MV_RESTORE` / `MV_BIND` / `MV_MARK` / `MV_SPREAD` / `MV_CALL_MARKED` | | §6.3 |
-| 非局所 | `BLOCK_ENTER` / `BLOCK_EXIT` / `RETURN_FROM_NL` | i rel / — / i | §6.4 |
+| 非局所 | `BLOCK_ENTER` / `BLOCK_EXIT` / `RETURN_FROM_NL` | i rel / — / i | §6.4（Phase 18 の実装は §6.4 の「Phase 18 の実装」：`BLOCK_EXIT`・`CATCH_EXIT` は `CONTROL_POP n`、`UWP_EXIT` は `UWP_SAVE` にした） |
 | | `TAGBODY_ENTER` / `TAGBODY_EXIT` / `GO_NL` | i n rel[n] / — / i u16 | |
 | | `CATCH_ENTER` / `CATCH_EXIT` / `THROW` | rel / — / — | |
 | | `UWP_ENTER` / `UWP_EXIT` / `UWP_END` | rel / — / — | |

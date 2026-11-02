@@ -47,6 +47,11 @@ pub const Syms = struct {
     boundp: Value,
     flet: Value,
     labels: Value,
+    block: Value,
+    @"return-from": Value,
+    @"catch": Value,
+    throw: Value,
+    @"unwind-protect": Value,
     // ラムダリストのキーワード
     @"&optional": Value,
     @"&rest": Value,

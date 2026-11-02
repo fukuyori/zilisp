@@ -103,6 +103,14 @@
   関数の `&optional`（既定値・供給の変数）・`&rest`・`&key`（`((:k v) …)`・`&allow-other-keys`・`:allow-other-keys t`）・`&aux`。
   `get-setf-expansion`・`define-setf-expander`。試験：SBCL 2.6.7 の結果と比べる50通り（GC stress でも実行）、言語試験
   `tests/language/eval/values.lisp`（と gc-stress 版。ネイティブでも一致）。教材のブロックの一致は 223 から 244 に
+- Phase 18：`block`・`return-from`・`return`・`catch`・`throw`・`unwind-protect`（詳細設計 §6.4）。制御スタックと処理途中の脱出のスタック、
+  同じ関数の中の return-from はジャンプ（横切る動的束縛・エントリを戻す）、それ以外は実行時の脱出。多値を運ぶ。
+  unwind-protect の cleanup は、脱出・エラーのどちらで抜けるときも、入った時点の動的環境で実行する。cleanup の中の脱出
+  （cleanup の外へ出るものだけが、進行中の脱出を取り消す）。`defun`・`flet`・`labels`・`defmacro` の本体の暗黙の block。
+  VM の命令 `BLOCK_ENTER`・`CATCH_ENTER`・`UWP_ENTER`・`CONTROL_POP`・`UWP_SAVE`・`UWP_END`・`RETURN_FROM_NL`・`THROW`・`SLIDE`。
+  ネイティブバックエンドも対応。試験：SBCL 2.6.7 の結果と比べる63通り（GC stress でも実行）、言語試験 `exits.lisp`
+  （と gc-stress 版）・`exit-cases.lisp`・`error-cleanup.lisp`。非局所脱出の方式2（レジスタの保存と復元。インラインアセンブリ）の
+  試作と比較の計測（`zig build bench -- nonlocal`）。方式1を続ける（詳細設計 §6.4）
 
 ### Changed
 - VM の命令の分岐を、ラベル付き `switch` と `continue` に書き換えた（詳細設計 §7.1）。

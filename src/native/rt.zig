@@ -147,6 +147,48 @@ pub inline fn progvBind(th: *Thread, syms: Value, vals: Value) Value {
 }
 
 // ---------------------------------------------------------------------------
+// 非局所脱出（§6.4。Phase 18）。手順は Thread の同名の関数を参照
+
+/// block に入る：識別子を作ってエントリを積み、識別子を返す（溢れたら Value.unwind）
+pub fn blockEnter(th: *Thread) Value {
+    const token = th.newBlockToken();
+    if (th.pushControl(.block, token, 0, 0, 0) == Value.unwind) return Value.unwind;
+    return token;
+}
+
+pub fn catchEnter(th: *Thread, tag: Value) Value {
+    return th.pushControl(.catch_tag, tag, 0, 0, 0);
+}
+
+pub fn uwpEnter(th: *Thread) Value {
+    return th.pushControl(.unwind_protect, Value.nil, 0, 0, 0);
+}
+
+pub inline fn controlPop(th: *Thread, n: usize) void {
+    th.control_depth -= n;
+}
+
+pub fn land(th: *Thread) Value {
+    return th.land();
+}
+
+pub fn uwpSave(th: *Thread, primary: Value) Value {
+    return th.uwpSave(primary);
+}
+
+pub fn uwpEnd(th: *Thread, primary: Value, marker: Value) Value {
+    return th.uwpEnd(primary, marker);
+}
+
+pub fn returnFrom(th: *Thread, token: Value, primary: Value) Value {
+    return th.returnFrom(token, primary);
+}
+
+pub fn throwTo(th: *Thread, tag: Value, primary: Value) Value {
+    return th.throwTo(tag, primary);
+}
+
+// ---------------------------------------------------------------------------
 // 高速経路（VM の命令と同じ意味：§7.4）
 
 inline fn tagged(v: Value) i64 {

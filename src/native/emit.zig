@@ -200,6 +200,17 @@ fn writeZigString(w: *std.Io.Writer, s: []const u8) Error!void {
 /// 式の値の受け取り方（§5.5 の ValueMode）
 const Mode = enum { value, discard, multi };
 
+/// block の出口（Phase 18）。Zig のラベル付きブロック b番号 で表す
+const NLabel = struct { blk: *ir.Block, id: u32, mode: Mode };
+
+/// ジャンプ（break）で抜けるときに戻す必要がある、動的な範囲
+const NDyn = union(enum) {
+    block: *const NLabel,
+    catch_,
+    /// 動的束縛。束縛の前の深さを置いた t番号
+    bind: u32,
+};
+
 /// 1つの lambda の Zig の関数を生成する
 const FnGen = struct {
     e: *Emitter,
@@ -208,6 +219,18 @@ const FnGen = struct {
     next_temp: u32 = 0,
     /// 使われた Zig の局所変数（v番号）
     used: std.AutoHashMapUnmanaged(u32, void) = .empty,
+    /// Value.unwind を受け取ったときの行き先：null なら関数から返る。番号なら、その脱出先のブロック b番号 を抜ける
+    unwind_exit: ?u32 = null,
+    dyn: std.ArrayList(NDyn) = .empty,
+
+    /// Value.unwind を受け取ったときの文（関数から返る、または脱出先のブロックを抜ける）
+    fn writeExit(f: *FnGen, x: []const u8) Error!void {
+        if (f.unwind_exit) |id| {
+            try f.w().print("break :b{d} Value.unwind;\n", .{id});
+        } else {
+            try f.w().print("return {s};\n", .{x});
+        }
+    }
 
     fn w(f: *FnGen) *std.Io.Writer {
         return &f.out.writer;
@@ -243,7 +266,9 @@ const FnGen = struct {
         const t = f.temp();
         try f.w().print("    const t{d} = ", .{t});
         try f.w().print(fmt, args);
-        try f.w().print(";\n    if (t{d} == Value.unwind) return t{d};\n", .{ t, t });
+        try f.w().print(";\n    if (t{d} == Value.unwind) ", .{t});
+        var buf: [16]u8 = undefined;
+        try f.writeExit(std.fmt.bufPrint(&buf, "t{d}", .{t}) catch unreachable);
         return Expr.of("t{d}", .{t});
     }
 
@@ -290,6 +315,7 @@ const FnGen = struct {
         }
         try f.w().writeAll(body_out.written());
         f.used.deinit(e.gpa);
+        f.dyn.deinit(e.gpa);
     }
 
     /// 変数の中身（箱に入れた変数なら箱そのもの）を表す式
@@ -330,8 +356,137 @@ const FnGen = struct {
                 try f.genDiscard(p.first);
                 for (p.rest) |x| try f.genDiscard(x);
             },
+            .block => |b| _ = try f.genBlock(b.blk, b.body, .discard),
+            .catch_ => |c| _ = try f.genCatch(c.tag, c.body, .discard),
+            .unwind_protect => |u| _ = try f.genUnwindProtect(u.protected, u.cleanup, .discard),
             else => _ = try f.gen(n),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 非局所脱出（Phase 18。§6.4）
+    //
+    // 脱出先（エントリのある block・catch）は、本体を Zig のラベル付きブロックにし、本体の中で Value.unwind を
+    // 受け取ったらそのブロックを抜ける（writeExit）。ブロックの後で N.land が、自分が脱出先かを確かめる。
+    // 同じ lambda の中の return-from は break で抜ける（`if (true) break` にして、後ろのコードも生成できるようにする）
+
+    /// 本体を、ラベル付きブロック b{id} の中に生成する。entry なら、Value.unwind を受け取ったらブロックを抜け、
+    /// 脱出先かを確かめる。そうでなければ、ブロックを抜けるのは return-from の break だけ
+    fn genLabeled(f: *FnGen, id: u32, body_node: *Node, mode: Mode, entry: bool, d: NDyn) Error!?Expr {
+        const void_block = mode == .discard and !entry;
+        if (void_block) {
+            try f.w().print("    b{d}: {{\n", .{id});
+        } else {
+            try f.w().print("    {s} t{d}: Value = b{d}: {{\n", .{ if (entry) "var" else "const", id, id });
+        }
+        const saved = f.unwind_exit;
+        if (entry) f.unwind_exit = id;
+        try f.dyn.append(f.e.gpa, d);
+        const r = try f.genBody(body_node, mode);
+        _ = f.dyn.pop();
+        f.unwind_exit = saved;
+        if (void_block) {
+            try f.w().print("    break :b{d};\n    }}\n", .{id});
+            return null;
+        }
+        try f.w().print("    break :b{d} {s};\n    }};\n", .{ id, if (r) |x| x.s() else "Value.nil" });
+        if (entry) {
+            try f.w().print("    if (t{d} == Value.unwind) {{\n    t{d} = N.land(th);\n    if (t{d} == Value.unwind) ", .{ id, id, id });
+            var buf: [16]u8 = undefined;
+            try f.writeExit(std.fmt.bufPrint(&buf, "t{d}", .{id}) catch unreachable);
+            try f.w().writeAll("    } else N.controlPop(th, 1);\n");
+        }
+        if (mode == .discard) return null;
+        return Expr.of("t{d}", .{id});
+    }
+
+    fn genBlock(f: *FnGen, blk: *ir.Block, body_node: *Node, mode: Mode) Error!?Expr {
+        // return-from のない block は、本体そのもの
+        if (!blk.needs_entry and !blk.has_local) return f.genBody(body_node, mode);
+        const id = f.temp();
+        const label: NLabel = .{ .blk = blk, .id = id, .mode = mode };
+        if (blk.needs_entry) {
+            const tok = try f.e.varId(blk.token);
+            try f.markUsed(tok);
+            try f.w().print("    const v{d} = N.blockEnter(th);\n    if (v{d} == Value.unwind) ", .{ tok, tok });
+            var buf: [16]u8 = undefined;
+            try f.writeExit(std.fmt.bufPrint(&buf, "v{d}", .{tok}) catch unreachable);
+        }
+        return f.genLabeled(id, body_node, mode, blk.needs_entry, .{ .block = &label });
+    }
+
+    fn genReturnFrom(f: *FnGen, blk: *ir.Block, value: *Node, nonlocal: bool) Error!Expr {
+        if (nonlocal) {
+            const tok = try f.loadRaw(blk.token);
+            const val = try f.genM(value);
+            return f.checked("N.returnFrom(th, {s}, {s})", .{ tok.s(), val.s() });
+        }
+        var label: ?*const NLabel = null;
+        var pops: u32 = 0;
+        var unbind: ?u32 = null;
+        var i = f.dyn.items.len;
+        while (i > 0) {
+            i -= 1;
+            switch (f.dyn.items[i]) {
+                .block => |l| {
+                    if (l.blk == blk) {
+                        label = l;
+                        break;
+                    }
+                    if (l.blk.needs_entry) pops += 1;
+                },
+                .catch_ => pops += 1,
+                .bind => |t| unbind = t,
+            }
+        }
+        const l = label orelse unreachable;
+        const val = try f.genBody(value, l.mode);
+        if (unbind) |t| try f.w().print("    N.unbindTo(th, t{d});\n", .{t});
+        if (pops > 0) try f.w().print("    N.controlPop(th, {d});\n", .{pops});
+        if (l.mode == .discard and !l.blk.needs_entry) {
+            try f.w().print("    if (true) break :b{d};\n", .{l.id});
+        } else {
+            try f.w().print("    if (true) break :b{d} {s};\n", .{ l.id, if (val) |x| x.s() else "Value.nil" });
+        }
+        return Expr.of("Value.nil", .{});
+    }
+
+    fn genCatch(f: *FnGen, tag_node: *Node, body_node: *Node, mode: Mode) Error!?Expr {
+        const tag = try f.gen(tag_node);
+        try f.w().print("    if (N.catchEnter(th, {s}) == Value.unwind) ", .{tag.s()});
+        try f.writeExit("Value.unwind");
+        return f.genLabeled(f.temp(), body_node, mode, true, .catch_);
+    }
+
+    /// unwind-protect：保護したフォームを、Value.unwind を受け取ったら抜けるブロックにし、
+    /// N.uwpSave（値の退避、または脱出・エラーの中断）→ cleanup → N.uwpEnd（値の復元、または脱出・エラーの再開）
+    fn genUnwindProtect(f: *FnGen, protected: *Node, cleanup: []*Node, mode: Mode) Error!?Expr {
+        try f.w().writeAll("    if (N.uwpEnter(th) == Value.unwind) ");
+        try f.writeExit("Value.unwind");
+        const id = f.temp();
+        try f.w().print("    const t{d}: Value = b{d}: {{\n", .{ id, id });
+        const saved = f.unwind_exit;
+        f.unwind_exit = id;
+        var r: ?Expr = null;
+        switch (mode) {
+            .discard => {
+                try f.genDiscard(protected);
+                try f.w().writeAll("    th.mv_count = 1;\n");
+            },
+            .value => {
+                r = try f.gen(protected);
+                try f.w().writeAll("    th.mv_count = 1;\n");
+            },
+            .multi => r = try f.genM(protected),
+        }
+        f.unwind_exit = saved;
+        try f.w().print("    break :b{d} {s};\n    }};\n", .{ id, if (r) |x| x.s() else "Value.nil" });
+        const marker = f.temp();
+        try f.w().print("    const t{d} = N.uwpSave(th, t{d});\n", .{ marker, id });
+        for (cleanup) |x| try f.genDiscard(x);
+        const v = try f.checked("N.uwpEnd(th, t{d}, t{d})", .{ id, marker });
+        if (mode == .discard) return null;
+        return v;
     }
 
     fn genArgs(f: *FnGen, nodes: []*Node) Error!Expr {
@@ -374,25 +529,26 @@ const FnGen = struct {
         const e = f.e;
         const b = .{ .vars = vars, .body = body_node };
         // 本体を先に生成し、使われた変数が分かってから宣言を書く
+        const special = ir.hasSpecial(b.vars);
+        const depth: u32 = if (special) f.temp() else 0;
         var body_out: std.Io.Writer.Allocating = .init(e.gpa);
         defer body_out.deinit();
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
+        if (special) try f.dyn.append(e.gpa, .{ .bind = depth });
         const result: ?Expr = try f.genBody(b.body, mode);
+        if (special) _ = f.dyn.pop();
         std.mem.swap(std.Io.Writer.Allocating, &f.out, &body_out);
-        const special = ir.hasSpecial(b.vars);
-        var depth: u32 = 0;
-        if (special) {
-            depth = f.temp();
-            try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
-        }
+        if (special) try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
         for (b.vars, init_exprs) |v, init| {
             if (v.special) {
-                try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) return Value.unwind;\n", .{ try e.constant(v.name), init.s() });
+                try f.w().print("    if (N.bindSpecial(th, N.K[{d}], {s}) == Value.unwind) ", .{ try e.constant(v.name), init.s() });
+                try f.writeExit("Value.unwind");
                 continue;
             }
             const id = try e.varId(v);
             if (v.boxed()) {
-                try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) return v{d};\n", .{ id, init.s(), id, id });
+                try f.w().print("    const v{d} = N.makeCell(th, {s});\n    if (v{d} == Value.unwind) ", .{ id, init.s(), id });
+                try f.writeExit("Value.unwind");
             } else {
                 const kw = if (v.assigned) "var" else "const";
                 try f.w().print("    {s} v{d} = {s};\n", .{ kw, id, init.s() });
@@ -410,8 +566,11 @@ const FnGen = struct {
         try f.w().print("    const t{d} = N.bindingDepth(th);\n", .{depth});
         const syms = try f.gen(p.syms);
         const vals = try f.gen(p.vals);
-        try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) return Value.unwind;\n", .{ syms.s(), vals.s() });
+        try f.w().print("    if (N.progvBind(th, {s}, {s}) == Value.unwind) ", .{ syms.s(), vals.s() });
+        try f.writeExit("Value.unwind");
+        try f.dyn.append(f.e.gpa, .{ .bind = depth });
         const result: ?Expr = try f.genBody(p.body, mode);
+        _ = f.dyn.pop();
         try f.w().print("    N.unbindTo(th, t{d});\n", .{depth});
         return result;
     }
@@ -453,6 +612,10 @@ const FnGen = struct {
             .let_ => |b| return (try f.genLet(b, .multi)).?,
             .progv => |p| return (try f.genProgv(p, .multi)).?,
             .mv_bind => |b| return (try f.genMvBind(b, .multi)).?,
+            .block => |b| return (try f.genBlock(b.blk, b.body, .multi)).?,
+            .catch_ => |c| return (try f.genCatch(c.tag, c.body, .multi)).?,
+            .unwind_protect => |u| return (try f.genUnwindProtect(u.protected, u.cleanup, .multi)).?,
+            .return_from, .throw_ => return f.gen(n),
             .mv_prog1 => |p| {
                 const first = try f.genM(p.first);
                 const saved = try f.checked("N.mvList(th, {s})", .{first.s()});
@@ -538,6 +701,15 @@ const FnGen = struct {
             .let_ => |b| return (try f.genLet(b, .value)).?,
             .progv => |p| return (try f.genProgv(p, .value)).?,
             .mv_bind => |b| return (try f.genMvBind(b, .value)).?,
+            .block => |b| return (try f.genBlock(b.blk, b.body, .value)).?,
+            .catch_ => |c| return (try f.genCatch(c.tag, c.body, .value)).?,
+            .unwind_protect => |u| return (try f.genUnwindProtect(u.protected, u.cleanup, .value)).?,
+            .return_from => |rf| return f.genReturnFrom(rf.blk, rf.value, rf.nonlocal),
+            .throw_ => |t| {
+                const tag = try f.gen(t.tag);
+                const val = try f.genM(t.value);
+                return f.checked("N.throwTo(th, {s}, {s})", .{ tag.s(), val.s() });
+            },
             .values => |args| {
                 if (args.len == 0) return Expr.of("Value.nil", .{});
                 const first = try f.gen(args[0]);

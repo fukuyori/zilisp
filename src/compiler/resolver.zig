@@ -47,6 +47,9 @@ const Decls = struct {
 /// 局所関数（flet・labels）の束縛。関数の値は、名前の見えない局所変数 v に入れる
 const FnBinding = struct { name: Value, v: *Var };
 
+/// block の名前の束縛（Phase 18）
+const BlockBinding = struct { name: Value, blk: *ir.Block };
+
 /// レキシカルな範囲（let・lambda・flet・labels ごとに1つ）
 const Scope = struct {
     parent: ?*const Scope,
@@ -56,6 +59,11 @@ const Scope = struct {
     fns: []const FnBinding = &.{},
     /// この範囲の本体の先頭で宣言された inline・notinline（後のものが優先）
     inline_decls: []const InlineDecl = &.{},
+    /// block の名前（Phase 18）
+    blocks: []const BlockBinding = &.{},
+    /// unwind-protect の保護したフォーム・cleanup の範囲。この範囲の外の block への return-from は、
+    /// 実行時の脱出にする（cleanup の実行と、止まっている脱出の取り消しを、ランタイムで行うため）
+    barrier: bool = false,
 
     /// 関数 sym が notinline と宣言されているか（内側の範囲の宣言が優先）
     fn isNotinline(scope: *const Scope, sym: Value) bool {
@@ -110,7 +118,17 @@ pub const Resolver = struct {
         r.at_toplevel = true;
         l.body = try r.resolve(form, &scope);
         r.at_toplevel = false;
+        assignBlockTokens(l);
         return l;
+    }
+
+    /// 脱出先のエントリが要る block の識別子に、局所変数の番号を割り当てる（本体を解決した後。
+    /// どの block が実行時の脱出の脱出先になるかは、本体の中の return-from をすべて見るまで分からないため。
+    /// 番号は他の変数と重ならないよう、使っている番号の後ろに加える）
+    fn assignBlockTokens(l: *Lambda) void {
+        for (l.blocks.items) |b| {
+            if (b.needs_entry) b.token.slot = l.newSlotAtEnd();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -342,6 +360,30 @@ pub const Resolver = struct {
                 if (args.len != 1) return r.failForm("QUASIQUOTE の引数は1つです", form);
                 return r.resolve(try macros.expandQuasiquote(r, args[0]), scope);
             }
+            if (head == y.block) {
+                if (args.len < 1) return r.failForm("BLOCK には名前が必要です", form);
+                if (!isSymbol(args[0])) return r.failForm("BLOCK の名前はシンボルでなければなりません", args[0]);
+                return r.resolveBlock(args[0], args[1..], scope);
+            }
+            if (head == y.@"return-from") return r.resolveReturnFrom(form, args, scope);
+            if (head == y.@"catch") {
+                if (args.len < 1) return r.failForm("CATCH にはタグが必要です", form);
+                const tag = try r.resolve(args[0], scope);
+                const body = if (args.len == 1) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(args[1..], scope);
+                return r.node(.{ .catch_ = .{ .tag = tag, .body = body } });
+            }
+            if (head == y.throw) {
+                if (args.len != 2) return r.failForm("THROW の引数はタグと値の2つです", form);
+                return r.node(.{ .throw_ = .{ .tag = try r.resolve(args[0], scope), .value = try r.resolve(args[1], scope) } });
+            }
+            if (head == y.@"unwind-protect") {
+                if (args.len < 1) return r.failForm("UNWIND-PROTECT には保護するフォームが必要です", form);
+                const inner: Scope = .{ .parent = scope, .lambda = scope.lambda, .vars = &.{}, .barrier = true };
+                const protected = try r.resolve(args[0], &inner);
+                const cleanup = try r.arena.alloc(*Node, args.len - 1);
+                for (args[1..], 0..) |f, i| cleanup[i] = try r.resolve(f, &inner);
+                return r.node(.{ .unwind_protect = .{ .protected = protected, .cleanup = cleanup } });
+            }
             if (head == y.flet) return r.resolveLocalFunctions(form, args, scope, false);
             if (head == y.labels) return r.resolveLocalFunctions(form, args, scope, true);
             // 局所関数の呼び出し（大域の関数・マクロより優先：CLHS 3.1.2.1.2.3）
@@ -443,11 +485,57 @@ pub const Resolver = struct {
     fn resolveLambda(r: *Resolver, form: Value, scope: *const Scope) Error!*Lambda {
         const parts = try r.listItems(Runtime.consPtr(form).cdr, "LAMBDA の形が正しくありません");
         if (parts.len < 1) return r.fail(.program_error, "LAMBDA にはラムダリストが必要です", form);
-        return r.resolveLambdaParts(parts, Value.nil, .none, scope);
+        return r.resolveLambdaParts(parts, Value.nil, .none, scope, null);
     }
 
-    /// parts = (ラムダリスト 本体...)。fn_name は defun などで付ける関数の名前（無名なら NIL）
-    fn resolveLambdaParts(r: *Resolver, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope) Error!*Lambda {
+    /// (block 名前 本体...)。本体を、名前の見える範囲で解決する
+    fn resolveBlock(r: *Resolver, name: Value, forms: []const Value, scope: *const Scope) Error!*Node {
+        const l = scope.lambda;
+        const token = try r.arena.create(Var);
+        token.* = .{ .name = Value.unbound, .owner = l, .slot = ir.no_slot };
+        const blk = try r.arena.create(ir.Block);
+        blk.* = .{ .name = name, .lambda = l, .token = token };
+        try l.blocks.append(r.arena, blk);
+        const bindings = try r.arena.alloc(BlockBinding, 1);
+        bindings[0] = .{ .name = name, .blk = blk };
+        const inner: Scope = .{ .parent = scope, .lambda = l, .vars = &.{}, .blocks = bindings };
+        const body = if (forms.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(forms, &inner);
+        return r.node(.{ .block = .{ .blk = blk, .body = body } });
+    }
+
+    /// (return-from 名前 [値])。同じ lambda の中で unwind-protect を横切らなければジャンプ、そうでなければ実行時の脱出
+    fn resolveReturnFrom(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
+        if (args.len < 1 or args.len > 2) return r.failForm("RETURN-FROM の引数は名前と値です", form);
+        const name = args[0];
+        if (!isSymbol(name)) return r.failForm("RETURN-FROM の名前はシンボルでなければなりません", name);
+        var crosses_barrier = false;
+        var found: ?*ir.Block = null;
+        var s: ?*const Scope = scope;
+        search: while (s) |sc| : (s = sc.parent) {
+            var i = sc.blocks.len;
+            while (i > 0) : (i -= 1) {
+                if (sc.blocks[i - 1].name == name) {
+                    found = sc.blocks[i - 1].blk;
+                    break :search;
+                }
+            }
+            if (sc.barrier) crosses_barrier = true;
+        }
+        const blk = found orelse return r.failForm("RETURN-FROM の名前の BLOCK が見えません", name);
+        const value = if (args.len == 2) try r.resolve(args[1], scope) else try r.node(.{ .constant = Value.nil });
+        const nonlocal = crosses_barrier or blk.lambda != scope.lambda;
+        if (nonlocal) {
+            blk.needs_entry = true;
+            try r.reference(blk.token, scope.lambda);
+        } else {
+            blk.has_local = true;
+        }
+        return r.node(.{ .return_from = .{ .blk = blk, .value = value, .nonlocal = nonlocal } });
+    }
+
+    /// parts = (ラムダリスト 本体...)。fn_name は defun などで付ける関数の名前（無名なら NIL）。
+    /// block_name があれば、本体を (block block_name ...) で囲む（defun・flet・labels・defmacro：CLHS 3.1.2.1.2.4 ほか）
+    fn resolveLambdaParts(r: *Resolver, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope, block_name: ?Value) Error!*Lambda {
         const all_params = try r.listItems(parts[0], "ラムダリストがドット対で終わっています");
         // &optional・&rest・&key・&aux があれば（Phase 17）、必須の引数の後ろを、名前のない引数（リスト）で受け取り、
         // 本体を (let* (分解の束縛...) 本体...) で囲む（分解束縛は defmacro・destructuring-bind と同じ：CLHS 3.4.1）。
@@ -482,12 +570,12 @@ pub const Resolver = struct {
             try req.append(r.arena, rest_sym);
             params = req.items;
         }
-        const result = try r.resolveLambdaRequired(params, body_parts, fn_name, fn_kind, scope);
+        const result = try r.resolveLambdaRequired(params, body_parts, fn_name, fn_kind, scope, block_name);
         result.rest_param = rest_sym != Value.nil;
         return result;
     }
 
-    fn resolveLambdaRequired(r: *Resolver, params: []Value, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope) Error!*Lambda {
+    fn resolveLambdaRequired(r: *Resolver, params: []Value, parts: []Value, fn_name: Value, fn_kind: Lambda.FnKind, scope: *const Scope, block_name: ?Value) Error!*Lambda {
         const l = try r.arena.create(Lambda);
         l.* = .{ .parent = scope.lambda, .name = parts[0], .fn_name = fn_name, .fn_kind = fn_kind };
         var decls: Decls = .{};
@@ -519,11 +607,14 @@ pub const Resolver = struct {
         l.params = params_vars;
         const depth_slot = if (specials.items.len > 0) l.newSlot() else ir.no_slot;
         const inner: Scope = .{ .parent = scope, .lambda = l, .vars = try r.scopeVars(scope_vars, &decls, l), .inline_decls = decls.inlines.items };
-        var body_node = if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
+        var body_node = if (block_name) |bn|
+            try r.resolveBlock(bn, body, &inner)
+        else if (body.len == 0) try r.node(.{ .constant = Value.nil }) else try r.resolveBody(body, &inner);
         if (specials.items.len > 0) {
             body_node = try r.node(.{ .let_ = .{ .vars = specials.items, .inits = special_inits.items, .body = body_node, .depth_slot = depth_slot } });
         }
         l.body = body_node;
+        assignBlockTokens(l);
         return l;
     }
 
@@ -583,14 +674,14 @@ pub const Resolver = struct {
     /// defun（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     /// (defun 名前 ラムダリスト 本体...) を (zl-sys::%defun '名前 (lambda ラムダリスト 本体...)) にする。
     /// 関数の名前を付けた lambda にする（印字は #<FUNCTION 名前>）。
-    /// 本体を (block 名前 ...) で囲む処理は、block を実装する Phase 18 で加える
+    /// 本体は (block 名前 ...) で囲む（(setf 名前) の関数なら block の名前は 名前）
     fn resolveDefun(r: *Resolver, form: Value, args: []Value, scope: *const Scope) Error!*Node {
         if (args.len < 2) return r.fail(.program_error, "DEFUN には名前とラムダリストが必要です", form);
         const name = args[0];
         if (name.isCons()) {
             // (defun (setf 名前) (新しい値 引数...) ...)：setf 関数（CLHS 5.1.2.9）
-            _ = r.setfName(name) orelse return r.failForm("関数の名前ではありません", name);
-            const l = try r.resolveLambdaParts(args[1..], name, .global, scope);
+            const sym = r.setfName(name) orelse return r.failForm("関数の名前ではありません", name);
+            const l = try r.resolveLambdaParts(args[1..], name, .global, scope, sym);
             const set_args = try r.arena.alloc(*Node, 2);
             set_args[0] = try r.node(.{ .constant = name });
             set_args[1] = try r.node(.{ .lambda = l });
@@ -600,7 +691,7 @@ pub const Resolver = struct {
             return r.node(.{ .progn = forms });
         }
         if (!isSymbol(name) or name == Value.nil) return r.fail(.program_error, "関数の名前はシンボルでなければなりません", name);
-        const l = try r.resolveLambdaParts(args[1..], name, .global, scope);
+        const l = try r.resolveLambdaParts(args[1..], name, .global, scope, name);
         const call_args = try r.arena.alloc(*Node, 2);
         call_args[0] = try r.node(.{ .constant = name });
         call_args[1] = try r.node(.{ .lambda = l });
@@ -613,7 +704,7 @@ pub const Resolver = struct {
     /// labels：関数の本体から、同じ labels のすべての関数が見える（再帰・相互再帰）。
     ///       IR は (let ((f1 nil) ...) (setq f1 (lambda ...)) ... 本体) と同じ形。互いに参照する関数の変数は、
     ///       捕捉され代入されるので value_cell に入る（closure を作った後で書き込むため）。
-    /// 関数の本体を (block 名前 ...) で囲む処理は、block を実装する Phase 18 で加える
+    /// 関数の本体は (block 名前 ...) で囲む
     fn resolveLocalFunctions(r: *Resolver, form: Value, args: []Value, scope: *const Scope, labels: bool) Error!*Node {
         if (args.len < 1) return r.fail(.program_error, "FLET・LABELS には関数の定義の並びが必要です", form);
         const defs = try r.listItems(args[0], "FLET・LABELS の定義の並びがドット対で終わっています");
@@ -643,7 +734,7 @@ pub const Resolver = struct {
         const lambdas = try r.arena.alloc(*Lambda, defs.len);
         if (!labels) {
             // flet：関数を先に外側の範囲で解決する
-            for (bodies, 0..) |b, i| lambdas[i] = try r.resolveLambdaParts(b, names[i], kind, scope);
+            for (bodies, 0..) |b, i| lambdas[i] = try r.resolveLambdaParts(b, names[i], kind, scope, names[i]);
         }
         for (names, 0..) |name, i| {
             const v = try r.arena.create(Var);
@@ -654,7 +745,7 @@ pub const Resolver = struct {
         const fn_scope = try r.arena.create(Scope);
         fn_scope.* = .{ .parent = scope, .lambda = l, .vars = &.{}, .fns = fns };
         if (labels) {
-            for (bodies, 0..) |b, i| lambdas[i] = try r.resolveLambdaParts(b, names[i], kind, fn_scope);
+            for (bodies, 0..) |b, i| lambdas[i] = try r.resolveLambdaParts(b, names[i], kind, fn_scope, names[i]);
         }
         var decls: Decls = .{};
         const body = try r.parseBody(args[1..], false, &decls);
@@ -703,7 +794,7 @@ pub const Resolver = struct {
         }
         // 実行時の定義（名前の付いた関数にする：印字は #<FUNCTION (:MACRO 名前) …>）
         const parts = try r.listItems(Runtime.consPtr(lam_form).cdr, "LAMBDA の形が正しくありません");
-        const l = try r.resolveLambdaParts(parts, name, .macro, scope);
+        const l = try r.resolveLambdaParts(parts, name, .macro, scope, name);
         const call_args = try r.arena.alloc(*Node, 2);
         call_args[0] = try r.node(.{ .constant = name });
         call_args[1] = try r.node(.{ .lambda = l });

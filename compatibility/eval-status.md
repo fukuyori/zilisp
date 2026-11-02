@@ -24,7 +24,7 @@
 | 未実装の関数：FORMAT | 24 |
 | 未実装：WITH-OPEN-FILE | 22 |
 | 未実装：DEFCLASS | 21 |
-| 未実装：HANDLER-CASE | 9 |
+| 未実装：HANDLER-CASE | 10 |
 | 未実装の関数：MAPCAR | 8 |
 | 未実装：DEFPACKAGE | 8 |
 | 未実装の関数：REDUCE | 7 |
@@ -109,7 +109,6 @@
 | 未実装：IGNORE-ERRORS | 1 |
 | 未実装：TIME | 1 |
 | 未実装：TYPECASE | 1 |
-| 未実装：UNWIND-PROTECT | 1 |
 | 未実装：割り切れない整数の割り算 | 1 |
 
 各ブロックの結果は `eval-check.tsv`（同じディレクトリ）にある。

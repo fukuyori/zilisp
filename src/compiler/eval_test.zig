@@ -693,6 +693,124 @@ test "multiple values and lambda list keywords like SBCL 2.6.7 (Phase 17)" {
     // 引数の多い呼び出し（&rest に 1000 個）
 }
 
+/// Phase 18：block・return-from・catch・throw・unwind-protect（SBCL 2.6.7 の結果）
+const exit_cases = [_][2][]const u8{
+    .{ "(block b 1 2)", "2" },
+    .{ "(block b 1 (return-from b 10) 2)", "10" },
+    .{ "(block nil (return 5) 6)", "5" },
+    .{ "(block b (return-from b))", "NIL" },
+    .{ "(multiple-value-list (block b (return-from b (values 1 2)) 3))", "(1 2)" },
+    .{ "(multiple-value-list (block b (values 3 4)))", "(3 4)" },
+    .{ "(block outer (block inner (return-from outer 'o)) 'after)", "O" },
+    .{ "(block b (let ((x 1)) (if (= x 1) (return-from b 'one) 'other)))", "ONE" },
+    .{ "(+ 1 (block b (+ 10 (return-from b 100))))", "101" },
+    .{ "(progn (defun p18-find (x l) (if (null l) nil (if (eql (car l) x) (return-from p18-find 'found) (p18-find x (cdr l))))) (list (p18-find 2 '(1 2 3)) (p18-find 9 '(1 2 3))))", "(FOUND NIL)" },
+    .{ "(progn (defun p18-first-neg (l) (mapcar-dummy)) 1)", "1" },
+    .{ "(block b (funcall (lambda () (return-from b 'from-closure))) 'not-here)", "FROM-CLOSURE" },
+    .{ "(progn (defun p18-call (f) (funcall f)) (block b (p18-call (lambda () (return-from b 'deep))) 'nope))", "DEEP" },
+    .{ "(flet ((f (x) (if x (return-from f 'early) 'late))) (list (f t) (f nil)))", "(EARLY LATE)" },
+    .{ "(labels ((f (n) (if (= n 0) (return-from f 'zero) (f (- n 1))))) (f 5))", "ZERO" },
+    .{ "(catch 'tag (throw 'tag 1) 2)", "1" },
+    .{ "(catch 'tag 1 2)", "2" },
+    .{ "(multiple-value-list (catch 'tag (throw 'tag (values 1 2))))", "(1 2)" },
+    .{ "(progn (defun p18-thrower () (throw 'done 'thrown)) (catch 'done (p18-thrower) 'not))", "THROWN" },
+    .{ "(catch 'outer (catch 'inner (throw 'outer 'o)) 'after)", "O" },
+    .{ "(catch 'a (catch 'b (throw 'a 1)) 2)", "1" },
+    .{ "(let ((tag (list 'x))) (catch tag (throw tag 'dynamic-tag)))", "DYNAMIC-TAG" },
+    .{ "(let ((log nil)) (list (unwind-protect 1 (setq log 'cleaned)) log))", "(1 CLEANED)" },
+    .{ "(let ((log nil)) (list (block b (unwind-protect (return-from b 'exit) (setq log 'cleaned))) log))", "(EXIT CLEANED)" },
+    .{ "(let ((log nil)) (list (catch 'c (unwind-protect (throw 'c 'thrown) (push 'cleanup log))) log))", "(THROWN (CLEANUP))" },
+    .{ "(let ((log nil)) (catch 'c (unwind-protect (unwind-protect (throw 'c 1) (push 'inner log)) (push 'outer log))) log)", "(OUTER INNER)" },
+    .{ "(multiple-value-list (unwind-protect (values 1 2) 'cleanup))", "(1 2)" },
+    .{ "(let ((log nil)) (block b (unwind-protect (return-from b 1) (push 'x log) (values 9 9))) log)", "(X)" },
+    .{ "(progn (defvar *p18-v* 'global) (list (block b (let ((*p18-v* 'bound)) (return-from b *p18-v*))) *p18-v*))", "(BOUND GLOBAL)" },
+    .{ "(progn (defvar *p18-v* 'global) (list (catch 'c (let ((*p18-v* 'bound)) (throw 'c *p18-v*))) *p18-v*))", "(BOUND GLOBAL)" },
+    .{ "(progn (defvar *p18-v* 'global) (let ((seen nil)) (catch 'c (let ((*p18-v* 'bound)) (unwind-protect (throw 'c 1) (setq seen *p18-v*)))) (list seen *p18-v*)))", "(BOUND GLOBAL)" },
+    .{ "(let ((log nil)) (catch 'outer (unwind-protect (catch 'inner (unwind-protect (throw 'outer 1) (push 'a log))) (push 'b log))) log)", "(B A)" },
+    .{ "(let ((x 0)) (catch 'c (unwind-protect (throw 'c 1) (catch 'c2 (throw 'c2 2)) (setq x 'ran))) x)", "RAN" },
+    .{ "(block b (unwind-protect (return-from b 'first) (return-from b 'second)))", "SECOND" },
+    .{ "(block nil (let ((i 0)) (labels ((lp () (if (= i 3) (return i) (progn (setq i (+ i 1)) (lp))))) (lp))))", "3" },
+    .{ "(block a (block b (funcall (lambda () (return-from b 1))) (return-from a 2)))", "1" },
+    .{ "(multiple-value-list (block b (funcall (lambda () (return-from b (values 1 2 3))))))", "(1 2 3)" },
+    .{ "(multiple-value-list (unwind-protect (values 1 2) (values 3 4 5)))", "(1 2)" },
+    .{ "(block b (apply (lambda () (return-from b 'x)) nil))", "X" },
+    .{ "(catch 'c (apply (lambda (x y) (throw 'c (+ x y))) '(1 2)))", "3" },
+    .{ "(progn (defvar *p18-z* 0) (let ((seen nil)) (catch 'c (let ((*p18-z* 1)) (unwind-protect (let ((*p18-z* 2)) (throw 'c 0)) (setq seen *p18-z*)))) (list seen *p18-z*)))", "(1 0)" },
+    .{ "(progn (defun p18-deep (n) (if (= n 0) (throw 'p18-bottom 'hit) (p18-deep (- n 1)))) (catch 'p18-bottom (p18-deep 10000)))", "HIT" },
+    .{ "(let ((n 0) (flag nil)) (labels ((f (i) (if (< i 1000) (progn (block x (catch 'y (unwind-protect (if (setq flag (not flag)) (return-from x) (throw 'y 1)) (setq n (+ n 1))))) (f (+ i 1)))))) (f 0)) n)", "1000" },
+    .{ "(let ((x (block b (unwind-protect 1 (return-from b 2))))) x)", "2" },
+    .{ "(catch 'a (catch 'b (unwind-protect (throw 'a 1) (throw 'b 2))) 3)", "3" },
+    .{ "(let ((log nil)) (block b (unwind-protect (unwind-protect (return-from b 1) (push 1 log)) (push 2 log))) log)", "(2 1)" },
+    .{ "(multiple-value-list (catch 'c (unwind-protect (throw 'c (values 1 2)) (values 7 8 9))))", "(1 2)" },
+    .{ "(funcall (block b (lambda () 1)))", "1" },
+    .{ "(block b (flet ((f () (return-from b 'out))) (f) 'no))", "OUT" },
+    .{ "(progn (defun p18-r (x) (return-from p18-r (* x 2)) 0) (p18-r 21))", "42" },
+    .{ "(progn (defun p18-opt (&optional (y 5)) (if (> y 3) (return-from p18-opt 'big)) 'small) (list (p18-opt) (p18-opt 1)))", "(BIG SMALL)" },
+    .{ "(progn (defun (setf p18-place) (v x) (return-from p18-place (list v x))) (setf (p18-place 1) 2))", "(2 1)" },
+    .{ "(block nil (return (values 1 2)))", "1" },
+    .{ "(multiple-value-list (block nil (return (values 1 2))))", "(1 2)" },
+    .{ "(block b (let ((f (lambda (x) (return-from b x)))) (+ 1 (funcall f 10))))", "10" },
+    .{ "(catch 'c (catch 'c (throw 'c 1)) 2)", "2" },
+    .{ "(let ((i 0)) (block b (labels ((lp () (setq i (+ i 1)) (if (> i 5) (return-from b i)) (lp))) (lp))))", "6" },
+    .{ "(progn (defvar *p18-q* 'top) (block b (let ((*p18-q* 'mid)) (funcall (lambda () (let ((*p18-q* 'in)) (return-from b *p18-q*)))))))", "IN" },
+    .{ "(progn (defvar *p18-q* 'top) (block b (let ((*p18-q* 'mid)) (funcall (lambda () (let ((*p18-q* 'in)) (return-from b *p18-q*)))))) *p18-q*)", "TOP" },
+    .{ "(unwind-protect 'a)", "A" },
+    .{ "(catch 'c)", "NIL" },
+    .{ "(block b)", "NIL" },
+    .{ "(+ (catch 'c (throw 'c 1)) (catch 'c 2))", "3" },
+};
+
+/// 脱出の後で、制御スタック・処理途中の脱出・動的束縛が、トップレベルの深さに戻っていること
+fn expectClean(e: *Env, text: []const u8) !void {
+    testing.expect(e.th.control_depth == 0 and e.th.unwind_depth == 0 and e.th.binding_depth == 0) catch |err| {
+        std.debug.print("input: {s}\ncontrol {d} unwinds {d} bindings {d}\n", .{ text, e.th.control_depth, e.th.unwind_depth, e.th.binding_depth });
+        return err;
+    };
+}
+
+test "block, return-from, catch, throw and unwind-protect like SBCL 2.6.7 (Phase 18)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    for (exit_cases) |c| {
+        try expectValue(&e, c[0], c[1]);
+        try expectClean(&e, c[0]);
+    }
+    e.rt.heap.stress = true;
+    for (exit_cases) |c| try expectValue(&e, c[0], c[1]);
+    e.rt.heap.stress = false;
+    // ジャンプで抜ける return-from が、横切るエントリ（catch、エントリのある block）を取り除く
+    try expectValue(&e, "(block a (block b (if nil (funcall (lambda () (return-from b 1)))) (return-from a 2)))", "2");
+    try expectClean(&e, "crossing block");
+    try expectValue(&e, "(block a (catch 'c (catch 'd (return-from a 'out))))", "OUT");
+    try expectClean(&e, "crossing catch");
+    try expectError(&e, "(progn (block b (catch 'c (return-from b 1))) (throw 'c 2))", .control_error);
+    // SBCL 2.6.7 でエラーになるもの
+    try expectError(&e, "(progn (defun p18-mk2 () (block b (lambda () (return-from b 1)))) (funcall (p18-mk2)))", .control_error);
+    try expectError(&e, "(throw 'p18-nosuch 1)", .control_error);
+    try expectError(&e, "(return-from p18-nosuch 1)", .program_error);
+    try expectError(&e, "(block b (return-from b 1 2))", .program_error);
+    try expectError(&e, "(catch)", .program_error);
+    try expectError(&e, "(throw 'a)", .program_error);
+    try expectError(&e, "(block 1)", .program_error);
+    try expectError(&e, "(unwind-protect)", .program_error);
+    try expectError(&e, "(return 1 2)", .program_error);
+    // エラーで抜けるときも cleanup を実行する（cleanup の動的環境は unwind-protect に入った時点のもの）
+    try expectError(&e, "(progn (defvar *p18-cl* nil) (defvar *p18-env* 'outer) (let ((*p18-env* 'mid)) (unwind-protect (let ((*p18-env* 'inner)) (car 1)) (setq *p18-cl* *p18-env*))))", .type_error);
+    try expectValue(&e, "(list *p18-cl* *p18-env*)", "(MID OUTER)");
+    // cleanup の中の catch で受け止める脱出は、進行中のエラーを取り消さない
+    try expectError(&e, "(unwind-protect (car 1) (catch 'x (throw 'x 1)) (setq *p18-cl* 'after))", .type_error);
+    try expectValue(&e, "*p18-cl*", "AFTER");
+    // cleanup の外へ出る脱出は、進行中のエラーを取り消す
+    try expectValue(&e, "(block b (unwind-protect (car 1) (return-from b 'replaced)))", "REPLACED");
+    try expectClean(&e, "replaced error");
+    try expectValue(&e, "(catch 'c (unwind-protect (car 1) (throw 'c 'thrown)))", "THROWN");
+    try expectClean(&e, "replaced error by throw");
+    // 深い再帰の途中からの脱出と、何度も繰り返す脱出で、エントリが残らない
+    try expectValue(&e, "(progn (defun p18-down (n) (if (= n 0) (throw 'p18-done n) (unwind-protect (p18-down (- n 1)) (setq *p18-cl* n)))) (list (catch 'p18-done (p18-down 500)) *p18-cl*))", "(0 500)");
+    try expectClean(&e, "deep");
+}
+
 test "eval matches SBCL 2.6.7" {
     var e: Env = undefined;
     try e.init();
@@ -746,7 +864,6 @@ test "errors" {
         .{ "(* 1e30 1e30)", .floating_point_overflow },
         .{ "(+ 1d308 1d308)", .floating_point_overflow },
         .{ "(loop)", .unimplemented },
-        .{ "(block nil)", .unimplemented },
         .{ "(quote)", .program_error },
         .{ "(if)", .program_error },
         .{ "(let ((t 1)) t)", .program_error },

@@ -79,6 +79,26 @@ pub const Op = enum(u8) {
     mv_push_n,
     /// [リスト] → [主値]：リストの要素を多値にする（mv_list の逆）
     mv_restore,
+    // 非局所脱出（Phase 18。§6.4）。*_enter の rel は、脱出したときに再開する位置（その位置の深さは、
+    // block_enter・catch_enter では命令の後の深さ + 1、uwp_enter では + 2）
+    /// []：block の識別子を作って局所変数 i に置き、制御スタックにエントリを積む
+    block_enter,
+    /// [タグ] → []：catch のエントリを積む
+    catch_enter,
+    /// []：unwind-protect のエントリを積む。rel は cleanup の先頭
+    uwp_enter,
+    /// 制御スタックから n 個のエントリを取り除く（block・catch を普通に抜けるとき、ジャンプで抜けるとき）
+    control_pop,
+    /// [主値] → [主値 印]：unwind-protect のエントリを取り除き、全部の値を退避する（Thread.uwpSave）
+    uwp_save,
+    /// [主値 印] → [主値]：退避した値を戻す。脱出・エラーの途中なら、それを続ける（Thread.uwpEnd）
+    uwp_end,
+    /// [識別子 値]：return-from の実行時の脱出（この後には進まない）
+    return_from_nl,
+    /// [タグ 値]：throw（この後には進まない）
+    throw,
+    /// [x1 ... xn v] → [v]：ジャンプで block を抜けるとき、途中の値を取り除く
+    slide,
     /// 次の命令の k・i・n を 32 ビットにする
     wide,
 };
@@ -91,8 +111,9 @@ pub fn operands(op: Op) []const Operand {
         .load_local, .store_local, .load_captured => &.{.i},
         .smallint => &.{.s16},
         .make_closure, .call_global => &.{ .k, .n },
-        .call, .values, .mv_push_n => &.{.n},
-        .jump, .jump_if_nil => &.{.rel},
+        .call, .values, .mv_push_n, .control_pop, .slide => &.{.n},
+        .jump, .jump_if_nil, .catch_enter, .uwp_enter => &.{.rel},
+        .block_enter => &.{ .i, .rel },
         else => &.{},
     };
 }
@@ -130,6 +151,20 @@ pub fn stackEffect(op: Op, n: u32) i64 {
         .single, .mv_list, .mv_restore => 0,
         .call => -ni,
         .call_global => 1 - ni,
+        .block_enter, .uwp_enter, .control_pop => 0,
+        .catch_enter, .uwp_end => -1,
+        .uwp_save => 1,
+        .return_from_nl, .throw => -2,
+        .slide => -ni,
+    };
+}
+
+/// 脱出したときに rel の位置で再開する深さ（命令の後の深さに加える数）。脱出先を作る命令でなければ null
+pub fn landingExtra(op: Op) ?i64 {
+    return switch (op) {
+        .block_enter, .catch_enter => 1,
+        .uwp_enter => 2,
+        else => null,
     };
 }
 

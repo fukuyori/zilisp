@@ -39,6 +39,26 @@ pub const Pins = struct {
     }
 };
 
+/// block の出口（Phase 18）
+const BlockLabel = struct {
+    blk: *ir.Block,
+    /// block に入る前のスタックの深さ（出口では、これに値1つを加えた深さ）
+    depth: i64,
+    /// 多値の位置か（ジャンプで抜ける return-from の値も多値にする）
+    multi: bool,
+    /// 出口へのジャンプの、書き換える位置
+    exits: std.ArrayList(usize) = .empty,
+};
+
+/// ジャンプで抜けるときに戻す必要がある、動的な範囲（内側から順に積む）
+const Dyn = union(enum) {
+    block: *BlockLabel,
+    /// catch のエントリ
+    catch_,
+    /// 動的束縛。束縛の前の深さを置いた局所変数
+    bind: u32,
+};
+
 const Gen = struct {
     rt: *Runtime,
     gpa: std.mem.Allocator,
@@ -49,6 +69,7 @@ const Gen = struct {
     const_index: std.AutoHashMapUnmanaged(u64, u32) = .empty,
     depth: i64 = 0,
     max_depth: i64 = 0,
+    dyn: std.ArrayList(Dyn) = .empty,
 
     fn adjust(g: *Gen, delta: i64) void {
         g.depth += delta;
@@ -119,6 +140,22 @@ const Gen = struct {
         g.adjust(ops.stackEffect(op, 0));
         return at;
     }
+    /// 局所変数の添字と rel を取る命令（block_enter）。後で書き換える rel の位置を返す
+    fn jumpIndex(g: *Gen, op: Op, x: u32) Error!usize {
+        if (x > std.math.maxInt(u16)) {
+            try g.byte(@backingInt(Op.wide));
+            try g.byte(@backingInt(op));
+            try g.int(u32, x);
+        } else {
+            try g.byte(@backingInt(op));
+            try g.int(u16, @intCast(x));
+        }
+        const at = g.buf.items.len;
+        try g.int(i32, 0);
+        g.adjust(ops.stackEffect(op, 0));
+        return at;
+    }
+
     fn patch(g: *Gen, at: usize) void {
         const rel: i32 = @intCast(@as(i64, @intCast(g.buf.items.len)) - @as(i64, @intCast(at + 4)));
         std.mem.writeInt(i32, g.buf.items[at..][0..4], rel, .little);
@@ -225,16 +262,21 @@ const Gen = struct {
             .let_ => |l| {
                 for (l.inits) |i| try g.gen(i);
                 try g.bindVars(l.vars, l.depth_slot);
-                try g.gen(l.body);
+                try g.genBound(l.body, l.vars, l.depth_slot, false);
                 try g.unbindVars(l.vars, l.depth_slot);
             },
             .progv => |p| {
                 try g.progvEnter(p);
-                try g.gen(p.body);
+                try g.genIn(p.body, .{ .bind = p.depth_slot }, false);
                 try g.opIndex(.load_local, p.depth_slot);
                 try g.op0(.unbind_to);
             },
             .lambda => |child| try g.genLambda(child),
+            .block => |b| try g.genBlock(b.blk, b.body, false),
+            .return_from => |rf| try g.genReturnFrom(rf.blk, rf.value, rf.nonlocal),
+            .catch_ => |c| try g.genCatch(c.tag, c.body, false),
+            .throw_ => |t| try g.genThrow(t.tag, t.value),
+            .unwind_protect => |u| try g.genUnwindProtect(u.protected, u.cleanup, false),
             // 多値（Phase 17）。単値の位置では主値だけを使う
             .values => |args| {
                 // 引数はすべて左から順に評価する。主値は最初の引数（なければ NIL）
@@ -252,10 +294,117 @@ const Gen = struct {
             },
             .mv_bind => |b| {
                 try g.mvBindEnter(b);
-                try g.gen(b.body);
+                try g.genBound(b.body, b.vars, b.depth_slot, false);
                 try g.unbindVars(b.vars, b.depth_slot);
             },
         }
+    }
+
+    fn genMode(g: *Gen, n: *Node, multi: bool) Error!void {
+        if (multi) try g.genMulti(n) else try g.gen(n);
+    }
+
+    /// 動的な範囲 d の中で n を生成する
+    fn genIn(g: *Gen, n: *Node, d: Dyn, multi: bool) Error!void {
+        try g.dyn.append(g.gpa, d);
+        try g.genMode(n, multi);
+        _ = g.dyn.pop();
+    }
+
+    /// let・multiple-value-bind の本体（特殊変数を束縛していれば、動的束縛の範囲）
+    fn genBound(g: *Gen, body: *Node, vars: []*Var, depth_slot: u32, multi: bool) Error!void {
+        if (ir.hasSpecial(vars)) return g.genIn(body, .{ .bind = depth_slot }, multi);
+        try g.genMode(body, multi);
+    }
+
+    /// (block 名前 本体...)。実行時の脱出の脱出先なら、制御スタックにエントリを積む（§6.4）
+    fn genBlock(g: *Gen, blk: *ir.Block, body: *Node, multi: bool) Error!void {
+        var label: BlockLabel = .{ .blk = blk, .depth = g.depth, .multi = multi };
+        defer label.exits.deinit(g.gpa);
+        const enter_at: ?usize = if (blk.needs_entry) try g.jumpIndex(.block_enter, blk.token.slot) else null;
+        try g.genIn(body, .{ .block = &label }, multi);
+        // ジャンプで抜ける return-from は、ここ（エントリを取り除く前）に来る
+        for (label.exits.items) |at| g.patch(at);
+        if (enter_at) |at| {
+            try g.opCount(.control_pop, 1);
+            g.patch(at);
+        }
+    }
+
+    fn genReturnFrom(g: *Gen, blk: *ir.Block, value: *Node, nonlocal: bool) Error!void {
+        const before = g.depth;
+        if (nonlocal) {
+            // 実行時の脱出：block の識別子と全部の値を渡す
+            try g.loadVarRaw(blk.token);
+            try g.genMulti(value);
+            try g.op0(.return_from_nl);
+        } else {
+            // ジャンプ：横切る動的束縛を戻し、横切るエントリ（catch・エントリのある block）を取り除き、途中の値を捨てる
+            var label: ?*BlockLabel = null;
+            var pops: u32 = 0;
+            var unbind_slot: ?u32 = null;
+            var i = g.dyn.items.len;
+            while (i > 0) {
+                i -= 1;
+                switch (g.dyn.items[i]) {
+                    .block => |l| {
+                        if (l.blk == blk) {
+                            label = l;
+                            break;
+                        }
+                        if (l.blk.needs_entry) pops += 1;
+                    },
+                    .catch_ => pops += 1,
+                    .bind => |s| unbind_slot = s,
+                }
+            }
+            const l = label orelse unreachable; // Resolver が見えることを確かめている
+            try g.genMode(value, l.multi);
+            if (unbind_slot) |s| {
+                try g.opIndex(.load_local, s);
+                try g.op0(.unbind_to);
+            }
+            const extra = g.depth - (l.depth + 1);
+            if (extra > 0) try g.opCount(.slide, @intCast(extra));
+            if (pops > 0) try g.opCount(.control_pop, pops);
+            try l.exits.append(g.gpa, try g.jump(.jump));
+        }
+        // この後のコードには進まないが、生成は値が1つ積まれた深さで続ける
+        g.depth = before + 1;
+        g.max_depth = @max(g.max_depth, g.depth);
+    }
+
+    fn genCatch(g: *Gen, tag: *Node, body: *Node, multi: bool) Error!void {
+        try g.gen(tag);
+        const at = try g.jump(.catch_enter);
+        try g.genIn(body, .catch_, multi);
+        try g.opCount(.control_pop, 1);
+        g.patch(at);
+    }
+
+    fn genThrow(g: *Gen, tag: *Node, value: *Node) Error!void {
+        const before = g.depth;
+        try g.gen(tag);
+        try g.genMulti(value);
+        try g.op0(.throw);
+        g.depth = before + 1;
+        g.max_depth = @max(g.max_depth, g.depth);
+    }
+
+    /// unwind-protect：保護したフォームの値を退避して cleanup を実行し、値を戻す。
+    /// 脱出・エラーで抜けたときは、VM が cleanup の先頭から再開する（印 -1）
+    fn genUnwindProtect(g: *Gen, protected: *Node, cleanup: []*Node, multi: bool) Error!void {
+        const at = try g.jump(.uwp_enter);
+        if (multi) {
+            try g.genMulti(protected);
+        } else {
+            try g.gen(protected);
+            try g.op0(.single);
+        }
+        try g.op0(.uwp_save);
+        g.patch(at);
+        for (cleanup) |f| try g.genDiscard(f);
+        try g.op0(.uwp_end);
     }
 
     /// 多値の位置の式：評価した後、主値をスタックに、全部の値を th.mv_count・th.mv に置く（§5.5 の multiple。§6.2）。
@@ -284,15 +433,20 @@ const Gen = struct {
             .let_ => |l| {
                 for (l.inits) |i| try g.gen(i);
                 try g.bindVars(l.vars, l.depth_slot);
-                try g.genMulti(l.body);
+                try g.genBound(l.body, l.vars, l.depth_slot, true);
                 try g.unbindVars(l.vars, l.depth_slot);
             },
             .progv => |p| {
                 try g.progvEnter(p);
-                try g.genMulti(p.body);
+                try g.genIn(p.body, .{ .bind = p.depth_slot }, true);
                 try g.opIndex(.load_local, p.depth_slot);
                 try g.op0(.unbind_to);
             },
+            .block => |b| try g.genBlock(b.blk, b.body, true),
+            .catch_ => |c| try g.genCatch(c.tag, c.body, true),
+            .unwind_protect => |u| try g.genUnwindProtect(u.protected, u.cleanup, true),
+            // 脱出は、この後に進まないので個数を書く必要はない
+            .return_from, .throw_ => try g.gen(n),
             .mv_prog1 => |p| {
                 // 最初のフォームの全部の値をリストに退避し、残りを評価した後で戻す（§6.3）
                 try g.genMulti(p.first);
@@ -302,7 +456,7 @@ const Gen = struct {
             },
             .mv_bind => |b| {
                 try g.mvBindEnter(b);
-                try g.genMulti(b.body);
+                try g.genBound(b.body, b.vars, b.depth_slot, true);
                 try g.unbindVars(b.vars, b.depth_slot);
             },
             else => {
@@ -372,6 +526,7 @@ const Gen = struct {
 /// lambda を Code にする。作った Code は pins に積む
 pub fn compileLambda(rt: *Runtime, gpa: std.mem.Allocator, pins: *Pins, l: *Lambda) Error!Value {
     var g: Gen = .{ .rt = rt, .gpa = gpa, .pins = pins, .lambda = l };
+    defer g.dyn.deinit(gpa);
     // 箱に入れる引数は、入口で箱に入れる
     for (l.params) |p| {
         if (p.boxed()) {

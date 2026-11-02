@@ -6,7 +6,8 @@
 //! Phase 25 で、`signal` は handler を探して呼ぶ処理に置き換え、最後は toplevel の restart へ脱出する（§6.6・§9）。
 
 const std = @import("std");
-const Value = @import("../values/value.zig").Value;
+const value_mod = @import("../values/value.zig");
+const Value = value_mod.Value;
 const runtime = @import("runtime.zig");
 const Runtime = runtime.Runtime;
 const vm_mod = @import("../vm/vm.zig");
@@ -22,13 +23,46 @@ pub const max_native_depth = 1000;
 /// 動的束縛のスタックの1要素（§6.5：shallow binding。旧値は未束縛のこともある）
 pub const Binding = struct { sym: Value, old: Value };
 
+/// 制御スタックのエントリ（§6.4。Phase 18）
+pub const ControlEntry = struct {
+    kind: Kind,
+    /// block：実行時の識別子（fixnum）。catch：タグ。unwind-protect：NIL
+    token: Value,
+    /// エントリを積んだ時点の動的束縛の深さ（脱出先・cleanup で、ここまで戻す）
+    binding_depth: u32,
+    /// VM が積んだエントリの再開の位置：フレームの数・値スタックの深さ・命令の位置（ネイティブのエントリでは使わない）
+    fp: u32 = 0,
+    sp: u32 = 0,
+    ip: u32 = 0,
+
+    pub const Kind = enum(u8) { block, catch_tag, unwind_protect };
+};
+
+/// 処理途中の非局所脱出（§6.4 の Transfer）。th.unwinds にスタックとして積む
+pub const Transfer = struct {
+    /// 脱出先の制御スタックのエントリの番号。エラーで cleanup を実行している間は no_target
+    target: u32,
+    /// 運ぶ値：主値、個数、2つ目以降の値のリスト（個数が 2 以上のとき）
+    primary: Value,
+    rest: Value,
+    count: u32,
+    /// この脱出が cleanup の実行のために止まっている間、その cleanup を実行している深さ（制御スタックの深さ）。
+    /// 止まっていなければ not_suspended
+    cleanup_at: u32,
+    /// target が no_target のとき、cleanup の後で続けるエラーの理由
+    saved_fault: Fault,
+};
+
+pub const no_target = std.math.maxInt(u32);
+pub const not_suspended = std.math.maxInt(u32);
+
 /// エラーの報告に含める呼び出しの履歴の数
 pub const backtrace_max = 16;
 
 /// 戻り値が Value.unwind のときの理由（§6.6）
 pub const Fault = enum(u8) {
     none,
-    /// 非局所脱出の途中（Phase 18 で使う）
+    /// 非局所脱出の途中（Phase 18。th.unwinds の先頭が脱出の内容）
     unwind,
     out_of_memory,
     /// 処理系の内部故障（バグ）
@@ -97,6 +131,14 @@ pub const Thread = struct {
     /// 動的束縛のスタック（§6.5）
     bindings: []Binding,
     binding_depth: usize = 0,
+    /// 制御スタック（block・catch・unwind-protect。§6.4）
+    control: []ControlEntry,
+    control_depth: usize = 0,
+    /// 処理途中の非局所脱出のスタック（§6.4）
+    unwinds: []Transfer,
+    unwind_depth: usize = 0,
+    /// 次の block の識別子
+    next_token: i64 = 0,
     /// 多値レジスタ（mv[0] は使わない。主値は戻り値）
     mv: [mv_limit]Value = @splat(Value.nil),
     /// エラーを記録した時点の呼び出しの履歴（VM のフレームの closure。新しい順）
@@ -112,6 +154,8 @@ pub const Thread = struct {
         frame_count: usize = 1 << 18,
         /// 動的束縛の深さの上限
         binding_count: usize = 1 << 16,
+        /// 制御スタックの深さの上限（処理途中の脱出のスタックも同じ大きさ）
+        control_count: usize = 1 << 16,
     };
 
     pub fn create(rt: *Runtime, out: *std.Io.Writer, options: Options) runtime.Error!*Thread {
@@ -119,7 +163,18 @@ pub const Thread = struct {
         errdefer rt.gpa.destroy(th);
         const bindings = try rt.gpa.alloc(Binding, options.binding_count);
         errdefer rt.gpa.free(bindings);
-        th.* = .{ .rt = rt, .out = out, .vm = try vm_mod.Vm.init(rt.gpa, options.stack_size, options.frame_count), .bindings = bindings };
+        const control = try rt.gpa.alloc(ControlEntry, options.control_count);
+        errdefer rt.gpa.free(control);
+        const unwinds = try rt.gpa.alloc(Transfer, options.control_count);
+        errdefer rt.gpa.free(unwinds);
+        th.* = .{
+            .rt = rt,
+            .out = out,
+            .vm = try vm_mod.Vm.init(rt.gpa, options.stack_size, options.frame_count),
+            .bindings = bindings,
+            .control = control,
+            .unwinds = unwinds,
+        };
         rt.thread = th;
         // 標準ライブラリ（Lisp で書いた標準マクロなど）を読み込む（§11.1 の 7）
         try @import("../compiler/boot.zig").load(th);
@@ -131,6 +186,8 @@ pub const Thread = struct {
         if (rt.thread == th) rt.thread = null;
         th.vm.deinit(rt.gpa);
         rt.gpa.free(th.bindings);
+        rt.gpa.free(th.control);
+        rt.gpa.free(th.unwinds);
         rt.gpa.destroy(th);
     }
 
@@ -145,6 +202,11 @@ pub const Thread = struct {
         for (th.bindings[0..th.binding_depth]) |b| {
             f(ctx, b.sym);
             f(ctx, b.old);
+        }
+        for (th.control[0..th.control_depth]) |e| f(ctx, e.token);
+        for (th.unwinds[0..th.unwind_depth]) |t| {
+            f(ctx, t.primary);
+            f(ctx, t.rest);
         }
     }
 
@@ -229,6 +291,9 @@ pub const Thread = struct {
     /// エラーの記録を消す（トップレベルで報告した後）
     pub fn clearError(th: *Thread) void {
         th.fault = .none;
+        // トップレベルまで戻ったので、エラーで抜けた脱出の記録（cleanup の途中で止まっていたもの）も消す
+        th.unwind_depth = 0;
+        th.control_depth = 0;
         th.err = .{};
         th.backtrace_len = 0;
         th.backtrace_depth = 0;
@@ -326,6 +391,192 @@ pub const Thread = struct {
         }
         if (x != Value.nil) return th.typeError(syms, th.rt.syms.list);
         return Value.nil;
+    }
+
+    // ------------------------------------------------------------------
+    // 非局所脱出（§6.4。Phase 18）
+    //
+    // 脱出の手順（VM とネイティブで共通）
+    //   1. return-from・throw が脱出先のエントリを探し（なければ control-error）、運ぶ値を Transfer に写して積み、
+    //      th.fault = .unwind として Value.unwind を返す
+    //   2. Value.unwind を受け取った block・catch は、自分が脱出先なら、動的束縛を戻して値を受け取る（land）。
+    //      そうでなければ自分のエントリを取り除いて Value.unwind を返し直す
+    //   3. unwind-protect は、動的束縛を戻してから cleanup を実行する（uwpBegin）。cleanup の間、脱出は止まっている。
+    //      cleanup の後で脱出を続ける（uwpResume）。エラーで抜けるときも cleanup を実行する
+    //   4. cleanup の中から cleanup の外へ出る脱出は、止まっている脱出を取り消す（cleanup_at で判断する）
+
+    pub fn pushControl(th: *Thread, kind: ControlEntry.Kind, token: Value, fp: usize, sp: usize, ip: usize) Value {
+        if (th.control_depth >= th.control.len)
+            return th.signal(.storage_condition, "block・catch・unwind-protect の入れ子が深すぎます", Value.unbound, Value.unbound);
+        th.control[th.control_depth] = .{
+            .kind = kind,
+            .token = token,
+            .binding_depth = @intCast(th.binding_depth),
+            .fp = @intCast(fp),
+            .sp = @intCast(sp),
+            .ip = @intCast(ip),
+        };
+        th.control_depth += 1;
+        return Value.nil;
+    }
+
+    /// block の識別子を作る（block に入るたびに別の値。脱出先の動的エクステントが終わったかを確かめるため）
+    pub fn newBlockToken(th: *Thread) Value {
+        const t = th.next_token;
+        th.next_token = if (t == value_mod.most_positive_fixnum) 0 else t + 1;
+        return Value.fromFixnum(t);
+    }
+
+    fn findEntry(th: *Thread, kind: ControlEntry.Kind, token: Value) ?u32 {
+        var i = th.control_depth;
+        while (i > 0) : (i -= 1) {
+            const e = th.control[i - 1];
+            if (e.kind == kind and e.token == token) return @intCast(i - 1);
+        }
+        return null;
+    }
+
+    /// (return-from 名前 値) の実行時の脱出。primary と th.mv_count・th.mv が運ぶ値
+    pub fn returnFrom(th: *Thread, token: Value, primary: Value) Value {
+        const target = th.findEntry(.block, token) orelse
+            return th.signal(.control_error, "RETURN-FROM の脱出先の BLOCK は、既に抜けています", Value.unbound, Value.unbound);
+        return th.startTransfer(target, primary);
+    }
+
+    /// (throw タグ 値)
+    pub fn throwTo(th: *Thread, tag: Value, primary: Value) Value {
+        const target = th.findEntry(.catch_tag, tag) orelse
+            return th.signal(.control_error, "THROW のタグに対応する CATCH がありません", tag, Value.unbound);
+        return th.startTransfer(target, primary);
+    }
+
+    /// 脱出を始める。cleanup の途中で止まっている脱出のうち、その cleanup の外へ出るものは取り消す
+    fn startTransfer(th: *Thread, target: u32, primary: Value) Value {
+        th.abandonSuspended(target);
+        if (th.unwind_depth >= th.unwinds.len)
+            return th.signal(.storage_condition, "非局所脱出の入れ子が深すぎます", Value.unbound, Value.unbound);
+        const count = th.mv_count;
+        var rest = Value.nil;
+        if (count > 1) {
+            // 確保の間、主値は呼び出し側（VM の値スタック、ネイティブのスタック）にあり、残りの値は多値レジスタにある
+            var i = count;
+            while (i > 1) : (i -= 1) rest = th.rt.cons(th.mv[i - 1], rest) catch return th.outOfMemory();
+        }
+        th.unwinds[th.unwind_depth] = .{
+            .target = target,
+            .primary = if (count == 0) Value.nil else primary,
+            .rest = rest,
+            .count = count,
+            .cleanup_at = not_suspended,
+            .saved_fault = .none,
+        };
+        th.unwind_depth += 1;
+        th.fault = .unwind;
+        return Value.unwind;
+    }
+
+    /// 制御スタックの深さ depth より内側で実行している cleanup の脱出（cleanup_at > depth）を取り消す
+    fn abandonSuspended(th: *Thread, depth: u32) void {
+        while (th.unwind_depth > 0) {
+            const at = th.unwinds[th.unwind_depth - 1].cleanup_at;
+            if (at == not_suspended or at <= depth) break;
+            th.unwind_depth -= 1;
+        }
+    }
+
+    /// Value.unwind を受け取ったときに、制御スタックの先頭のエントリ（block・catch）が脱出先か
+    pub fn isTarget(th: *const Thread) bool {
+        return th.fault == .unwind and th.unwind_depth > 0 and th.unwinds[th.unwind_depth - 1].target == th.control_depth - 1;
+    }
+
+    /// 先頭のエントリを脱出先として、脱出を終える：エントリと Transfer を取り除き、動的束縛を戻し、運んだ値を多値にして主値を返す
+    pub fn landTransfer(th: *Thread) Value {
+        th.control_depth -= 1;
+        th.unbindTo(th.control[th.control_depth].binding_depth);
+        th.unwind_depth -= 1;
+        const t = th.unwinds[th.unwind_depth];
+        th.fault = .none;
+        th.mv_count = t.count;
+        var x = t.rest;
+        var i: u32 = 1;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            th.mv[i] = Runtime.consPtr(x).car;
+            i += 1;
+        }
+        return t.primary;
+    }
+
+    /// ネイティブの block・catch が Value.unwind を受け取ったとき：脱出先なら値を受け取り、そうでなければ
+    /// エントリを取り除いて Value.unwind を返す
+    pub fn land(th: *Thread) Value {
+        if (th.isTarget()) return th.landTransfer();
+        th.control_depth -= 1;
+        return Value.unwind;
+    }
+
+    /// unwind-protect の cleanup を、脱出・エラーの途中で始める（エントリは取り除き、動的束縛は戻してあること）。
+    /// 進行中の脱出を止める。エラーなら、エラーの理由を Transfer に退避する
+    pub fn uwpBegin(th: *Thread) void {
+        const depth: u32 = @intCast(th.control_depth);
+        if (th.fault == .unwind) {
+            th.unwinds[th.unwind_depth - 1].cleanup_at = depth;
+        } else {
+            th.abandonSuspended(depth);
+            // 溢れることはない（止まっている脱出は、入れ子の cleanup ごとに1つで、制御スタックより深くならない）
+            std.debug.assert(th.unwind_depth < th.unwinds.len);
+            th.unwinds[th.unwind_depth] = .{
+                .target = no_target,
+                .primary = Value.nil,
+                .rest = Value.nil,
+                .count = 0,
+                .cleanup_at = depth,
+                .saved_fault = th.fault,
+            };
+            th.unwind_depth += 1;
+        }
+        th.fault = .none;
+    }
+
+    /// cleanup を終えて、止めていた脱出・エラーを続ける（Value.unwind を返す）
+    pub fn uwpResume(th: *Thread) Value {
+        const t = &th.unwinds[th.unwind_depth - 1];
+        if (t.target == no_target) {
+            th.fault = t.saved_fault;
+            th.unwind_depth -= 1;
+        } else {
+            t.cleanup_at = not_suspended;
+            th.fault = .unwind;
+        }
+        return Value.unwind;
+    }
+
+    /// unwind-protect の保護したフォームを抜けたとき：エントリを取り除き、cleanup の後で返す値を退避する印を返す。
+    ///   fixnum 1：値は primary の1つ。fixnum -1：脱出・エラーの途中（primary が Value.unwind）。リスト：全部の値
+    pub fn uwpSave(th: *Thread, primary: Value) Value {
+        th.control_depth -= 1;
+        if (primary == Value.unwind) {
+            th.unbindTo(th.control[th.control_depth].binding_depth);
+            th.uwpBegin();
+            return Value.fromFixnum(-1);
+        }
+        if (th.mv_count == 1) return Value.fromFixnum(1);
+        return th.valuesToList(primary) catch {
+            _ = th.outOfMemory();
+            th.uwpBegin();
+            return Value.fromFixnum(-1);
+        };
+    }
+
+    /// cleanup の後：退避した値を戻して主値を返す。脱出・エラーの途中なら、それを続ける（Value.unwind）
+    pub fn uwpEnd(th: *Thread, primary: Value, marker: Value) Value {
+        if (marker.isFixnum()) {
+            if (marker.asFixnum() == 1) {
+                th.mv_count = 1;
+                return primary;
+            }
+            return th.uwpResume();
+        }
+        return th.listToValues(marker);
     }
 
     // ------------------------------------------------------------------

@@ -3,6 +3,10 @@
 ;;;; ここで定義するのは、Zig で書いた defmacro・defun の上に作る標準マクロ。
 ;;;; setf と一般の場所は Phase 16 から。
 
+;;; 脱出（Phase 18）
+(defmacro return (&optional value)
+  `(return-from nil ,value))
+
 ;;; 条件
 (defmacro when (test &body body)
   `(if ,test (progn ,@body) nil))

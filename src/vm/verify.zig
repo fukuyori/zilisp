@@ -91,7 +91,7 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
         is_start[at] = true;
         switch (insn.op) {
             .@"const", .load_special, .store_special, .load_function, .load_setf_function, .make_closure, .call_global, .bind_special => if (insn.index >= nconsts) return error.BadConstIndex,
-            .load_local, .store_local => if (insn.index >= nlocals) return error.BadLocalIndex,
+            .load_local, .store_local, .block_enter => if (insn.index >= nlocals) return error.BadLocalIndex,
             .load_captured => if (insn.index >= ncaptured) return error.BadCapturedIndex,
             else => {},
         }
@@ -125,9 +125,10 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
             const pops: i64 = switch (insn.op) {
                 .call => insn.count + 1,
                 .call_global, .make_closure => insn.count,
-                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special, .mv_list, .mv_push_n, .mv_restore => 1,
+                .store_local, .store_special, .make_cell, .cell_ref, .car, .cdr, .not, .add1, .sub1, .pop, .jump_if_nil, .@"return", .bind_special, .mv_list, .mv_push_n, .mv_restore, .catch_enter, .uwp_save => 1,
                 .values => insn.count,
-                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind => 2,
+                .slide => insn.count + 1,
+                .cell_set, .cons, .eq, .add2, .sub2, .lt2, .gt2, .le2, .ge2, .numeq2, .unbind_to, .progv_bind, .uwp_end, .return_from_nl, .throw => 2,
                 else => 0,
             };
             if (d < pops) return error.StackUnderflow;
@@ -135,14 +136,19 @@ pub fn verify(gpa: std.mem.Allocator, bc: []const u8, nconsts: usize, nlocals: u
                 if (d != 1) return error.BadReturnDepth;
                 break;
             }
+            // 脱出（この後には進まない）
+            if (insn.op == .return_from_nl or insn.op == .throw) break;
             d += effect;
             if (d > max_stack) return error.StackOverflow;
             if (insn.target) |t| {
                 if (!is_start[t]) return error.BadJumpTarget;
+                // 脱出先を作る命令の rel は、脱出したときに値を積んで再開する位置
+                const td = d + (ops.landingExtra(insn.op) orelse 0);
+                if (td > max_stack) return error.StackOverflow;
                 if (depth[t] == -1) {
-                    depth[t] = d;
+                    depth[t] = td;
                     try work.append(gpa, t);
-                } else if (depth[t] != d) return error.StackMismatch;
+                } else if (depth[t] != td) return error.StackMismatch;
             }
             if (insn.op == .jump) break;
             pc = insn.next;

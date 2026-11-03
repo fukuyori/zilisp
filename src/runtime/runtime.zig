@@ -109,8 +109,29 @@ pub const PackageData = struct {
     internal: std.StringHashMapUnmanaged(Value) = .empty,
     external: std.StringHashMapUnmanaged(Value) = .empty,
     use_list: std.ArrayList(*PackageData) = .empty,
+    /// このパッケージを use しているパッケージ（Phase 22）
+    used_by: std.ArrayList(*PackageData) = .empty,
+    /// シャドウイングシンボル（このパッケージにあるシンボル。Phase 22。CLHS 11.1.1.2.5）
+    shadowing: std.ArrayList(Value) = .empty,
+    /// ローカルの別名（SBCL 2.6.7 の拡張。defpackage の :local-nicknames。Phase 22）
+    local_nicknames: std.ArrayList(LocalNickname) = .empty,
     /// このパッケージを表す Lisp のオブジェクト
     obj: Value = Value.nil,
+    /// delete-package で削除した（本体は Runtime.deleted_packages に残す。オブジェクトが指したままでよいように）
+    deleted: bool = false,
+
+    pub const LocalNickname = struct { name: []const u8, pkg: *PackageData };
+
+    /// 名前の表のどちらかにある（present）シンボル
+    pub fn present(p: *const PackageData, name: []const u8) ?Found {
+        if (p.external.get(name)) |sym| return .{ .symbol = sym, .status = .external };
+        if (p.internal.get(name)) |sym| return .{ .symbol = sym, .status = .internal };
+        return null;
+    }
+
+    pub fn isShadowing(p: *const PackageData, sym: Value) bool {
+        return std.mem.indexOfScalar(Value, p.shadowing.items, sym) != null;
+    }
 };
 
 pub const SymbolStatus = enum { internal, external, inherited };
@@ -125,6 +146,8 @@ pub const Runtime = struct {
     /// FFI handle（§3.6）
     handles: roots_mod.Roots,
     packages: std.ArrayList(*PackageData) = .empty,
+    /// delete-package で削除したパッケージの本体（Runtime を破棄するときに解放する）
+    deleted_packages: std.ArrayList(*PackageData) = .empty,
     /// NIL の名前・属性リストなどを持つシンボルの実体（値としての NIL は即値 Value.nil）
     nil_symbol: *Symbol,
     t: Value,
@@ -133,8 +156,8 @@ pub const Runtime = struct {
     keyword: *PackageData,
     zilisp: *PackageData,
     sys: *PackageData,
-    /// *package*
-    current: *PackageData,
+    /// *package* のシンボル（値が今のパッケージ。動的に束縛できる：Phase 22）
+    package_sym: Value = Value.nil,
     /// GC の停止時間の計測に使う（null なら計測しない）
     io: ?std.Io = null,
     /// GC の保守的走査の範囲の上端（0 なら OS から取得する。試験で明示的に設定する）
@@ -173,7 +196,6 @@ pub const Runtime = struct {
             .keyword = undefined,
             .zilisp = undefined,
             .sys = undefined,
-            .current = undefined,
         };
         errdefer rt.destroy0();
         try rt.bootstrap();
@@ -191,17 +213,25 @@ pub const Runtime = struct {
         gc.collect(rt);
     }
 
+    pub fn freePackageData(gpa: std.mem.Allocator, p: *PackageData) void {
+        freeTable(gpa, &p.internal);
+        freeTable(gpa, &p.external);
+        p.use_list.deinit(gpa);
+        p.used_by.deinit(gpa);
+        p.shadowing.deinit(gpa);
+        for (p.local_nicknames.items) |n| gpa.free(n.name);
+        p.local_nicknames.deinit(gpa);
+        for (p.nicknames) |n| gpa.free(n);
+        gpa.free(p.nicknames);
+        gpa.free(p.name);
+        gpa.destroy(p);
+    }
+
     fn destroy0(rt: *Runtime) void {
-        for (rt.packages.items) |p| {
-            freeTable(rt.gpa, &p.internal);
-            freeTable(rt.gpa, &p.external);
-            p.use_list.deinit(rt.gpa);
-            for (p.nicknames) |n| rt.gpa.free(n);
-            rt.gpa.free(p.nicknames);
-            rt.gpa.free(p.name);
-            rt.gpa.destroy(p);
-        }
+        for (rt.packages.items) |p| freePackageData(rt.gpa, p);
         rt.packages.deinit(rt.gpa);
+        for (rt.deleted_packages.items) |p| freePackageData(rt.gpa, p);
+        rt.deleted_packages.deinit(rt.gpa);
         rt.roots.deinit();
         rt.handles.deinit();
         rt.heap.deinit();
@@ -228,8 +258,10 @@ pub const Runtime = struct {
         rt.keyword = try rt.makePackage("KEYWORD", &.{});
         rt.zilisp = try rt.makePackage("ZILISP", &.{"ZL"});
         rt.sys = try rt.makePackage("ZILISP-SYSTEM", &.{"ZL-SYS"});
-        for ([_]*PackageData{ rt.cl_user, rt.zilisp, rt.sys }) |p| try p.use_list.append(rt.gpa, rt.cl);
-        rt.current = rt.cl_user;
+        for ([_]*PackageData{ rt.cl_user, rt.zilisp, rt.sys }) |p| {
+            try p.use_list.append(rt.gpa, rt.cl);
+            try rt.cl.used_by.append(rt.gpa, p);
+        }
 
         // NIL のシンボルの実体（パッケージの表には即値の Value.nil を入れる）
         const nil_name = try rt.makeString("NIL");
@@ -268,6 +300,8 @@ pub const Runtime = struct {
         }
         rt.t = (rt.findSymbol(rt.cl, "T") orelse unreachable).symbol;
         rt.symbolPtr(rt.t).value = rt.t;
+        rt.package_sym = (rt.findSymbol(rt.cl, "*PACKAGE*") orelse unreachable).symbol;
+        rt.symbolPtr(rt.package_sym).value = rt.cl_user.obj;
 
         inline for (@typeInfo(Syms).@"struct".field_names) |field| {
             const name = comptime upperName(field);
@@ -283,7 +317,7 @@ pub const Runtime = struct {
     }
 
     /// 必要な確保をすべて済ませてから、パッケージの一覧に登録する（途中で失敗しても一覧は変わらない）
-    fn makePackage(rt: *Runtime, name: []const u8, nicknames: []const []const u8) Error!*PackageData {
+    pub fn makePackage(rt: *Runtime, name: []const u8, nicknames: []const []const u8) Error!*PackageData {
         const p = try rt.gpa.create(PackageData);
         errdefer rt.gpa.destroy(p);
         const name_copy = try rt.gpa.dupe(u8, name);
@@ -306,7 +340,7 @@ pub const Runtime = struct {
     }
 
     /// 表に名前とシンボルを入れる。キーは表が所有する複製。失敗しても表は変わらない
-    fn putSymbol(rt: *Runtime, table: *std.StringHashMapUnmanaged(Value), name: []const u8, sym: Value) Error!void {
+    pub fn putSymbol(rt: *Runtime, table: *std.StringHashMapUnmanaged(Value), name: []const u8, sym: Value) Error!void {
         if (table.getPtr(name)) |v| {
             v.* = sym;
             return;
@@ -547,7 +581,7 @@ pub const Runtime = struct {
         return @ptrCast(@alignCast(v.pointer()));
     }
 
-    fn makeSymbolWithPackage(rt: *Runtime, name: []const u8, pkg: Value) Error!Value {
+    pub fn makeSymbolWithPackage(rt: *Runtime, name: []const u8, pkg: Value) Error!Value {
         const n = try rt.makeString(name);
         const s = try rt.heap.create(Symbol, 0);
         s.* = .{
@@ -576,13 +610,34 @@ pub const Runtime = struct {
         return @ptrCast(@alignCast(p.data));
     }
 
-    /// 名前または別名でパッケージを探す（大文字小文字を区別する）
+    /// 名前または別名でパッケージを探す（大文字小文字を区別する）。今のパッケージのローカルの別名を先に見る
+    /// （SBCL 2.6.7 の find-package と同じ。Phase 22）
     pub fn findPackage(rt: *Runtime, name: []const u8) ?*PackageData {
+        if (rt.currentPackage()) |cur| {
+            for (cur.local_nicknames.items) |n| if (std.mem.eql(u8, n.name, name)) return n.pkg;
+        }
+        return rt.findPackageGlobal(name);
+    }
+
+    /// 名前または別名でパッケージを探す（ローカルの別名は見ない）
+    pub fn findPackageGlobal(rt: *Runtime, name: []const u8) ?*PackageData {
         for (rt.packages.items) |p| {
             if (std.mem.eql(u8, p.name, name)) return p;
             for (p.nicknames) |n| if (std.mem.eql(u8, n, name)) return p;
         }
         return null;
+    }
+
+    pub fn isPackage(v: Value) bool {
+        return v.isOther() and kindOf(v) == .package;
+    }
+
+    /// 今のパッケージ（*package* の値）。パッケージでない値や、削除したパッケージなら null
+    pub fn currentPackage(rt: *Runtime) ?*PackageData {
+        const v = rt.symbolPtr(rt.package_sym).value;
+        if (!isPackage(v)) return null;
+        const p = packageData(v);
+        return if (p.deleted) null else p;
     }
 
     /// find-symbol（CLHS 11.1.1.2 の探索順序）

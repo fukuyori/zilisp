@@ -43,7 +43,16 @@
   枠の再利用、大きくする規則、小さい flat の表も同じ）。削除と挿入の繰り返しは約 1.8 倍、`maphash` は約 1.3 倍速くなり、
   ほかの操作はほぼ同じ。起動時間 8.74 ms
 
+- Phase 22：パッケージ。`*package*` を本当の特殊変数にした。パッケージの関数（`find-package`・`make-package`・`rename-package`・
+  `delete-package`・`intern`・`find-symbol`・`unintern`・`export`・`unexport`・`import`・`shadow`・`shadowing-import`・`use-package`・
+  `unuse-package`・`find-all-symbols`・`symbol-package`・`keywordp`・`make-symbol` など）、`defpackage`（SBCL の `:local-nicknames`
+  も）、`in-package`、`do-symbols`・`do-external-symbols`・`do-all-symbols`、名前の衝突の検出（package-error）、文字列で指定した
+  ファイルの `load`（`*package*` を束縛する）。シンボルは `*package*` を基準にパッケージで修飾して印字する。ネイティブのプログラムは
+  定数を「パッケージ::名前」で書く。教材のブロックの一致は 421 から 429 に。起動時間 9.08 ms
+
 ### Fixed
+- `concatenate` など、複数のベクタを集める関数で、確保した容量が足りなくなることがあった（Debug では assert で止まり、
+  ReleaseFast ではメモリを壊すおそれ）。`Thread.create` が、標準ライブラリの読み込みに失敗したときに VM の領域を解放していなかった
 - Codex のレビュー（Phase 21.6）の指摘 4 件：とても大きなハッシュ表を大きくすると、u32 のバケット数が溢れることがあった
   （枠の数が 2^28 を超えるときは `storage-condition` にした）、大きくするのに失敗した flat の表が flat でない表の印のまま
   残った、`:rehash-size` を無視していたので `maphash` の順序が SBCL と違った（使うようにし、`:rehash-size` と

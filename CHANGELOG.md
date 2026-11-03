@@ -48,7 +48,18 @@
   same small "flat" tables). Deletion followed by insertion is about 1.8 times as fast and `maphash` about 1.3 times;
   other operations are about the same. Startup time 8.74 ms
 
+- Phase 22: packages. `*package*` is a real special variable; the package functions (`find-package`, `make-package`,
+  `rename-package`, `delete-package`, `intern`, `find-symbol`, `unintern`, `export`, `unexport`, `import`, `shadow`,
+  `shadowing-import`, `use-package`, `unuse-package`, `find-all-symbols`, `symbol-package`, `keywordp`, `make-symbol`, ...),
+  `defpackage` (including SBCL's `:local-nicknames`), `in-package`, `do-symbols`, `do-external-symbols`, `do-all-symbols`,
+  name-conflict detection (package-error), and `load` for files named by strings (binding `*package*`). Symbols are printed
+  with package prefixes relative to `*package*`; native programs write constants as "package::name". Curriculum blocks
+  went from 421 to 429 matches. Startup time 9.08 ms
+
 ### Fixed
+- `concatenate` and other functions that collect several vectors could run out of reserved capacity (an assertion
+  failure in Debug builds, possible memory corruption in ReleaseFast builds); a failed standard-library load in
+  `Thread.create` leaked the VM buffers
 - Codex review (Phase 21.6), 4 issues: growing a very large hash table could overflow the u32 bucket count (now a
   `storage-condition` above 2^28 slots); a failed growth left a flat table marked as non-flat; `:rehash-size` was ignored,
   so the `maphash` order differed from SBCL (it is now used, and `:rehash-size` and `:rehash-threshold` are type-checked);

@@ -34,6 +34,30 @@ clhs = "18.1 Hash Table Concepts、maphash（順序は規定されていない�
 since = "Phase 21.6"
 
 [[items]]
+id = "cl-user-use-list"
+description = "COMMON-LISP-USER が use するパッケージ"
+sbcl = "COMMON-LISP、SB-ALIEN、SB-DEBUG、SB-EXT、SB-GRAY、SB-PROFILE"
+zilisp = "COMMON-LISP だけ（詳細設計 §8.3。教材のコードと拡張機能の名前の衝突を避ける）"
+clhs = "11.1.2.2 The COMMON-LISP-USER Package（ほかに use するパッケージは処理系定義）"
+since = "Phase 22"
+
+[[items]]
+id = "package-error-restarts"
+description = "名前の衝突・削除する前の unuse など、package-error からの続行"
+sbcl = "restart（continue・take-new など）で続行できる。既にあるパッケージへの defpackage で、前の設定との違いを警告する"
+zilisp = "restart はない（condition の Phase 25 で加える）。delete-package は、ほかのパッケージが use していれば package-error。defpackage の違いの警告は出さず、設定を足す"
+clhs = "11.1.1.2.5 Prevention of Name Conflicts in Packages（correctable error）、delete-package、defpackage（既にあるパッケージとの違いは処理系に任される）"
+since = "Phase 22"
+
+[[items]]
+id = "package-variable-type"
+description = "*package* にパッケージでない値を束縛・代入したとき"
+sbcl = "束縛・代入の時点で type-error"
+zilisp = "束縛・代入はでき、その後で読み取るときに読み取りのエラー（関数の既定のパッケージとして使うときは type-error）"
+clhs = "*package*（値はパッケージでなければならない。そうでないときの結果は規定されていない）"
+since = "Phase 22"
+
+[[items]]
 id = "reader-character-unicode-names"
 description = "#\\ の後の Unicode の文字名（#\\GREEK_SMALL_LETTER_LAMDA など）"
 sbcl = "読める"

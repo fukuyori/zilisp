@@ -132,6 +132,9 @@ pub const Emitter = struct {
         // 定数のテキスト
         var text: std.Io.Writer.Allocating = .init(e.gpa);
         defer text.deinit();
+        // シンボルは「パッケージ::名前」の形で書く（起動時の *package* によらず同じシンボルを読む。Phase 22）
+        printer.qualify_all = true;
+        defer printer.qualify_all = false;
         for (e.consts.items) |v| {
             try printer.prin1(e.rt, &text.writer, v);
             try text.writer.writeByte('\n');

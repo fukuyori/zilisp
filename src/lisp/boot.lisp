@@ -1051,3 +1051,78 @@
              (setq result (cons (car b) result) b (cdr b)))
             (t (setq result (cons (car a) result) a (cdr a)))))
     (coerce (nreconc result (if a a b)) result-type)))
+
+;;; ---------------------------------------------------------------------------
+;;; Phase 22：パッケージ（CLHS 11 章。関数は src/primitives/packages.zig）
+
+;; (in-package 名前)：*package* を名前のパッケージにする。コンパイル時にも評価する（後のフォームの読み方が変わる）
+(defmacro in-package (name)
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (setq *package* (zl-sys::%find-package-or-lose ,(string name)))))
+
+;; defpackage のオプションの名前（文字列指定子）を文字列にする
+(defun zl-sys::%defpackage-names (option)
+  (mapcar #'string (cdr option)))
+
+;; 名前の集まりが互いに重ならないことを確かめる（CLHS defpackage）
+(defun zl-sys::%defpackage-disjoint (what-a a what-b b)
+  (dolist (x a)
+    (when (member x b :test #'string=)
+      (zl-sys::%macro-form-error
+       (concatenate 'string "DEFPACKAGE の " what-a " と " what-b " に同じ名前があります") x))))
+
+;; (defpackage 名前 オプション...)：:nicknames :use :shadow :shadowing-import-from :import-from :intern :export
+;; :documentation :size、SBCL 2.6.7 の拡張 :local-nicknames。:use がなければ何も use しない（SBCL と同じ）
+(defmacro defpackage (name &rest options)
+  (let ((nicknames nil) (use nil) (use-p nil) (shadow nil) (shadowing-imports nil) (imports nil)
+        (interns nil) (exports nil) (local-nicknames nil) (doc-p nil) (size-p nil))
+    (dolist (opt options)
+      (unless (and (consp opt) (keywordp (car opt)))
+        (zl-sys::%macro-form-error "DEFPACKAGE のオプションが正しくありません" opt))
+      (case (car opt)
+        (:nicknames (setq nicknames (append nicknames (zl-sys::%defpackage-names opt))))
+        (:use (setq use-p t use (append use (zl-sys::%defpackage-names opt))))
+        (:shadow (setq shadow (append shadow (zl-sys::%defpackage-names opt))))
+        (:shadowing-import-from
+         (push (cons (string (cadr opt)) (mapcar #'string (cddr opt))) shadowing-imports))
+        (:import-from
+         (push (cons (string (cadr opt)) (mapcar #'string (cddr opt))) imports))
+        (:intern (setq interns (append interns (zl-sys::%defpackage-names opt))))
+        (:export (setq exports (append exports (zl-sys::%defpackage-names opt))))
+        (:local-nicknames
+         (dolist (pair (cdr opt))
+           (unless (and (consp pair) (consp (cdr pair)) (null (cddr pair)))
+             (zl-sys::%macro-form-error "DEFPACKAGE の :local-nicknames の指定が正しくありません" pair))
+           (push (cons (string (car pair)) (string (cadr pair))) local-nicknames)))
+        (:documentation
+         (when doc-p (zl-sys::%macro-form-error "DEFPACKAGE の :documentation は1回だけ指定できます" opt))
+         (setq doc-p t))
+        (:size
+         (when size-p (zl-sys::%macro-form-error "DEFPACKAGE の :size は1回だけ指定できます" opt))
+         (setq size-p t))
+        (t (zl-sys::%macro-form-error "DEFPACKAGE の知らないオプションです" opt))))
+    (let ((shadowing-names (mapcan (lambda (s) (copy-list (cdr s))) shadowing-imports))
+          (import-names (mapcan (lambda (s) (copy-list (cdr s))) imports)))
+      (zl-sys::%defpackage-disjoint ":shadow" shadow ":shadowing-import-from" shadowing-names)
+      (zl-sys::%defpackage-disjoint ":shadow" shadow ":import-from" import-names)
+      (zl-sys::%defpackage-disjoint ":shadow" shadow ":intern" interns)
+      (zl-sys::%defpackage-disjoint ":shadowing-import-from" shadowing-names ":import-from" import-names)
+      (zl-sys::%defpackage-disjoint ":shadowing-import-from" shadowing-names ":intern" interns)
+      (zl-sys::%defpackage-disjoint ":import-from" import-names ":intern" interns)
+      (zl-sys::%defpackage-disjoint ":intern" interns ":export" exports))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       (zl-sys::%defpackage ,(string name) ',nicknames ',use ',use-p ',shadow
+                            ',(reverse shadowing-imports) ',(reverse imports) ',interns ',exports
+                            ',(reverse local-nicknames)))))
+
+;; (do-symbols (変数 &optional パッケージ 結果) 本体...)：アクセスできるシンボルを1つずつ
+(defmacro do-symbols ((var &optional (package '*package*) result) &body body)
+  `(dolist (,var (zl-sys::%package-symbols ,package :accessible) ,result) ,@body))
+
+;; (do-external-symbols (変数 &optional パッケージ 結果) 本体...)：外部シンボルを1つずつ
+(defmacro do-external-symbols ((var &optional (package '*package*) result) &body body)
+  `(dolist (,var (zl-sys::%package-symbols ,package :external) ,result) ,@body))
+
+;; (do-all-symbols (変数 &optional 結果) 本体...)：すべてのパッケージにあるシンボル（同じシンボルが何度も現れてよい）
+(defmacro do-all-symbols ((var &optional result) &body body)
+  `(dolist (,var (zl-sys::%all-package-symbols) ,result) ,@body))

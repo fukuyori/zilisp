@@ -190,7 +190,7 @@ fn collect(th: *Thread, s: Seq, out: *std.ArrayList(Value)) Unwind!void {
             }
         },
         .vector => |v| {
-            out.ensureTotalCapacity(gpa, v.len) catch return oom(th);
+            out.ensureUnusedCapacity(gpa, v.len) catch return oom(th);
             for (0..v.len) |i| out.appendAssumeCapacity(arrays.storageGet(v.data, i));
         },
     }

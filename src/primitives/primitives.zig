@@ -17,6 +17,8 @@ const sequences = @import("sequences.zig");
 const equalp = @import("equalp.zig");
 const strings = @import("strings.zig");
 const seqfns = @import("seqfns.zig");
+const packages = @import("packages.zig");
+const load_mod = @import("load.zig");
 
 const any = function.any_args;
 
@@ -321,6 +323,33 @@ pub const table = [_]Entry{
     .{ .name = "LIST-LENGTH", .impl = seqfns.listLength_, .min = 1, .max = 1 },
     .{ .name = "VECTOR-POP", .impl = seqfns.vectorPop, .min = 1, .max = 1 },
     .{ .name = "ARRAY-IN-BOUNDS-P", .impl = arrays.arrayInBoundsP, .min = 1, .max = any },
+    // パッケージ（Phase 22。packages.zig）
+    .{ .name = "PACKAGEP", .impl = packages.packagep, .min = 1, .max = 1 },
+    .{ .name = "FIND-PACKAGE", .impl = packages.findPackage, .min = 1, .max = 1 },
+    .{ .name = "PACKAGE-NAME", .impl = packages.packageName, .min = 1, .max = 1 },
+    .{ .name = "PACKAGE-NICKNAMES", .impl = packages.packageNicknames, .min = 1, .max = 1 },
+    .{ .name = "PACKAGE-USE-LIST", .impl = packages.packageUseList, .min = 1, .max = 1 },
+    .{ .name = "PACKAGE-USED-BY-LIST", .impl = packages.packageUsedByList, .min = 1, .max = 1 },
+    .{ .name = "PACKAGE-SHADOWING-SYMBOLS", .impl = packages.packageShadowingSymbols, .min = 1, .max = 1 },
+    .{ .name = "LIST-ALL-PACKAGES", .impl = packages.listAllPackages, .min = 0, .max = 0 },
+    .{ .name = "MAKE-PACKAGE", .impl = packages.makePackage, .min = 1, .max = any },
+    .{ .name = "RENAME-PACKAGE", .impl = packages.renamePackage, .min = 2, .max = 3 },
+    .{ .name = "DELETE-PACKAGE", .impl = packages.deletePackage, .min = 1, .max = 1 },
+    .{ .name = "FIND-SYMBOL", .impl = packages.findSymbol, .min = 1, .max = 2 },
+    .{ .name = "INTERN", .impl = packages.intern, .min = 1, .max = 2 },
+    .{ .name = "UNINTERN", .impl = packages.unintern, .min = 1, .max = 2 },
+    .{ .name = "EXPORT", .impl = packages.exportSymbols, .min = 1, .max = 2 },
+    .{ .name = "UNEXPORT", .impl = packages.unexportSymbols, .min = 1, .max = 2 },
+    .{ .name = "IMPORT", .impl = packages.importSymbols, .min = 1, .max = 2 },
+    .{ .name = "SHADOWING-IMPORT", .impl = packages.shadowingImport, .min = 1, .max = 2 },
+    .{ .name = "SHADOW", .impl = packages.shadow, .min = 1, .max = 2 },
+    .{ .name = "USE-PACKAGE", .impl = packages.usePackage, .min = 1, .max = 2 },
+    .{ .name = "UNUSE-PACKAGE", .impl = packages.unusePackage, .min = 1, .max = 2 },
+    .{ .name = "FIND-ALL-SYMBOLS", .impl = packages.findAllSymbols, .min = 1, .max = 1 },
+    .{ .name = "SYMBOL-PACKAGE", .impl = packages.symbolPackage, .min = 1, .max = 1 },
+    .{ .name = "KEYWORDP", .impl = packages.keywordp, .min = 1, .max = 1 },
+    .{ .name = "MAKE-SYMBOL", .impl = packages.makeSymbol, .min = 1, .max = 1 },
+    .{ .name = "LOAD", .impl = load_mod.load, .min = 1, .max = any },
     // 多値（Phase 17）
     .{ .name = "VALUES", .impl = functions.values, .min = 0, .max = any },
     .{ .name = "VALUES-LIST", .impl = functions.valuesList, .min = 1, .max = 1 },
@@ -350,6 +379,11 @@ pub const sys_table = [_]Entry{
     .{ .name = "%SET-ELT", .impl = seqfns.sysSetElt, .min = 3, .max = 3 },
     .{ .name = "%SET-FDEFINITION", .impl = functions.sysSetFdefinition, .min = 2, .max = 2 },
     .{ .name = "%HASH-PAIRS", .impl = hashtables.sysHashPairs, .min = 1, .max = 1 },
+    // パッケージ（Phase 22。boot.lisp の in-package・defpackage・do-symbols が使う）
+    .{ .name = "%FIND-PACKAGE-OR-LOSE", .impl = packages.sysFindPackageOrLose, .min = 1, .max = 1 },
+    .{ .name = "%PACKAGE-SYMBOLS", .impl = packages.sysPackageSymbols, .min = 2, .max = 2 },
+    .{ .name = "%ALL-PACKAGE-SYMBOLS", .impl = packages.sysAllPackageSymbols, .min = 0, .max = 0 },
+    .{ .name = "%DEFPACKAGE", .impl = packages.sysDefpackage, .min = 10, .max = 10 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {

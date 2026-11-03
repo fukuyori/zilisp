@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 421 |
+| match | 両方とも正常に終わり、標準出力が同じ | 429 |
 | both-error | 両方ともエラーで終わった | 362 |
 | output-diff | 両方とも正常に終わったが、標準出力が違う | 0 |
-| zilisp-error | Zilisp だけがエラー | 172 |
+| zilisp-error | Zilisp だけがエラー | 164 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -19,10 +19,9 @@
 | 最初のエラー | ブロック数 |
 |---|---|
 | 未実装：DEFSTRUCT | 31 |
-| 未実装：WITH-OPEN-FILE | 23 |
+| 未実装：WITH-OPEN-FILE | 24 |
 | 未実装：DEFCLASS | 21 |
 | 未実装：HANDLER-CASE | 16 |
-| 未実装：DEFPACKAGE | 8 |
 | 未実装：ASSERT | 5 |
 | 未実装：DEFINE-CONDITION | 5 |
 | 未実装の関数：EVAL | 4 |
@@ -37,7 +36,6 @@
 | 未実装："~:" | 2 |
 | 未実装：RESTART-CASE | 2 |
 | 未定義の関数：QUIT | 1 |
-| 未実装の変数：*PACKAGE* | 1 |
 | 未実装の変数：*RANDOM-STATE* | 1 |
 | 未実装の関数：APROPOS | 1 |
 | 未実装の関数：COMPLEX | 1 |

@@ -510,14 +510,14 @@ seq	id	outcome	detail
 00524	chapters/19-Level 14.md#L883	zilisp-error	未実装の関数：GET-INTERNAL-REAL-TIME
 00525	chapters/19-Level 14.md#L904	both-error	
 00526	chapters/19-Level 14.md#L925	zilisp-error	未実装：ECASE
-00527	chapters/20-Level 15.md#L30	zilisp-error	未実装の変数：*PACKAGE*
-00529	chapters/20-Level 15.md#L61	zilisp-error	未実装：DEFPACKAGE
+00527	chapters/20-Level 15.md#L30	match	
+00529	chapters/20-Level 15.md#L61	match	
 00530	chapters/20-Level 15.md#L97	both-error	
 00531	chapters/20-Level 15.md#L113	both-error	
-00532	chapters/20-Level 15.md#L138	zilisp-error	未実装：DEFPACKAGE
+00532	chapters/20-Level 15.md#L138	match	
 00533	chapters/20-Level 15.md#L169	both-error	
 00534	chapters/20-Level 15.md#L180	both-error	
-00535	chapters/20-Level 15.md#L210	zilisp-error	未実装：DEFPACKAGE
+00535	chapters/20-Level 15.md#L210	match	
 00536	chapters/20-Level 15.md#L235	both-error	
 00537	chapters/20-Level 15.md#L254	both-error	
 00538	chapters/20-Level 15.md#L263	both-error	
@@ -534,14 +534,14 @@ seq	id	outcome	detail
 00558	chapters/20-Level 15.md#L664	match	
 00559	chapters/20-Level 15.md#L676	both-error	
 00560	chapters/20-Level 15.md#L690	both-error	
-00561	chapters/20-Level 15.md#L700	zilisp-error	未実装：DEFPACKAGE
+00561	chapters/20-Level 15.md#L700	match	
 00562	chapters/20-Level 15.md#L711	both-error	
-00563	chapters/20-Level 15.md#L747	zilisp-error	未実装：DEFPACKAGE
+00563	chapters/20-Level 15.md#L747	zilisp-error	未実装：WITH-OPEN-FILE
 00564	chapters/20-Level 15.md#L791	both-error	
-00565	chapters/20-Level 15.md#L798	zilisp-error	未実装：DEFPACKAGE
+00565	chapters/20-Level 15.md#L798	match	
 00566	chapters/20-Level 15.md#L822	both-error	
 00567	chapters/20-Level 15.md#L850	both-error	
-00569	chapters/20-Level 15.md#L890	zilisp-error	未実装：DEFPACKAGE
+00569	chapters/20-Level 15.md#L890	match	
 00570	chapters/21-Level 16.md#L41	both-error	
 00571	chapters/21-Level 16.md#L59	zilisp-error	未実装：DEFCLASS
 00572	chapters/21-Level 16.md#L82	zilisp-error	未実装：DEFCLASS
@@ -821,7 +821,7 @@ seq	id	outcome	detail
 00932	chapters/32-Level 21-B.md#L1645	match	
 00933	chapters/33-Level 21-C.md#L663	both-error	
 00934	chapters/33-Level 21-C.md#L671	both-error	
-00938	chapters/35-Level 22.md#L217	zilisp-error	未実装：DEFPACKAGE
+00938	chapters/35-Level 22.md#L217	match	
 00940	chapters/35-Level 22.md#L248	both-error	
 00949	chapters/35-Level 22.md#L552	match	
 00950	chapters/35-Level 22.md#L597	both-error	

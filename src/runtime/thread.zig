@@ -96,6 +96,11 @@ pub const ErrorKind = enum {
     floating_point_invalid_operation,
     storage_condition,
     parse_error,
+    /// ファイルを読めない（Phase 22 の load）
+    file_error,
+    /// 読み取りの誤り・ファイルの途中でフォームが終わっている（Phase 22 の load）
+    reader_error,
+    end_of_file,
     /// 未実装の機能（CL の型ではない。Zilisp の拡張：基本設計 §3.1「黙って別の値を返さない」）
     unimplemented,
 
@@ -113,6 +118,9 @@ pub const ErrorKind = enum {
             .floating_point_invalid_operation => "FLOATING-POINT-INVALID-OPERATION",
             .storage_condition => "STORAGE-CONDITION",
             .parse_error => "PARSE-ERROR",
+            .file_error => "FILE-ERROR",
+            .reader_error => "READER-ERROR",
+            .end_of_file => "END-OF-FILE",
             .unimplemented => "ZILISP:UNIMPLEMENTED",
         };
     }
@@ -194,7 +202,10 @@ pub const Thread = struct {
             .control = control,
             .unwinds = unwinds,
         };
+        errdefer th.vm.deinit(rt.gpa);
         rt.thread = th;
+        errdefer rt.thread = null;
+        errdefer th.saved_errors.deinit(rt.gpa);
         // 標準ライブラリ（Lisp で書いた標準マクロなど）を読み込む（§11.1 の 7）
         try @import("../compiler/boot.zig").load(th);
         return th;

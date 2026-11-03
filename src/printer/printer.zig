@@ -268,6 +268,10 @@ fn printFloat(w: *Writer, comptime T: type, x: T) Error!void {
     return w.print("{c}{d}", .{ marker, exp10 });
 }
 
+/// 真なら、キーワードと uninterned 以外のシンボルをすべて「パッケージ::名前」の形で書く（ネイティブバックエンドが定数を
+/// 埋め込むとき。起動時に読み直すときの *package* や、export の済んでいない順序によらず同じシンボルになる。Phase 22）
+pub var qualify_all: bool = false;
+
 fn printSymbol(rt: *Runtime, w: *Writer, v: Value) Error!void {
     const sym = rt.symbolPtr(v);
     var name_buf: Writer.Allocating = .init(rt.gpa);
@@ -281,11 +285,21 @@ fn printSymbol(rt: *Runtime, w: *Writer, v: Value) Error!void {
         const home = Runtime.packageData(sym.package);
         if (home == rt.keyword) {
             try w.writeByte(':');
+        } else if (qualify_all) {
+            try writeSymbolName(w, home.name);
+            try w.writeAll("::");
         } else {
             // 今のパッケージから同じシンボルが見えれば修飾しない
-            const visible = if (rt.findSymbol(rt.current, name)) |f| f.symbol == v else false;
+            const cur = rt.currentPackage();
+            const visible = if (cur) |c| (if (rt.findSymbol(c, name)) |f| f.symbol == v else false) else false;
             if (!visible) {
-                try writeSymbolName(w, home.name);
+                // 今のパッケージにホームパッケージのローカルの別名があれば、それで修飾する（SBCL 2.6.7 と同じ。Phase 22）
+                var prefix = home.name;
+                if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == home) {
+                    prefix = n.name;
+                    break;
+                };
+                try writeSymbolName(w, prefix);
                 const external = if (home.external.get(name)) |s| s == v else false;
                 try w.writeAll(if (external) ":" else "::");
             }

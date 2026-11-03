@@ -332,7 +332,8 @@ fn buildConstants(th: *Thread, prog: *const Program) !void {
     K = Runtime.vectorPtr(table).items();
 
     var src = reader.Source.init(prog.constants_text, 0);
-    var b: vb.ValueBuilder = .{ .rt = rt };
+    // 定数は「パッケージ::名前」の形で書いてある（emit.zig）。まだ defpackage を実行していないパッケージは空のまま作る
+    var b: vb.ValueBuilder = .{ .rt = rt, .create_packages = true };
     var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{});
     defer r.deinit();
     var i: usize = 0;

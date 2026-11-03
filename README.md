@@ -56,8 +56,11 @@ Implemented after 0.2.0 (in `main`, not yet released):
   and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...); character classes
   and case follow Unicode 15.0.0, as in SBCL 2.6.7
 
-Not yet implemented (planned for later releases): the full `format`, complex numbers, streams and files, packages
-(`defpackage`, `in-package`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
+- Packages: `defpackage`, `in-package`, `export`, `use-package`, `intern`, `find-symbol` and the other package
+  functions, name-conflict detection, and `load` for files named by strings
+
+Not yet implemented (planned for later releases): the full `format`, complex numbers, streams and files (pathnames,
+`with-open-file`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
 
 Error messages are currently written in Japanese.
 

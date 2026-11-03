@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記26） | 2026-11-03 | Phase 22：パッケージ（§8.2。`*package*`、パッケージの関数、defpackage・in-package、名前の衝突、load、ネイティブの定数の修飾）。シャドウイングシンボルの持ち方の変更 |
 | 0.2（追記25） | 2026-11-03 | Phase 21.6：ハッシュ表を SBCL 2.6.7 の並べ方に置き換え（§2.6。maphash の順序、枠の数の決め方、flat の表）。GC の走査しない配列 `raw_vector`（§2.4） |
 | 0.2（追記24） | 2026-11-03 | Phase 21.5：Unicode 15.0.0 の文字の種類と大文字・小文字（§11.2。表の生成器と、全符号位置での SBCL 2.6.7 との比較）。§2.6 の equalp の大文字・小文字 |
 | 0.2（追記23） | 2026-11-03 | 調査と決定：ハッシュ表のエントリの並べ方の比較と、SBCL の方式への置き換え（§2.6。Phase 21.6）、Unicode 15.0.0 への対応（§11.2。Phase 21.5）、フェーズごとの起動時間と対策の基準（§11.2） |
@@ -1036,7 +1037,22 @@ pub const Package = struct {
 - `find-symbol` の探索順序：自パッケージの external → internal → use しているパッケージの external（use-list の順）。
 - 名前の衝突検出は Phase 22 で実装し、`package-error` と restart を提供する（CLHS 11.1.1.2.5）。
 - `unintern` は、シンボルを**そのシンボルのホームパッケージから**取り除いた場合だけ、`symbol-package` を NIL にする（CLHS `unintern`。agy #14）。
-- シャドウイングシンボルかどうかの判定は、リストの探索ではなく、シンボルのフラグ（`shadowing`。パッケージごとに異なり得るため、パッケージ側の集合と併用する）で行う。
+- ~~シャドウイングシンボルかどうかの判定は、リストの探索ではなく、シンボルのフラグ（`shadowing`。パッケージごとに異なり得るため、パッケージ側の集合と併用する）で行う。~~
+- シャドウイングシンボルは、パッケージごとのリスト（`PackageData.shadowing`）で持ち、判定はリストを探す（Phase 22 で、シンボルのフラグを使う案から変更。判定を使うのは名前の衝突を調べるときだけで、読み取りや検索では使わない。シャドウイングシンボルはふつう数個）。
+
+**Phase 22 の実装（パッケージ）**
+- **`*package*`**：CL の特殊変数として値を持ち（起動時は CL-USER）、`let` で束縛できる。`Runtime.current` はなくし、Reader・Printer・`intern` などは `*package*` の値を読む（`Runtime.currentPackage`。パッケージでない値や削除したパッケージなら、Reader は読み取りのエラーにする）。
+- **パッケージの本体**（`PackageData`）：名前・別名、内部・外部の表、use しているパッケージと、自分を use しているパッケージの一覧、シャドウイングシンボル、ローカルの別名（SBCL 2.6.7 の拡張。`defpackage` の `:local-nicknames`）。`find-package` と Reader はローカルの別名を先に見て、Printer もローカルの別名で修飾する（SBCL と同じ）。
+- **関数**（`src/primitives/packages.zig`）：`packagep`・`find-package`・`make-package`（`:use` の既定は空。SBCL と同じ）・`rename-package`・`delete-package`・`list-all-packages`・`package-name`・`package-nicknames`・`package-use-list`・`package-used-by-list`・`package-shadowing-symbols`、`intern`・`find-symbol`（2つ目の値は `:internal`・`:external`・`:inherited`）・`unintern`・`export`・`unexport`・`import`・`shadow`・`shadowing-import`・`use-package`・`unuse-package`・`find-all-symbols`・`symbol-package`・`keywordp`・`make-symbol`。
+- **マクロ**（`src/lisp/boot.lisp`）：`in-package`、`defpackage`（`:nicknames`・`:use`・`:shadow`・`:shadowing-import-from`・`:import-from`・`:intern`・`:export`・`:documentation`・`:size`・`:local-nicknames`。処理の順序は CLHS のとおり、shadow・shadowing-import-from、use、import-from・intern、export。知らないオプション、`:documentation`・`:size` の重複、`:shadow`・`:shadowing-import-from`・`:import-from`・`:intern` の名前の重なり、`:intern` と `:export` の重なりは program-error。既にあるパッケージには設定を足す）、`do-symbols`・`do-external-symbols`・`do-all-symbols`。`in-package` と `defpackage` は `(eval-when (:compile-toplevel :load-toplevel :execute) ...)` に展開するので、ファイル全体を先にコンパイルするとき（ネイティブ）にも、後のフォームを読む前にパッケージが切り替わる。
+- **名前の衝突**（CLHS 11.1.1.2.5）：`use-package`（同時に use するパッケージどうしも）、`export`（use しているパッケージに同名の別のシンボル）、`import`（同名の別のシンボルがアクセスできる）、`unintern`（シャドウイングシンボルを取り除くと、use している複数のパッケージの同名の外部シンボルが衝突する）。表を変える前にすべて調べ、あれば package-error（SBCL 2.6.7 は package-error の一種の name-conflict）。restart は condition の Phase 25 で加える。
+- **`delete-package`**：本体は `Runtime.deleted_packages` に移して残す（パッケージのオブジェクトが指したままでよいように）。ホームパッケージがそのパッケージのシンボルは、ホームを NIL にする。標準のパッケージと、ほかのパッケージが use しているパッケージは削除できない（package-error。SBCL は continue の restart で unuse してから削除する）。
+- **`load`**（`src/primitives/load.zig`）：ファイル（文字列。パス名は Phase 23）のフォームを1つ読むごとに評価する。読み込みの間 `*package*` を束縛する（ファイルの中の `in-package` は、読み込みが終われば元に戻る）。`:if-does-not-exist nil` ならファイルがなければ NIL。`:verbose`・`:print` を真にするのは未実装のエラー。エラーの種類 `file-error`・`reader-error`・`end-of-file` を加えた。
+- **ネイティブバックエンド**：定数は、キーワードと uninterned 以外のシンボルをすべて「パッケージ::名前」の形で書く（`printer.qualify_all`。起動時の `*package*` や、まだ export していない順序によらず同じシンボルを読む）。起動時に定数を読むとき、まだ `defpackage` を実行していないパッケージは空のまま作り（`ValueBuilder.create_packages`）、後で実行される `defpackage` がそれに設定を足す。
+- **CL の書き方の注意**：ファイル全体を先にコンパイルする場合（ネイティブ・`compile-file`）、後のフォームの読み方を変える `load`・`use-package` などはトップレベルで `eval-when` に囲む必要がある（`defpackage`・`in-package` は展開が `eval-when` なので不要）。`print` の中など、トップレベルでない `defpackage` も、コンパイルの時点では実行されない。どれも SBCL の `compile-file` と同じ。
+- **修正**：Phase 21 の `seqfns.zig` の `collect` が、ベクタを集めるときに全体の容量（`ensureTotalCapacity`）を確保していたため、`concatenate` で前の列の後ろに続けると容量が足りなくなることがあった（Debug では assert で止まり、ReleaseFast ではメモリを壊すおそれ）。空きの容量（`ensureUnusedCapacity`）にした。`Thread.create` が、標準ライブラリの読み込みに失敗したときに VM などを解放していなかった。
+- **試験**：言語試験 `packages.lisp`（パッケージの関数・`defpackage`・`in-package`・印字・教材の形）と `multi-file.lisp`（`load` した2つのファイルの名前の解決。受入）。どちらも SBCL 2.6.7 と同じ出力で、GC stress の版とネイティブでも同じ。エラーの種類の単体テスト（package-error・type-error・program-error・読み取りのエラー）。
+- 結果：Level 15 の 32 ブロックのうち 8 が一致し、23 は両方ともエラー（前のブロックで定義したパッケージを使うもの）、Zilisp だけがエラーなのは `with-open-file`（Phase 23）の 1 つ。教材のブロックの一致は 421 から 429 に。
 
 ### 8.3 標準パッケージ（確定）
 
@@ -1223,6 +1239,7 @@ instance                      rack
 | P21 | 949 | 8.80 ms | 1.72 MB |
 | P21.5 | 949 | 8.82 ms | 1.79 MB |
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
+| P22 | 1016 | 9.08 ms | 1.85 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。

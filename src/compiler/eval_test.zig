@@ -1721,7 +1721,8 @@ noinline fn clobberStack() void {
 fn vmSlotBody(rt: *Runtime) !void {
     var out: std.Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
-    const th = try Thread.create(rt, &out.writer, .{ .stack_size = 64, .frame_count = 4 });
+    // 値スタックとフレームは、起動時に標準ライブラリのマクロを展開できるだけ要る（Phase 22 の defpackage から、64 要素・4 フレームでは足りない）
+    const th = try Thread.create(rt, &out.writer, .{ .stack_size = 256, .frame_count = 16 });
     defer th.destroy();
     // sp より上の枠（使い終わった枠）にある値はルートではない
     th.vm.sp = 3;
@@ -1745,4 +1746,61 @@ test "values left in VM stack slots above sp are not GC roots" {
     // 走査の上端はこの関数のフレーム。値を扱う本体は inline 展開しない別の関数（gc.zig の withRuntime と同じ）
     rt.stack_top = @frameAddress();
     try @call(.never_inline, vmSlotBody, .{rt});
+}
+
+test "package errors like SBCL 2.6.7 (Phase 22)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    try expectValue(&e,
+        \\(progn (make-package "E1") (intern "FOO" "E1") (export (find-symbol "FOO" "E1") "E1")
+        \\  (make-package "E2" :use nil) (intern "FOO" "E2") (make-package "E3" :use '("E1"))
+        \\  (make-package "E4" :use nil) (make-package "E5" :use '("E4")) (intern "BAZ" "E5") t)
+    , "T");
+    // SBCL 2.6.7 で package-error（またはその一種の name-conflict・package-does-not-exist）になるもの
+    try expectError(&e, "(make-package \"E1\")", .package_error);
+    try expectError(&e, "(make-package \"NEW\" :nicknames '(\"E1\"))", .package_error);
+    try expectError(&e, "(export (intern \"BAR\" \"E2\") \"E1\")", .package_error);
+    try expectError(&e, "(use-package \"E1\" \"E2\")", .package_error);
+    try expectError(&e, "(import (find-symbol \"FOO\" \"E2\") \"E3\")", .package_error);
+    try expectError(&e, "(export (intern \"BAZ\" \"E4\") \"E4\")", .package_error);
+    try expectError(&e, "(unexport 'cl:car \"E1\")", .package_error);
+    try expectError(&e, "(rename-package \"E2\" \"E1\")", .package_error);
+    try expectError(&e, "(use-package \"NOPKG\" \"E1\")", .package_error);
+    try expectError(&e, "(intern \"X\" \"NOPKG\")", .package_error);
+    try expectError(&e, "(in-package :nopkg)", .package_error);
+    try expectError(&e, "(export :key \"E1\")", .package_error);
+    try expectError(&e, "(use-package :keyword \"E2\")", .package_error);
+    try expectError(&e, "(delete-package :cl)", .package_error);
+    try expectError(&e, "(delete-package \"E1\")", .package_error);
+    try expectError(&e, "(defpackage :e6 (:import-from :nopkg :x))", .package_error);
+    try expectError(&e, "(defpackage :e7 (:import-from :e1 :nosuch))", .package_error);
+    // シャドウイングシンボルを取り除くと、use している2つのパッケージの FOO が衝突する
+    try expectValue(&e,
+        \\(progn (make-package "E8" :use nil) (export (intern "FOO" "E8") "E8")
+        \\  (make-package "E9" :use nil) (shadow "FOO" "E9") (use-package '("E1" "E8") "E9") t)
+    , "T");
+    try expectError(&e, "(unintern (find-symbol \"FOO\" \"E9\") \"E9\")", .package_error);
+    // 型の誤り
+    try expectError(&e, "(find-symbol 'car)", .type_error);
+    try expectError(&e, "(intern 'foo)", .type_error);
+    try expectError(&e, "(export 1)", .type_error);
+    try expectError(&e, "(find-package 1)", .type_error);
+    try expectError(&e, "(symbol-package 1)", .type_error);
+    // defpackage のオプションの誤り（SBCL 2.6.7 は program-error）
+    try expectError(&e, "(defpackage :e10 (:bogus 1))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:documentation \"x\") (:documentation \"y\"))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:shadow :x) (:intern :x))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:intern :x) (:export :x))", .program_error);
+    try expectError(&e, "(defpackage :e10 bogus)", .program_error);
+    // 削除したパッケージ
+    try expectValue(&e, "(let ((p (make-package \"E11\"))) (list (delete-package p) (delete-package p) (package-name p)))", "(T NIL NIL)");
+    try expectError(&e, "(let ((p (make-package \"E12\"))) (delete-package p) (intern \"X\" p))", .package_error);
+    // Reader：外部シンボルでないものを : で指定する、ないパッケージ、*package* がパッケージでない
+    try testing.expectError(error.ReaderError, evalText(&e, "'e1::foo 'e2:foo"));
+    try testing.expectError(error.ReaderError, evalText(&e, "nopkg::x"));
+    try testing.expectError(error.ReaderError, evalText(&e, "(setq *package* 3) x"));
+    // *package* が 3 のままでは何も読めないので、Zig の側から戻す
+    e.rt.symbolPtr(e.rt.package_sym).value = e.rt.cl_user.obj;
+    try expectValue(&e, "(package-name *package*)", "\"COMMON-LISP-USER\"");
 }

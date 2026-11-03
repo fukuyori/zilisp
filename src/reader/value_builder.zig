@@ -13,6 +13,8 @@ const Error = reader.Error;
 
 pub const ValueBuilder = struct {
     rt: *Runtime,
+    /// 真なら、パッケージ修飾のパッケージがなければ空のパッケージを作る（ネイティブの定数を起動時に読むとき。Phase 22）
+    create_packages: bool = false,
 
     pub const Datum = Value;
     /// 組み立て中のリスト（先頭と最後の cons）
@@ -109,11 +111,15 @@ pub const ValueBuilder = struct {
     pub fn symbol(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, pkg: reader.PackageRef, name: []const u8) Error!Value {
         const rt = b.rt;
         return switch (pkg) {
-            .current => try rt.intern(rt.current, name),
+            .current => try rt.intern(rt.currentPackage() orelse return fail(diag, loc, "*PACKAGE* の値がパッケージではありません"), name),
             .keyword => try rt.internKeyword(name),
             .uninterned => try rt.makeSymbol(name),
             .named => |n| blk: {
-                const p = rt.findPackage(n.name) orelse return fail(diag, loc, "そのパッケージはありません");
+                const p = rt.findPackage(n.name) orelse (if (b.create_packages)
+                    // ネイティブのプログラムが起動時に定数を読むとき：まだ defpackage を実行していないパッケージは空のまま作る
+                    try rt.makePackage(n.name, &.{})
+                else
+                    return fail(diag, loc, "そのパッケージはありません"));
                 if (n.external) {
                     const f = rt.findSymbol(p, name) orelse return fail(diag, loc, "そのパッケージにシンボルがありません");
                     if (f.status != .external) return fail(diag, loc, "そのシンボルは外部シンボルではありません（:: で指定してください）");

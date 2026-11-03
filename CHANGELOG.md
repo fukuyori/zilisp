@@ -15,7 +15,7 @@
   `elt`, `fill`, `replace`, `concatenate`, `coerce`, `map`, `map-into`, `some`, `every`, `merge`, ...); list, tree and set functions
   (`member`, `assoc`, `rassoc`, `acons`, `pairlis`, `butlast`, `ldiff`, `maplist`, `subst`, `sublis`, `union`, `intersection`,
   `set-difference`, `adjoin`, `pushnew`, `remf`, ...). Displaced arrays are not implemented (explicit error). Character classes and
-  case cover ASCII only. Tests: 127 cases compared with SBCL 2.6.7 (also under GC stress), language tests `sequences.lisp` (a data
+  case cover ASCII only. Tests: 139 cases compared with SBCL 2.6.7 (also under GC stress), language tests `sequences.lisp` (a data
   processing sample; also a gc-stress version) and `sequence-cases.lisp` (matches natively too). Matching curriculum blocks went
   from 362 to 421
 - README in English and Japanese; the changelog is split into English (`CHANGELOG.md`) and Japanese (`CHANGELOG.ja.md`)
@@ -37,6 +37,13 @@
 - English versions of the detailed design (`docs/Zilisp_Detailed_Design_v0.2.md`) and of the Zig 0.17.0 notes (`docs/zig-std-usage.md`; the Japanese version moves to `docs/zig-std-usage.ja.md`)
 
 ### Fixed
+- Codex review (Phase 21), 9 issues: `adjust-array` with `:fill-pointer` on an array without one did not signal an error
+  (and crashed for a zero-dimensional array); `(setf (aref a) x)` on a zero-dimensional array was an argument count error;
+  `nsubst`, `nsubst-if`, `nsubst-if-not` and `nsublis` did not modify the tree; `remf` read the place before evaluating
+  the indicator; compound element types such as `(or character integer)` made character arrays; `make-sequence`, `coerce`,
+  `concatenate` and `map` ignored the constraints of `null`, `cons` and multidimensional `array` types; `butlast` and
+  `nbutlast` rejected dotted lists; `tree-equal` returned the extra values of the test; `map`, `map-into`, `some` and
+  `every` silently ignored the end of a dotted list
 - Codex review (Phases 19 and 20), 11 issues: `(gcd most-negative-fixnum 0)` and `(floor 1d308 1d-308)` crashed the
   process; `expt` with a zero base or a zero non-integer exponent gave 0.0 (now 1.0 or division-by-zero, as in SBCL 2.6.7);
   rational-to-float conversion rounded twice near subnormals; a huge right shift in `ash` built a huge integer; `log` of very

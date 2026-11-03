@@ -39,13 +39,9 @@ fn cl(th: *Thread, name: []const u8) Value {
 
 /// 要素の型が文字か（character・base-char・standard-char）
 fn isCharacterType(th: *Thread, t: Value) bool {
+    // 複合の型指定（(or character integer)、(vector character) など）は、文字の型と確かめられないので T に格上げする
+    // （T はどの要素も入れられるので、CLHS 15.1.2.1 の格上げとして正しい。Codex のレビュー P21 #5）
     for ([_][]const u8{ "CHARACTER", "BASE-CHAR", "STANDARD-CHAR" }) |n| if (t == cl(th, n)) return true;
-    // (simple-array character (*)) などの複合の型指定は、要素の型だけを見る
-    if (t.isCons()) {
-        var x = Runtime.consPtr(t).cdr;
-        if (x.isCons()) return isCharacterType(th, Runtime.consPtr(x).car);
-        x = Value.nil;
-    }
     return false;
 }
 
@@ -526,6 +522,9 @@ pub fn adjustArray(th: *Thread, args: []const Value) Value {
     defer dims.deinit(th.rt.gpa);
     if (!parseDims(th, args[1], &dims)) return Value.unwind;
     if (dims.items.len != rankOf(a)) return th.signal(.program_error, "adjust-array で次元の数は変えられません", args[1], Value.unbound);
+    // :fill-pointer を指定できるのは、fill-pointer のある配列だけ（CLHS adjust-array。SBCL 2.6.7 は type-error。
+    // Codex のレビュー P21 #1）
+    if (kv[3]) |fp| if (fp != Value.nil and !hasFillPointer(a)) return th.typeError(a, cl(th, "VECTOR"));
     const total = totalOf(th, dims.items) orelse return Value.unwind;
     const chars = isSimpleString(dataOf(a));
     const data = makeStorage(th, total, chars, kv[1]);

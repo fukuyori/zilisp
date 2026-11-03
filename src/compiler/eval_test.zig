@@ -1359,6 +1359,18 @@ const sequence_cases = [_][2][]const u8{
     .{ "(list (concatenate 'string \"ab\" \"cd\" '(#\\e)) (concatenate 'list '(1 2) #(3 4) \"ab\") (concatenate 'vector '(1) #(2)) (concatenate 'simple-vector) (concatenate '(vector character) \"x\" \"y\"))", "(\"abcde\" (1 2 3 4 #\\a #\\b) #(1 2) #() \"xy\")" },
     .{ "(list (coerce '(1 2 3) 'vector) (coerce #(1 2) 'list) (coerce \"abc\" 'list) (coerce '(#\\a #\\b) 'string) (coerce 1 'float) (coerce 1/2 'double-float) (coerce \"x\" 'character) (coerce 'a 'character))", "(#(1 2 3) (1 2) (#\\a #\\b #\\c) \"ab\" 1.0 0.5d0 #\\x #\\A)" },
     .{ "(list (coerce 3 'single-float) (coerce 2.5 'float) (coerce 7 'integer) (coerce '(1) t))", "(3.0 2.5 7 (1))" },
+    .{ "(let ((a (make-array nil :initial-element 1))) (setf (aref a) 2) (aref a))", "2" },
+    .{ "(let ((x (list 1 2 3))) (nsubst 9 2 x) x)", "(1 9 3)" },
+    .{ "(let ((x (list 1 (list 2 3) 2))) (list (nsubst 9 2 x) x))", "((1 (9 3) 9) (1 (9 3) 9))" },
+    .{ "(nsubst 'z '(a) (list (list 'a) 'b) :test #'equal)", "(Z B)" },
+    .{ "(let ((x (list 'a 'b (list 'a)))) (list (nsublis '((a . 1)) x) x))", "((1 B (1)) (1 B (1)))" },
+    .{ "(nsubst-if 0 #'numberp (list 'a 1 (cons 2 3)))", "(A 0 (0 . 0))" },
+    .{ "(let ((p (list :a 1))) (list (remf p (progn (setq p (list :b 2)) :b)) p))", "(T NIL)" },
+    .{ "(make-array 1 :element-type '(or character integer) :initial-element 1)", "#(1)" },
+    .{ "(make-array 1 :element-type '(vector character) :initial-element \"a\")", "#(\"a\")" },
+    .{ "(list (butlast '(1 2 . 3)) (nbutlast (list* 1 2 3)) (butlast '(1 2 3 . 4) 2) (butlast '(1 . 2)) (butlast nil))", "((1) (1) (1) NIL NIL)" },
+    .{ "(multiple-value-list (tree-equal 1 1 :test (lambda (a b) (values t :extra))))", "(T)" },
+    .{ "(let ((v (make-array 3 :fill-pointer 1))) (adjust-array v 5 :fill-pointer 4))", "#(0 0 0 0)" },
     .{ "(list (coerce \"abc\" 'vector) (coerce \"abc\" 'array) (coerce #(1 2) 'simple-vector) (coerce \"ab\" 'sequence) (coerce (make-array 2 :fill-pointer 1 :initial-contents '(1 2)) 'vector) (coerce (make-array 2 :fill-pointer 1 :initial-contents '(1 2)) 'simple-vector) (let ((s \"x\")) (eq s (coerce s 'vector))) (coerce '(1 2) 'sequence))", "(\"abc\" \"abc\" #(1 2) \"ab\" #(1) #(1) T (1 2))" },
     .{ "(list (make-sequence 'list 3 :initial-element 'a) (make-sequence 'string 2 :initial-element #\\q) (make-sequence 'vector 2 :initial-element 0))", "((A A A) \"qq\" #(0 0))" },
     .{ "(list (map 'list #'+ '(1 2 3) '(10 20 30)) (map 'vector #'char-upcase \"abc\") (map 'string #'char-upcase '(#\\a #\\b)) (map nil #'identity '(1 2)) (map 'list #'list '(1 2 3) #(a b)))", "((11 22 33) #(#\\A #\\B #\\C) \"AB\" NIL ((1 A) (2 B)))" },
@@ -1432,6 +1444,15 @@ test "arrays, characters, strings, sequences, lists and equalp like SBCL 2.6.7 (
     try expectError(&e, "(vector-pop (make-array 2 :fill-pointer 0))", .simple_error);
     try expectError(&e, "(setf (fill-pointer (make-array 2 :fill-pointer 0)) 3)", .type_error);
     try expectError(&e, "(fill-pointer (make-array 2))", .type_error);
+    // Codex のレビュー P21 の指摘（SBCL 2.6.7 でエラーになるもの）
+    try expectError(&e, "(make-sequence 'null 1)", .type_error);
+    try expectError(&e, "(make-sequence 'cons 0)", .type_error);
+    try expectError(&e, "(coerce '(1) 'null)", .type_error);
+    try expectError(&e, "(make-sequence '(array t (2 3)) 2)", .type_error);
+    try expectError(&e, "(map 'list #'identity '(1 2 . 3))", .type_error);
+    try expectError(&e, "(some #'identity '(nil . 3))", .type_error);
+    try expectError(&e, "(adjust-array (make-array 3) 4 :fill-pointer 2)", .type_error);
+    try expectError(&e, "(adjust-array (make-array nil :initial-element 1) nil :fill-pointer t)", .type_error);
     // 未実装（明示的なエラー）
     try expectError(&e, "(coerce 1 'complex)", .unimplemented);
     try expectError(&e, "(concatenate 'hash-table '(1))", .unimplemented);

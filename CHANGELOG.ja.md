@@ -14,7 +14,7 @@
   `stable-sort`・`search`・`mismatch`・`subseq`・`elt`・`fill`・`replace`・`concatenate`・`coerce`・`map`・`map-into`・`some`・
   `every`・`merge` など）、リスト・木・集合の関数（`member`・`assoc`・`rassoc`・`acons`・`pairlis`・`butlast`・`ldiff`・`maplist`・
   `subst`・`sublis`・`union`・`intersection`・`set-difference`・`adjoin`・`pushnew`・`remf` など）。displaced な配列は未実装
-  （明示的なエラー）。文字の種類と大文字・小文字は ASCII の文字だけ。試験：SBCL 2.6.7 の結果と比べる127通り（GC stress でも
+  （明示的なエラー）。文字の種類と大文字・小文字は ASCII の文字だけ。試験：SBCL 2.6.7 の結果と比べる139通り（GC stress でも
   実行）、言語試験 `sequences.lisp`（データ処理のサンプル。gc-stress 版も）・`sequence-cases.lisp`（ネイティブでも一致）。
   教材のブロックの一致は 362 から 421 に
 - README（英語・日本語）を加え、変更履歴を英語（`CHANGELOG.md`）と日本語（`CHANGELOG.ja.md`）に分けた
@@ -34,6 +34,13 @@
 - 詳細設計書の英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）と、Zig 0.17.0 の照合結果の英語版（`docs/zig-std-usage.md`。日本語版は `docs/zig-std-usage.ja.md` に移した）
 
 ### Fixed
+- Codex のレビュー（Phase 21）の指摘 9 件：fill-pointer のない配列に `:fill-pointer` を指定した `adjust-array` がエラーに
+  ならなかった（0次元の配列では異常終了した）、0次元の配列の `(setf (aref a) x)` が引数の個数のエラーになった、
+  `nsubst`・`nsubst-if`・`nsubst-if-not`・`nsublis` が木を書き換えなかった、`remf` が指示子を評価する前に場所を読んでいた、
+  `(or character integer)` などの複合の要素の型で文字の配列を作っていた、`make-sequence`・`coerce`・`concatenate`・`map` が
+  `null`・`cons`・多次元の `array` の型の制約を無視していた、`butlast`・`nbutlast` がドット対で終わるリストを受け付けなかった、
+  `tree-equal` が比較の関数の余分な値を返していた、`map`・`map-into`・`some`・`every` がドット対で終わるリストの末尾を黙って
+  無視していた
 - Codex のレビュー（Phase 19・20）の指摘 11 件：`(gcd most-negative-fixnum 0)` と `(floor 1d308 1d-308)` で異常終了した、
   底が 0 の `expt` と、指数が 0 の非整数の `expt` が 0.0 を返した（SBCL 2.6.7 と同じく 1.0 か division-by-zero にした）、
   有理数から浮動小数への変換が非正規化数の近くで2回丸めていた、`ash` の大きな右シフトで巨大な整数を作っていた、

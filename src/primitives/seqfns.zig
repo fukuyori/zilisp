@@ -970,64 +970,90 @@ fn replaceImpl(th: *Thread, dst_v: Value, src_v: Value, kv: [4]?Value) Unwind!Va
 
 pub const SeqKind = enum { list, vector, string };
 
-/// 列の型の指定（list・vector・string など）。列の型でなければ null。長さの指定があれば size に書く
-fn seqKind(th: *Thread, spec: Value, size: *?usize) ?SeqKind {
-    size.* = null;
+/// 型の指定が決める列の長さの制約（Codex のレビュー P21 #6）
+pub const Shape = struct {
+    /// 型の指定にある長さ（(vector t 3)・(string 3) など）
+    size: ?usize = null,
+    /// cons は 1 以上、null は 0
+    min: usize = 0,
+    max: usize = std.math.maxInt(usize),
+    /// 1次元でない配列の型（(array t (2 3)) など）。列の型ではない
+    bad: bool = false,
+
+    fn allows(sh: Shape, n: usize) bool {
+        if (sh.bad) return false;
+        if (sh.size) |k| if (k != n) return false;
+        return n >= sh.min and n <= sh.max;
+    }
+};
+
+/// 列の型の指定（list・vector・string など）。列の型でなければ null。長さの制約を shape に書く
+fn seqKind(th: *Thread, spec: Value, shape: *Shape) ?SeqKind {
+    shape.* = .{};
     const names = [_]struct { []const u8, SeqKind }{
         .{ "LIST", .list },           .{ "CONS", .list },                 .{ "NULL", .list },
         .{ "VECTOR", .vector },       .{ "SIMPLE-VECTOR", .vector },      .{ "ARRAY", .vector },
         .{ "SIMPLE-ARRAY", .vector }, .{ "STRING", .string },             .{ "SIMPLE-STRING", .string },
         .{ "BASE-STRING", .string },  .{ "SIMPLE-BASE-STRING", .string },
     };
-    if (!spec.isCons()) {
-        for (names) |n| if (spec == cl(th, n[0])) return n[1];
-        return null;
-    }
-    const head = Runtime.consPtr(spec).car;
+    const head = if (spec.isCons()) Runtime.consPtr(spec).car else spec;
     var kind: ?SeqKind = null;
     for (names) |n| if (head == cl(th, n[0])) {
         kind = n[1];
     };
     const k = kind orelse return null;
+    if (head == cl(th, "CONS")) shape.min = 1;
+    if (head == cl(th, "NULL")) shape.max = 0;
+    if (!spec.isCons()) return k;
     const rest = Runtime.consPtr(spec).cdr;
     switch (k) {
         .list => return .list,
         .string => {
             // (string 長さ)
-            if (rest.isCons() and Runtime.consPtr(rest).car.isFixnum()) size.* = @intCast(Runtime.consPtr(rest).car.asFixnum());
+            if (rest.isCons() and Runtime.consPtr(rest).car.isFixnum()) shape.size = @intCast(Runtime.consPtr(rest).car.asFixnum());
             return .string;
         },
         .vector => {
             if (head == cl(th, "SIMPLE-VECTOR")) {
-                if (rest.isCons() and Runtime.consPtr(rest).car.isFixnum()) size.* = @intCast(Runtime.consPtr(rest).car.asFixnum());
+                if (rest.isCons() and Runtime.consPtr(rest).car.isFixnum()) shape.size = @intCast(Runtime.consPtr(rest).car.asFixnum());
                 return .vector;
             }
-            // (vector 要素の型 [長さ])・(array 要素の型 (長さ))
+            // (vector 要素の型 [長さ])・(array 要素の型 [次元])
             if (!rest.isCons()) return .vector;
             const et = Runtime.consPtr(rest).car;
             const chars = et == cl(th, "CHARACTER") or et == cl(th, "BASE-CHAR") or et == cl(th, "STANDARD-CHAR");
             const dims = Runtime.consPtr(rest).cdr;
             if (dims.isCons()) {
                 const d = Runtime.consPtr(dims).car;
-                if (d.isFixnum()) size.* = @intCast(d.asFixnum());
-                if (d.isCons() and Runtime.consPtr(d).car.isFixnum()) size.* = @intCast(Runtime.consPtr(d).car.asFixnum());
+                if (head == cl(th, "VECTOR")) {
+                    if (d.isFixnum()) shape.size = @intCast(d.asFixnum());
+                } else if (d.isFixnum()) {
+                    // (array t 2) の 2 は次元の数
+                    if (d.asFixnum() != 1) shape.bad = true;
+                } else if (d.isList()) {
+                    // (array t (長さ...))：次元の数が 1 でなければ列の型ではない
+                    var n: usize = 0;
+                    var x = d;
+                    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+                    if (n != 1) shape.bad = true else if (Runtime.consPtr(d).car.isFixnum()) shape.size = @intCast(Runtime.consPtr(d).car.asFixnum());
+                }
             }
             return if (chars) .string else .vector;
         },
     }
 }
 
-fn seqKindArg(th: *Thread, spec: Value, size: *?usize) Unwind!SeqKind {
-    if (seqKind(th, spec, size)) |k| return k;
+fn seqKindArg(th: *Thread, spec: Value, shape: *Shape) Unwind!SeqKind {
+    if (seqKind(th, spec, shape)) |k| return k;
     _ = th.signal(.unimplemented, "この列の型は未実装です（list・vector・string とその仲間だけ）", spec, Value.unbound);
     return error.Unwind;
 }
 
-fn buildKind(th: *Thread, kind: SeqKind, size: ?usize, spec: Value, items: []const Value) Unwind!Value {
-    if (size) |n| if (n != items.len) {
+fn buildKind(th: *Thread, kind: SeqKind, shape: Shape, spec: Value, items: []const Value) Unwind!Value {
+    if (!shape.allows(items.len)) {
         _ = th.typeError(try buildList(th, items, Value.nil), spec);
         return error.Unwind;
-    };
+    }
     return switch (kind) {
         .list => buildList(th, items, Value.nil),
         .vector => buildVector(th, false, items),
@@ -1042,7 +1068,7 @@ pub fn concatenate(th: *Thread, args: []const Value) Value {
 
 fn concatenateImpl(th: *Thread, args: []const Value) Unwind!Value {
     const gpa = th.rt.gpa;
-    var size: ?usize = null;
+    var size: Shape = .{};
     const kind = try seqKindArg(th, args[0], &size);
     var items: std.ArrayList(Value) = .empty;
     defer items.deinit(gpa);
@@ -1058,7 +1084,7 @@ pub fn makeSequence(th: *Thread, args: []const Value) Value {
 }
 
 fn makeSequenceImpl(th: *Thread, args: []const Value, init: ?Value) Unwind!Value {
-    var size: ?usize = null;
+    var size: Shape = .{};
     const kind = try seqKindArg(th, args[0], &size);
     const n_v = args[1];
     if (!n_v.isFixnum() or n_v.asFixnum() < 0) {
@@ -1066,10 +1092,11 @@ fn makeSequenceImpl(th: *Thread, args: []const Value, init: ?Value) Unwind!Value
         return error.Unwind;
     }
     const n: usize = @intCast(n_v.asFixnum());
-    if (size) |s| if (s != n) {
-        _ = th.signal(.simple_error, "長さが型の指定と違います", n_v, args[0]);
+    // 長さが型の指定に合わなければ type-error（SBCL 2.6.7 と同じ）
+    if (!size.allows(n)) {
+        _ = th.typeError(n_v, args[0]);
         return error.Unwind;
-    };
+    }
     switch (kind) {
         .list => {
             var out = Value.nil;
@@ -1123,7 +1150,7 @@ fn coerceImpl(th: *Thread, x: Value, spec: Value) Unwind!Value {
     if (spec == th.rt.t) return x;
     // すでにその型の値なら、そのまま返す（CLHS coerce。SBCL 2.6.7 と同じく同じオブジェクト）
     if (alreadyOfType(th, x, spec)) return x;
-    var size: ?usize = null;
+    var size: Shape = .{};
     if (seqKind(th, spec, &size)) |kind| {
         var items: std.ArrayList(Value) = .empty;
         defer items.deinit(gpa);
@@ -1201,13 +1228,8 @@ const MultiSeq = struct {
             seqs[i] = try seqOf(th, v);
             cursors[i] = v;
             const n = switch (seqs[i]) {
-                // リストの長さは、真リストでなくても尽きるまで（ドット対の終わりはそこまで）
-                .list => |l| blk: {
-                    var k: usize = 0;
-                    var x = l;
-                    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) k += 1;
-                    break :blk k;
-                },
+                // リストは真リストでなければ type-error（ドット対の終わりを黙って捨てない。Codex のレビュー P21 #9）
+                .list => |l| try listLength(th, l),
                 .vector => |vv| vv.len,
             };
             len = @min(len, n);
@@ -1240,7 +1262,7 @@ pub fn map(th: *Thread, args: []const Value) Value {
 fn mapImpl(th: *Thread, args: []const Value) Unwind!Value {
     const gpa = th.rt.gpa;
     const spec = args[0];
-    var size: ?usize = null;
+    var size: Shape = .{};
     const kind: ?SeqKind = if (spec == Value.nil) null else try seqKindArg(th, spec, &size);
     var ms = try MultiSeq.init(th, args[2..]);
     defer ms.deinit(th);

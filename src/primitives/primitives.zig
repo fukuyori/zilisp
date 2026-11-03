@@ -342,7 +342,7 @@ pub const sys_table = [_]Entry{
     .{ .name = "%PUTF", .impl = lists.sysPutf, .min = 3, .max = 3 },
     .{ .name = "%PUT", .impl = functions.sysPut, .min = 3, .max = 4 },
     .{ .name = "%PUTHASH", .impl = hashtables.sysPuthash, .min = 3, .max = 4 },
-    .{ .name = "%ASET", .impl = arrays.sysAset, .min = 3, .max = any },
+    .{ .name = "%ASET", .impl = arrays.sysAset, .min = 2, .max = any },
     .{ .name = "%SVSET", .impl = arrays.sysSvset, .min = 3, .max = 3 },
     .{ .name = "%SET-CHAR", .impl = arrays.sysSetChar, .min = 3, .max = 3 },
     .{ .name = "%SET-ROW-MAJOR-AREF", .impl = arrays.sysSetRowMajorAref, .min = 3, .max = 3 },

@@ -807,12 +807,23 @@
 (defun nreconc (list tail)
   (nconc (nreverse list) tail))
 
+;; butlast・nbutlast はドット対で終わるリストも受け付ける（cons の数で数える。CLHS butlast。Codex のレビュー P21 #7）
+(defun zl-sys::%cons-count (list)
+  (do ((x list (cdr x)) (n 0 (1+ n)))
+      ((atom x) n)))
+
 (defun butlast (list &optional (n 1))
-  (let ((len (length list)))
-    (if (<= len n) nil (subseq list 0 (- len n)))))
+  (let ((len (zl-sys::%cons-count list)))
+    (if (<= len n)
+        nil
+        (let ((head nil) (tail nil) (x list))
+          (dotimes (i (- len n) head)
+            (let ((c (cons (car x) nil)))
+              (if tail (rplacd tail c) (setq head c))
+              (setq tail c x (cdr x))))))))
 
 (defun nbutlast (list &optional (n 1))
-  (let ((len (length list)))
+  (let ((len (zl-sys::%cons-count list)))
     (if (<= len n)
         nil
         (progn (rplacd (nthcdr (- len n 1) list) nil) list))))
@@ -876,14 +887,29 @@
 (defun subst-if-not (new predicate tree &key key)
   (zl-sys::%subst new (complement predicate) tree key))
 
+;; nsubst の仲間は、木の car・cdr を書き換える（根そのものを置き換えるときは new を返す。CLHS nsubst。
+;; Codex のレビュー P21 #3）。cdr の向きは繰り返しでたどる（長いリストでも深い再帰にしない）
+(defun zl-sys::%nsubst (new pred tree key)
+  (cond ((funcall pred (if key (funcall key tree) tree)) new)
+        ((atom tree) tree)
+        (t (let ((x tree))
+             (loop
+               (rplaca x (zl-sys::%nsubst new pred (car x) key))
+               (let ((d (cdr x)))
+                 (cond ((funcall pred (if key (funcall key d) d)) (rplacd x new) (return))
+                       ((atom d) (return))
+                       (t (setq x d))))))
+           tree)))
+
 (defun nsubst (new old tree &key key test test-not)
-  (subst new old tree :key key :test test :test-not test-not))
+  (let ((f (zl-sys::%test-function test test-not)))
+    (zl-sys::%nsubst new (lambda (x) (funcall f old x)) tree key)))
 
 (defun nsubst-if (new predicate tree &key key)
-  (subst-if new predicate tree :key key))
+  (zl-sys::%nsubst new predicate tree key))
 
 (defun nsubst-if-not (new predicate tree &key key)
-  (subst-if-not new predicate tree :key key))
+  (zl-sys::%nsubst new (complement predicate) tree key))
 
 (defun sublis (alist tree &key key test test-not)
   (let ((f (zl-sys::%test-function test test-not)))
@@ -895,15 +921,31 @@
                             (if (and (eq a (car x)) (eq d (cdr x))) x (cons a d))))))))
       (walk tree))))
 
+;; nsublis は木の car・cdr を書き換える（CLHS nsublis）
 (defun nsublis (alist tree &key key test test-not)
-  (sublis alist tree :key key :test test :test-not test-not))
+  (let ((f (zl-sys::%test-function test test-not)))
+    (labels ((lookup (x) (assoc (if key (funcall key x) x) alist :test f))
+             (walk (x)
+               (let ((pair (lookup x)))
+                 (cond (pair (cdr pair))
+                       ((atom x) x)
+                       (t (let ((y x))
+                            (loop
+                              (rplaca y (walk (car y)))
+                              (let* ((d (cdr y)) (dp (lookup d)))
+                                (cond (dp (rplacd y (cdr dp)) (return))
+                                      ((atom d) (return))
+                                      (t (setq y d))))))
+                          x)))))
+      (walk tree))))
 
 (defun tree-equal (tree-1 tree-2 &key test test-not)
   (let ((f (zl-sys::%test-function test test-not)))
     (labels ((walk (a b)
                (cond ((and (consp a) (consp b)) (and (walk (car a) (car b)) (walk (cdr a) (cdr b))))
                      ((or (consp a) (consp b)) nil)
-                     (t (funcall f a b)))))
+                     ;; 比較の関数の多値を漏らさない（Codex のレビュー P21 #8）
+                     (t (if (funcall f a b) t nil)))))
       (walk tree-1 tree-2))))
 
 ;; 集合（CLHS 14.1.2）。要素の比較は (funcall test (key x) (key y))
@@ -990,11 +1032,12 @@
           (progn (rplacd (cdr prev) (cddr x)) (return (values plist t)))
           (return (values (cddr x) t))))))
 
+;; 評価の順序：場所の部分のフォーム、指示子、場所の読み出し（CLHS 5.1.1.1。Codex のレビュー P21 #4）
 (defmacro remf (place indicator)
   (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-    (let ((removed (gensym)))
-      `(let* (,@(zl-sys::%zip temps vals))
-         (multiple-value-bind (,(car stores) ,removed) (zl-sys::%remf ,access ,indicator)
+    (let ((removed (gensym)) (ind (gensym)))
+      `(let* (,@(zl-sys::%zip temps vals) (,ind ,indicator))
+         (multiple-value-bind (,(car stores) ,removed) (zl-sys::%remf ,access ,ind)
            ,store-form
            ,removed)))))
 

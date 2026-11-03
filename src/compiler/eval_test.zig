@@ -1815,6 +1815,24 @@ test "package errors like SBCL 2.6.7 (Phase 22)" {
     try expectValue(&e, "(package-name *package*)", "\"COMMON-LISP-USER\"");
 }
 
+test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // *print-readably* で読み戻せないものは print-not-readable
+    try expectError(&e, "(write-to-string #'car :readably t)", .print_not_readable);
+    try expectError(&e, "(write-to-string (list 1 *standard-output*) :readably t)", .print_not_readable);
+    try expectError(&e, "(write-to-string (find-package \"CL\") :readably t)", .print_not_readable);
+    try expectError(&e, "(let ((*print-readably* t)) (prin1-to-string (make-hash-table)))", .print_not_readable);
+    // write のキーワードの値の検査
+    try expectError(&e, "(write-to-string 1 :base 37)", .type_error);
+    try expectError(&e, "(write-to-string 1 :case :up)", .type_error);
+    try expectError(&e, "(write-to-string 1 :nosuch 1)", .program_error);
+    // 束縛は印字の後に戻る
+    try expectValue(&e, "(progn (write-to-string 1 :base 16) *print-base*)", "10");
+    try expectValue(&e, "(let ((*print-base* 2)) (prin1-to-string 5))", "\"101\"");
+}
+
 test "stream and pathname errors like SBCL 2.6.7 (Phase 23)" {
     // ファイルを扱うので、Runtime に io を設定してから Thread を作る
     var e: Env = undefined;

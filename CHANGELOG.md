@@ -66,8 +66,15 @@
   `*default-pathname-defaults*`) parsed as SBCL 2.6.7 does. The GC closes streams that are collected. Scripts end
   quietly on end-of-file on standard input, as SBCL's `--script` does. Curriculum blocks went from 429 to 467
   matches. Startup time 9.47 ms
+- Phase 24 (P24a): printer variables. `*print-base*`, `*print-radix*`, `*print-case*`, `*print-level*`, `*print-length*`,
+  `*print-circle*` (`#n=` and `#n#`), `*print-readably*` (`print-not-readable` for objects that cannot be read back),
+  `*print-array*`, `*print-gensym*`, `*print-escape*` and `*read-default-float-format*` take effect in `prin1`, `princ`,
+  `print`, the `-to-string` functions, `~A` and `~S` of `format`, and the values printed by the REPL. `write` and
+  `write-to-string` take all their keywords. The printer and reader variables have SBCL 2.6.7's initial values
+  (`*print-pretty*` stays NIL until the pretty printer). Language test `printer.lisp` (same output as SBCL 2.6.7)
 
 ### Fixed
+- Bignums printed in bases 8 and 32 had wrong digits (Zig 0.17.0's `toStringAlloc`; now built from the base-2 digits)
 - Codex review (Phase 23), 16 issues: `:if-exists :rename` and `:rename-and-delete` truncated the file instead of moving it
   to `name.bak`; the REPL and `*standard-input*` read standard input through different buffers, so input could be lost;
   CR LF was read as one newline on Windows (SBCL 2.6.7 does not translate it) and `read` on a Latin-1 stream decoded the

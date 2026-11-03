@@ -27,6 +27,7 @@ When Zig is updated, redo these checks (`docs/version-update-checklist.md` §3).
 | Dynamic arrays | `std.ArrayList(T)` is unmanaged (initialize with `.empty` and pass the allocator, as in `append(gpa, x)`) | `probe.zig` | |
 | Hash maps | `std.StringHashMapUnmanaged(V)` (`.empty`, `put(gpa, k, v)`), `std.AutoHashMapUnmanaged` | `probe.zig` | |
 | Big integers | `std.math.big.int.Managed` (`initSet`, `add`, `toConst`). `Mutable` and `Const` also exist | `probe.zig` | The design that keeps the limb array on the managed heap (detailed design §1.3) is realized by specifying the limbs of `Mutable` / `Const` (details to be checked in Phase 20) |
+| Big integers to text | `Const.toStringAlloc(gpa, base, .upper)`. **Wrong digits in bases 8 and 32** (confirmed on 2026-11-03 with a small test: `2^70` gave the digits of 2^72 in base 8 and of 2^71 in base 32; bases 2, 4 and 16 are right) | a test in the scratchpad (`zig test`) | The printer builds bases 4, 8 and 32 from the base-2 string (Phase 24) |
 | Hash functions | `std.hash.Wyhash.hash(seed, bytes)`, `std.hash.Crc32.hash(bytes)` | `probe.zig` | |
 | UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Used at the Windows API boundary |
 | Unicode character classes and case | **Not in std** (`std.unicode` only converts encodings; `std.ascii` handles ASCII in u8 only). Confirmed 2026-11-03 | Public functions of `lib/std/unicode.zig`; `lib/std/ascii.zig` lines 104 and 195 | Phase 21.5 generates tables from the UCD (`tools/gen_unicode/main.zig`, `src/unicode/`) |

@@ -103,6 +103,8 @@ pub const ErrorKind = enum {
     /// 読み取りの誤り・ファイルの途中でフォームが終わっている（Phase 22 の load）
     reader_error,
     end_of_file,
+    /// *print-readably* で読み戻せる形に印字できない（Phase 24）
+    print_not_readable,
     /// 未実装の機能（CL の型ではない。Zilisp の拡張：基本設計 §3.1「黙って別の値を返さない」）
     unimplemented,
 
@@ -124,6 +126,7 @@ pub const ErrorKind = enum {
             .file_error => "FILE-ERROR",
             .reader_error => "READER-ERROR",
             .end_of_file => "END-OF-FILE",
+            .print_not_readable => "PRINT-NOT-READABLE",
             .unimplemented => "ZILISP:UNIMPLEMENTED",
         };
     }

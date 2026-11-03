@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記28） | 2026-11-03 | Phase 24（P24a）：印字の変数（§11.2。`*print-base*`・`*print-case*`・`*print-circle*`・`*print-readably*` など、`write` のすべてのキーワード、`print-not-readable`） |
 | 0.2（追記27） | 2026-11-03 | Phase 23：ストリームとパス名（§2.4、§11.2。標準のストリーム、ファイル・文字列のストリーム、#P、ファイルの操作、GC による閉じ忘れたストリームの後始末） |
 | 0.2（追記26） | 2026-11-03 | Phase 22：パッケージ（§8.2。`*package*`、パッケージの関数、defpackage・in-package、名前の衝突、load、ネイティブの定数の修飾）。シャドウイングシンボルの持ち方の変更 |
 | 0.2（追記25） | 2026-11-03 | Phase 21.6：ハッシュ表を SBCL 2.6.7 の並べ方に置き換え（§2.6。maphash の順序、枠の数の決め方、flat の表）。GC の走査しない配列 `raw_vector`（§2.4） |
@@ -1303,6 +1304,20 @@ instance                      rack
 - **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：パス名の host、名前の途中の `*` の表し方（SBCL は pattern のオブジェクト）、ストリームの印字と型の名前、`close` の `:abort`（SBCL は新しいファイルを消す・元に戻す。Zilisp は閉じるだけ。ただし `:rename` で退避したファイルは元に戻す）、`*query-io*` などの作り、synonym を通した `file-position`（SBCL はバッファの終わりの位置を返す。Zilisp は今の位置）。
 - **試験**：言語試験 `streams.lisp`（ファイルの読み書き、バイナリ、UTF-8、文字列のストリーム、合成のストリーム、標準出力）と `pathnames.lisp`（読み方、namestring、merge-pathnames、比較、ファイルの操作）。どちらも SBCL 2.6.7 と同じ出力で、GC stress の版とネイティブでも同じ。エラーの種類の単体テスト（file-error・stream-error・end-of-file・type-error・未実装）。
 - 結果：教材のブロックの一致は 429 から 467 に。Level 9 は 7 から 27 に一致が増え（標準入力を読む 3 つは、上の「スクリプトの終わり方」で SBCL と同じになった。eval-check は標準入力を与えない）、Zilisp だけがエラーで残るのは `format` の指示子（Phase 24）の 7 つ。**Level 17 の本体のコード（`text-tools`）は、`handler-case`（Phase 25）と `format` の `~8D` などの指示子（Phase 24）も使うので、Phase 23 の範囲では動かない**。`handler-case` を外した写しで、`format` の指示子に当たるまでの入出力が SBCL と同じであることを確かめた。起動時間は 9.47 ms。
+
+**Phase 24 の実装（format・Reader の拡張・印字の体系）**
+Phase 24 は4つに分けて進める：P24a 印字の変数、P24b `format`、P24c Reader の拡張（readtable・ユーザー定義の reader macro・`#.`・`#n=`）、P24d pretty printer（2026-11-03 の決定：pretty printer と Reader の拡張のすべてを Phase 24 に含める）。
+- **P24a：印字の変数**（`src/printer/printer.zig`）。印字の前に、`*print-escape*`・`*print-readably*`・`*print-base*`・`*print-radix*`・`*print-case*`・`*print-circle*`・`*print-level*`・`*print-length*`・`*print-array*`・`*print-gensym*`・`*read-default-float-format*` の値を `Settings` に読み取る（`Settings.current`）。処理系の内部の印字（エラーの報告・ネイティブの定数）は、変数によらない `Settings.standard` を使う。変数の初期値は SBCL 2.6.7 と同じ。ただし `*print-pretty*` は、pretty printer を実装するまで（P24d）NIL とする。
+  - 整数と比は `*print-base*` 進（英字の数字は大文字）。`*print-radix*` は `#b`・`#o`・`#x`・`#Nr` か、末尾の `.` を付ける（10 進の比は `#10r`）。`*print-base*` の数として読める名前のシンボルは `|…|` で囲む（16 進では `ABC` は `|ABC|`）。
+  - `*print-case*`：読み取りで大文字になる文字だけを変える。`:capitalize` は英数字の並びを単語とする（`Foo1bar`、`A-1b`。SBCL と同じ）。`|…|` で囲む名前は大文字・小文字を変えない。
+  - `*print-level*`（`#`）と `*print-length*`（`...`）は、リスト・ベクタ・多次元の配列の各軸に効く（`#2A((1 ...) ...)`、`#2A#`）。
+  - `*print-circle*`：先に同じ範囲（`*print-level*`・`*print-length*` の内側）を走査し、2回以上現れるものに `#n=` と `#n#` を付ける。数と intern されたシンボル以外のヒープのオブジェクトすべてが対象（uninterned のシンボル・文字列・関数・ハッシュ表・パス名も）で、共有するリストの尾は `. #n#` の形にする（どれも SBCL と同じ）。
+  - `*print-readably*` は、エスケープ・`*print-array*`・`*print-gensym*` を真とし、`*print-level*`・`*print-length*` を無視する。読み戻せないもの（関数・ストリーム・パッケージ・ハッシュ表・NaN と無限大）は `print-not-readable`（新しいエラーの種類）。
+  - `*print-array*` が NIL なら `#<(SIMPLE-VECTOR 3) {…}>`・`#<(VECTOR T 2) {…}>`・`#<(SIMPLE-ARRAY T (2 2)) {…}>` と書く。文字列はいつも中身を書く。
+  - `*read-default-float-format*`：既定の型の浮動小数は指数の印を省く（`double-float` が既定なら `1.5f0` と `1.5`）。
+  - `write`・`write-to-string` は、すべてのキーワード（`:array :base :case :circle :escape :gensym :length :level :lines :miser-width :pprint-dispatch :pretty :radix :readably :right-margin`）を受け取り、印字の間その変数を束縛する。`:base` は 2〜36 の整数、`:case` は3つのキーワードのどれか（ほかは type-error）。`prin1`・`princ`・`print`・`-to-string` の関数・`format` の `~A`・`~S`・REPL が印字する値も、変数に従う。
+  - **修正**：Zig 0.17.0 の `toStringAlloc` は、基数 8 と 32 で bignum の桁を誤る（`(expt 2 70)` が、基数 8 では 2^72、基数 32 では 2^71 の桁になった。小さな試験で確認）。基数 4・8・32 は、2 進の文字列から作るようにした。
+  - 試験：言語試験 `printer.lisp`（GC stress の版も。SBCL 2.6.7 と同じ出力）と、`print-not-readable` とキーワードの検査の単体テスト。
 
 ### 11.3 標準ライブラリのビルド
 

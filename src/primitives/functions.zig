@@ -83,7 +83,7 @@ pub fn format(th: *Thread, args: []const Value) Value {
                 const start = buf.written().len;
                 // ~D は整数なら10進で書き、整数でなければ ~A と同じ（CLHS 22.3.2.2）
                 const escape = (d == 's' or d == 'S') or ((d == 'd' or d == 'D') and x.isFixnum());
-                printer.write(th.rt, w, x, escape) catch return writeFailed(th);
+                if (!streams.printTo(th, w, x, escape)) return Value.unwind;
                 const out = buf.written();
                 if (out.len > start) at_line_start = out[out.len - 1] == '\n';
             },

@@ -435,14 +435,71 @@ pub fn atLineStart(th: *Thread, stream: Value) bool {
     return st.at_line_start;
 }
 
-fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: bool) bool {
+fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
-    printer.write(th.rt, &buf.writer, v, escape) catch {
-        _ = th.outOfMemory();
-        return false;
-    };
+    if (!printTo(th, &buf.writer, v, escape)) return false;
     return emit(th, stream, buf.written());
+}
+
+/// 今の印字の変数に従って w に書く（escape が null なら *print-escape*）。
+/// *print-readably* で読み戻せないものは print-not-readable のエラー（Phase 24）
+pub fn printTo(th: *Thread, w: *Io.Writer, v: Value, escape: ?bool) bool {
+    var bad: Value = Value.nil;
+    printer.writeObject(th.rt, w, v, printer.Settings.current(th.rt, escape), &bad) catch |err| switch (err) {
+        error.NotReadable => {
+            _ = th.signal(.print_not_readable, "読み戻せる形で印字できません", bad, Value.unbound);
+            return false;
+        },
+        error.WriteFailed => {
+            _ = th.outOfMemory();
+            return false;
+        },
+    };
+    return true;
+}
+
+/// write・write-to-string のキーワードと、束縛する印字の変数
+const write_keys = [_][]const u8{ "STREAM", "ARRAY", "BASE", "CASE", "CIRCLE", "ESCAPE", "GENSYM", "LENGTH", "LEVEL", "LINES", "MISER-WIDTH", "PPRINT-DISPATCH", "PRETTY", "RADIX", "READABLY", "RIGHT-MARGIN" };
+
+fn writeKeyVar(th: *Thread, i: usize) Value {
+    const y = &th.rt.syms;
+    return switch (i) {
+        1 => y.@"*print-array*",
+        2 => y.@"*print-base*",
+        3 => y.@"*print-case*",
+        4 => y.@"*print-circle*",
+        5 => y.@"*print-escape*",
+        6 => y.@"*print-gensym*",
+        7 => y.@"*print-length*",
+        8 => y.@"*print-level*",
+        9 => y.@"*print-lines*",
+        10 => y.@"*print-miser-width*",
+        11 => y.@"*print-pprint-dispatch*",
+        12 => y.@"*print-pretty*",
+        13 => y.@"*print-radix*",
+        14 => y.@"*print-readably*",
+        15 => y.@"*print-right-margin*",
+        else => unreachable,
+    };
+}
+
+/// write・write-to-string のキーワードの印字の変数を束縛する（:stream 以外）。値を検査する（*print-base* は 2〜36 の整数、
+/// *print-case* は :upcase・:downcase・:capitalize。SBCL 2.6.7 も型を宣言している）
+fn bindWriteKeys(th: *Thread, kv: []const ?Value) bool {
+    for (kv[1..], 1..) |v0, i| {
+        const v = v0 orelse continue;
+        if (i == 2 and !(v.isFixnum() and v.asFixnum() >= 2 and v.asFixnum() <= 36)) {
+            _ = th.typeError(v, cl(th, "INTEGER"));
+            return false;
+        }
+        if (i == 3 and v != (kw(th, "UPCASE") orelse return false) and v != (kw(th, "DOWNCASE") orelse return false) and v != (kw(th, "CAPITALIZE") orelse return false)) {
+            _ = th.typeError(v, cl(th, "SYMBOL"));
+            return false;
+        }
+        if (th.bind(writeKeyVar(th, i), v) == Value.unwind) return false;
+    }
+    return true;
 }
 
 /// (write-string 文字列 &optional ストリーム &key start end) などで使う：文字列の [start, end) を UTF-8 で書く
@@ -568,29 +625,24 @@ pub fn clearOutput(th: *Thread, args: []const Value) Value {
     return Value.nil;
 }
 
-/// (write オブジェクト &key stream escape)：ほかの印字の変数のキーワードは未実装（エラー）
+/// (write オブジェクト &key stream array base case circle escape gensym length level lines miser-width pprint-dispatch
+/// pretty radix readably right-margin)：キーワードの印字の変数を束縛して印字する（CLHS write）
 pub fn write(th: *Thread, args: []const Value) Value {
-    var kv: [2]?Value = .{ null, null };
-    const rest = args[1..];
-    // :stream・:escape 以外のキーワードは未実装
-    var i: usize = 0;
-    while (i + 1 < rest.len) : (i += 2) {
-        const k = rest[i];
-        if (k != (kw(th, "STREAM") orelse return Value.unwind) and k != (kw(th, "ESCAPE") orelse return Value.unwind))
-            return th.signal(.unimplemented, "WRITE の :stream・:escape 以外のキーワードは未実装です", k, Value.unbound);
-    }
-    if (!keyargs.parse(th, rest, &.{ "STREAM", "ESCAPE" }, &kv)) return Value.unwind;
+    var kv: [write_keys.len]?Value = @splat(null);
+    if (!keyargs.parse(th, args[1..], &write_keys, &kv)) return Value.unwind;
     const s = outputDesignator(th, kv[0]) orelse return Value.unwind;
-    const escape = if (kv[1]) |e| e != Value.nil else true;
-    if (!emitPrinted(th, s, args[0], escape)) return Value.unwind;
+    const depth = th.binding_depth;
+    defer th.unbindTo(depth);
+    if (!bindWriteKeys(th, &kv)) return Value.unwind;
+    if (!emitPrinted(th, s, args[0], null)) return Value.unwind;
     th.mv_count = 1;
     return args[0];
 }
 
-fn toString(th: *Thread, v: Value, escape: bool) Value {
+fn toString(th: *Thread, v: Value, escape: ?bool) Value {
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
-    printer.write(th.rt, &buf.writer, v, escape) catch return oom(th);
+    if (!printTo(th, &buf.writer, v, escape)) return Value.unwind;
     return th.rt.makeString(buf.written()) catch oom(th);
 }
 
@@ -602,15 +654,14 @@ pub fn princToString(th: *Thread, args: []const Value) Value {
     return toString(th, args[0], false);
 }
 
+/// (write-to-string オブジェクト &key …)：write と同じキーワード（:stream を除く）
 pub fn writeToString(th: *Thread, args: []const Value) Value {
-    var kv: [1]?Value = .{null};
-    var i: usize = 1;
-    while (i + 1 < args.len) : (i += 2) {
-        if (args[i] != (kw(th, "ESCAPE") orelse return Value.unwind))
-            return th.signal(.unimplemented, "WRITE-TO-STRING の :escape 以外のキーワードは未実装です", args[i], Value.unbound);
-    }
-    if (!keyargs.parse(th, args[1..], &.{"ESCAPE"}, &kv)) return Value.unwind;
-    return toString(th, args[0], if (kv[0]) |e| e != Value.nil else true);
+    var kv: [write_keys.len]?Value = @splat(null);
+    if (!keyargs.parse(th, args[1..], write_keys[1..], kv[1..])) return Value.unwind;
+    const depth = th.binding_depth;
+    defer th.unbindTo(depth);
+    if (!bindWriteKeys(th, &kv)) return Value.unwind;
+    return toString(th, args[0], null);
 }
 
 // ---------------------------------------------------------------------------

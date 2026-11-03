@@ -105,7 +105,59 @@ pub const Syms = struct {
     @"*debug-io*": Value,
     @"*trace-output*": Value,
     @"*default-pathname-defaults*": Value,
+    // 印字と読み取りの特殊変数（Phase 24）
+    @"*print-array*": Value,
+    @"*print-base*": Value,
+    @"*print-case*": Value,
+    @"*print-circle*": Value,
+    @"*print-escape*": Value,
+    @"*print-gensym*": Value,
+    @"*print-length*": Value,
+    @"*print-level*": Value,
+    @"*print-lines*": Value,
+    @"*print-miser-width*": Value,
+    @"*print-pprint-dispatch*": Value,
+    @"*print-pretty*": Value,
+    @"*print-radix*": Value,
+    @"*print-readably*": Value,
+    @"*print-right-margin*": Value,
+    @"*read-base*": Value,
+    @"*read-default-float-format*": Value,
+    @"*read-eval*": Value,
+    @"*read-suppress*": Value,
+    @"single-float": Value,
+    @"double-float": Value,
+    @"long-float": Value,
 };
+
+/// 印字と読み取りの特殊変数の初期値（SBCL 2.6.7 と同じ。ただし *print-pretty* は、pretty printer を実装するまで NIL）
+fn initPrinterVariables(rt: *Runtime) Error!void {
+    const y = &rt.syms;
+    const set = struct {
+        fn f(r: *Runtime, sym: Value, v: Value) void {
+            r.symbolPtr(sym).value = v;
+        }
+    }.f;
+    set(rt, y.@"*print-array*", rt.t);
+    set(rt, y.@"*print-base*", Value.fromFixnum(10));
+    set(rt, y.@"*print-case*", try rt.internKeyword("UPCASE"));
+    set(rt, y.@"*print-circle*", Value.nil);
+    set(rt, y.@"*print-escape*", rt.t);
+    set(rt, y.@"*print-gensym*", rt.t);
+    set(rt, y.@"*print-length*", Value.nil);
+    set(rt, y.@"*print-level*", Value.nil);
+    set(rt, y.@"*print-lines*", Value.nil);
+    set(rt, y.@"*print-miser-width*", Value.nil);
+    set(rt, y.@"*print-pprint-dispatch*", Value.nil);
+    set(rt, y.@"*print-pretty*", Value.nil);
+    set(rt, y.@"*print-radix*", Value.nil);
+    set(rt, y.@"*print-readably*", Value.nil);
+    set(rt, y.@"*print-right-margin*", Value.nil);
+    set(rt, y.@"*read-base*", Value.fromFixnum(10));
+    set(rt, y.@"*read-default-float-format*", y.@"single-float");
+    set(rt, y.@"*read-eval*", rt.t);
+    set(rt, y.@"*read-suppress*", Value.nil);
+}
 
 /// main が記録するスタックの先頭（Windows 以外で、GC の保守的走査の範囲に使う。§3.4）
 pub var main_stack_top: usize = 0;
@@ -328,6 +380,7 @@ pub const Runtime = struct {
         }
         try primitives.install(rt);
         try rt.setStandardConstants();
+        try initPrinterVariables(rt);
 
         for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
             const s = try rt.intern(rt.sys, n);

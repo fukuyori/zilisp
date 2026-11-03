@@ -59,8 +59,15 @@
   `file-write-date`・`*default-pathname-defaults*`。読み方は SBCL 2.6.7 と同じ）。回収されるストリームは GC が閉じる。
   スクリプトは、標準入力の終わりで黙って終わる（SBCL の `--script` と同じ）。教材のブロックの一致は 429 から 467 に。
   起動時間 9.47 ms
+- Phase 24（P24a）：印字の変数。`*print-base*`・`*print-radix*`・`*print-case*`・`*print-level*`・`*print-length*`・
+  `*print-circle*`（`#n=` と `#n#`）・`*print-readably*`（読み戻せないものは `print-not-readable`）・`*print-array*`・
+  `*print-gensym*`・`*print-escape*`・`*read-default-float-format*` が、`prin1`・`princ`・`print`・`-to-string` の関数・
+  `format` の `~A`・`~S`・REPL が印字する値に効く。`write`・`write-to-string` は、すべてのキーワードを受け取る。印字と
+  読み取りの変数の初期値は SBCL 2.6.7 と同じ（`*print-pretty*` は pretty printer まで NIL）。言語試験 `printer.lisp`
+  （SBCL 2.6.7 と同じ出力）
 
 ### Fixed
+- 基数 8 と 32 で印字する bignum の桁が誤っていた（Zig 0.17.0 の `toStringAlloc`。2 進の桁から作るようにした）
 - Codex のレビュー（Phase 23）の指摘 16 件：`:if-exists` の `:rename`・`:rename-and-delete` が、ファイルを「名前.bak」に移さずに
   切り詰めていた、REPL と `*standard-input*` が別のバッファで標準入力を読んでいたので、入力を取りこぼすことがあった、Windows で
   CR LF を1つの改行として読んでいた（SBCL 2.6.7 は変換しない）、Latin-1 のストリームの `read` がバイト列を UTF-8 として読んでいた、

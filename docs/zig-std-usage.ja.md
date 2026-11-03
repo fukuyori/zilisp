@@ -27,6 +27,7 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | 可変長配列 | `std.ArrayList(T)` は unmanaged（`.empty` で初期化し、`append(gpa, x)` のようにアロケータを渡す） | `probe.zig` | |
 | ハッシュ表 | `std.StringHashMapUnmanaged(V)`（`.empty`、`put(gpa, k, v)`）、`std.AutoHashMapUnmanaged` | `probe.zig` | |
 | 多倍長整数 | `std.math.big.int.Managed`（`initSet`・`add`・`toConst`）。`Mutable`・`Const` もある | `probe.zig` | limb の配列を管理ヒープに置く設計（詳細設計 §1.3）は、`Mutable` / `Const` の limb 指定で実現する（Phase 20 で詳細を確認） |
+| 多倍長整数の文字列化 | `Const.toStringAlloc(gpa, base, .upper)`。**基数 8 と 32 で桁を誤る**（2026-11-03 に小さな試験で確認：`2^70` が、基数 8 では 2^72、基数 32 では 2^71 の桁になった。基数 2・4・16 は正しい） | 作業用の試験（`zig test`） | 印字は、基数 4・8・32 を 2 進の文字列から作る（Phase 24） |
 | ハッシュ関数 | `std.hash.Wyhash.hash(seed, bytes)`、`std.hash.Crc32.hash(bytes)` | `probe.zig` | |
 | UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Windows API の境界で使う |
 | Unicode の文字の種類・大文字小文字 | **std にはない**（`std.unicode` は符号化の変換だけ、`std.ascii` は u8 の ASCII だけ）。2026-11-03 に確認 | `lib/std/unicode.zig` の公開関数、`lib/std/ascii.zig` 104・195行目 | Phase 21.5 で UCD から表を生成する（`tools/gen_unicode/main.zig`、`src/unicode/`） |

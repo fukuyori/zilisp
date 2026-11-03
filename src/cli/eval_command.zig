@@ -107,8 +107,18 @@ fn evalText(
         }
         if (interactive) {
             const count = s.th.mv_count;
+            // 値は今の印字の変数に従って印字する（*print-base* など。Phase 24）
             for (0..count) |i| {
-                try printer.prin1(s.rt, stdout, if (i == 0) value else s.th.mv[i]);
+                if (!streams.printTo(s.th, stdout, if (i == 0) value else s.th.mv[i], true)) {
+                    try stdout.flush();
+                    try stderr.print("{s}:{d}:{d}: ", .{ name, loc.line, loc.col });
+                    try s.th.writeError(stderr);
+                    try stderr.writeByte('\n');
+                    try stderr.flush();
+                    s.th.clearError();
+                    failed = true;
+                    break;
+                }
                 try stdout.writeByte('\n');
             }
         }

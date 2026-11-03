@@ -1,94 +1,586 @@
-//! 印字（prin1 相当。*print-escape* が真、*print-pretty* が偽、*print-readably* は偽の場合）。
-//! princ（*print-escape* が偽。Phase 19）は、文字列・文字をそのまま書き、シンボルをパッケージの修飾と |…| なしで書く。
-//! 規則は SBCL 2.6.7 の出力に合わせる（CLHS 22.1.3「Default Print-Object Methods」）。
-//! Phase 05 の範囲：fixnum、文字、single-float・double-float、シンボル、文字列、リスト、単純ベクタ。
+//! 印字（CLHS 22.1「The Lisp Printer」）。規則は SBCL 2.6.7 の出力に合わせる（CLHS 22.1.3「Default Print-Object Methods」）。
+//! 印字の変数（Phase 24）：*print-escape*・*print-readably*・*print-base*・*print-radix*・*print-case*・*print-circle*・
+//! *print-level*・*print-length*・*print-array*・*print-gensym*、と *read-default-float-format*（浮動小数の指数の印）。
+//! 印字の前に変数の値を Settings に読み取る（Settings.current）。エラーの報告など処理系の内部の印字は、変数によらない
+//! Settings.standard を使う（prin1・princ・write）。
+//! *print-readably* が真のとき、読み戻せないもの（関数・ストリーム・パッケージ・ハッシュ表など）は error.NotReadable
+//! （呼び出し側が print-not-readable のエラーにする）。
+//! *print-circle*：先に同じ範囲（*print-level*・*print-length* の内側）を走査し、2回以上現れるもの（数・文字・intern された
+//! シンボル以外）に #n= と #n# を付ける（SBCL 2.6.7 と同じ。関数・ハッシュ表・パス名も対象）。
 
 const std = @import("std");
 const rt_mod = @import("../runtime/runtime.zig");
 const syntax = @import("../reader/syntax.zig");
 const number = @import("../reader/number.zig");
+const unicode = @import("../unicode/unicode.zig");
 const Runtime = rt_mod.Runtime;
 const Value = rt_mod.Value;
 const Writer = std.Io.Writer;
 
-pub const Error = Writer.Error;
+pub const Error = error{ WriteFailed, NotReadable };
 
-pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Error!void {
+pub const Case = enum { upcase, downcase, capitalize };
+
+/// 印字の設定（印字の変数の値）
+pub const Settings = struct {
+    escape: bool = true,
+    readably: bool = false,
+    base: u8 = 10,
+    radix: bool = false,
+    case: Case = .upcase,
+    circle: bool = false,
+    level: ?usize = null,
+    length: ?usize = null,
+    array: bool = true,
+    gensym: bool = true,
+    /// *read-default-float-format* が double-float（または long-float）
+    double_default: bool = false,
+
+    /// 印字の変数によらない設定（処理系の内部の印字）
+    pub fn standard(escape: bool) Settings {
+        return .{ .escape = escape };
+    }
+
+    /// 今の印字の変数の値から作る。escape が null なら *print-escape* を使う。
+    /// *print-readably* が真なら、escape・array・gensym を真に、level・length を NIL とみなす（CLHS *print-readably*）
+    pub fn current(rt: *Runtime, escape: ?bool) Settings {
+        const y = &rt.syms;
+        var s: Settings = .{};
+        s.escape = escape orelse truthy(rt, y.@"*print-escape*", true);
+        s.readably = truthy(rt, y.@"*print-readably*", false);
+        const b = rt.symbolPtr(y.@"*print-base*").value;
+        if (b.isFixnum() and b.asFixnum() >= 2 and b.asFixnum() <= 36) s.base = @intCast(b.asFixnum());
+        s.radix = truthy(rt, y.@"*print-radix*", false);
+        const c = rt.symbolPtr(y.@"*print-case*").value;
+        if (c.isOther() and Runtime.kindOf(c) == .symbol) {
+            const name = rt.symbolPtr(c).name;
+            if (stringIs(name, "DOWNCASE")) s.case = .downcase else if (stringIs(name, "CAPITALIZE")) s.case = .capitalize;
+        }
+        s.circle = truthy(rt, y.@"*print-circle*", false);
+        s.level = limit(rt, y.@"*print-level*");
+        s.length = limit(rt, y.@"*print-length*");
+        s.array = truthy(rt, y.@"*print-array*", true);
+        s.gensym = truthy(rt, y.@"*print-gensym*", true);
+        const f = rt.symbolPtr(y.@"*read-default-float-format*").value;
+        s.double_default = f == y.@"double-float" or f == y.@"long-float";
+        if (s.readably) {
+            s.escape = true;
+            s.array = true;
+            s.gensym = true;
+            s.level = null;
+            s.length = null;
+        }
+        return s;
+    }
+};
+
+fn truthy(rt: *Runtime, sym: Value, default: bool) bool {
+    const v = rt.symbolPtr(sym).value;
+    if (v == Value.unbound) return default;
+    return v != Value.nil;
+}
+
+fn limit(rt: *Runtime, sym: Value) ?usize {
+    const v = rt.symbolPtr(sym).value;
+    if (v.isFixnum() and v.asFixnum() >= 0) return @intCast(v.asFixnum());
+    return null;
+}
+
+fn stringIs(str: Value, text: []const u8) bool {
+    const s = Runtime.stringPtr(str);
+    if (s.length() != text.len) return false;
+    for (text, 0..) |ch, i| if (s.charAt(i) != ch) return false;
+    return true;
+}
+
+/// エスケープ付きの印字（処理系の内部用。印字の変数によらない）
+pub fn prin1(rt: *Runtime, w: *Writer, v: Value) Writer.Error!void {
     return write(rt, w, v, true);
 }
 
-/// princ（*print-escape* が偽）
-pub fn princ(rt: *Runtime, w: *Writer, v: Value) Error!void {
+/// princ（処理系の内部用。印字の変数によらない）
+pub fn princ(rt: *Runtime, w: *Writer, v: Value) Writer.Error!void {
     return write(rt, w, v, false);
 }
 
-pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
-    if (v.isFixnum()) return w.print("{d}", .{v.asFixnum()});
-    if (v == Value.nil) return printNil(rt, w, escape);
-    if (v.isChar()) return if (escape) printChar(w, v.asChar()) else writeCp(w, v.asChar());
-    if (v.isSingleFloat()) return printFloat(w, f32, v.asSingle());
-    if (v == Value.unbound) return w.writeAll("#<unbound>");
-    if (v == Value.unwind) return w.writeAll("#<unwind>");
-    if (v.isCons()) return printList(rt, w, v, escape);
-    if (v.isFunctionPointer()) return printFunction(rt, w, v);
-    switch (Runtime.kindOf(v) orelse return w.print("#<object {x}>", .{v.raw()})) {
-        .symbol => return if (escape) printSymbol(rt, w, v) else Runtime.writeStringUtf8(rt.symbolPtr(v).name, w),
-        .string => return if (escape) printString(w, v) else Runtime.writeStringUtf8(v, w),
-        .double_float => return printFloat(w, f64, Runtime.doubleValue(v)),
-        .bignum => return printBignum(rt, w, v),
-        .ratio => {
-            const r = Runtime.ratioPtr(v);
-            try write(rt, w, r.numerator, escape);
-            try w.writeByte('/');
-            return write(rt, w, r.denominator, escape);
-        },
-        .simple_vector => {
-            try w.writeAll("#(");
-            for (Runtime.vectorPtr(v).items(), 0..) |x, i| {
-                if (i > 0) try w.writeByte(' ');
-                try write(rt, w, x, escape);
+/// 処理系の内部の印字（印字の変数によらない）
+pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Writer.Error!void {
+    var bad: Value = Value.nil;
+    writeObject(rt, w, v, Settings.standard(escape), &bad) catch return error.WriteFailed;
+}
+
+/// 設定に従って印字する。*print-readably* で読み戻せないものがあれば error.NotReadable（bad にそのオブジェクト）
+pub fn writeObject(rt: *Runtime, w: *Writer, v: Value, s: Settings, bad: *Value) Error!void {
+    var p: P = .{ .rt = rt, .w = w, .s = s, .bad = bad };
+    defer p.labels.deinit(rt.gpa);
+    if (s.circle) try p.scan(v, 0);
+    return p.obj(v, 0);
+}
+
+/// 印字の状態
+const P = struct {
+    rt: *Runtime,
+    w: *Writer,
+    s: Settings,
+    bad: *Value,
+    /// *print-circle*：オブジェクトのアドレス → 0（1回だけ）・-1（2回以上で、まだ番号なし）・n（番号）
+    labels: std.AutoHashMapUnmanaged(u64, i32) = .empty,
+    next_label: i32 = 1,
+
+    fn notReadable(p: *P, v: Value) Error {
+        p.bad.* = v;
+        return error.NotReadable;
+    }
+
+    /// #n= を付ける対象（数・文字・intern されたシンボル以外の、ヒープのオブジェクト）
+    fn trackable(p: *P, v: Value) bool {
+        if (v.isCons() or v.isFunctionPointer()) return true;
+        if (!v.isOther() or v == Value.nil) return false;
+        return switch (Runtime.kindOf(v) orelse return false) {
+            .bignum, .ratio, .double_float => false,
+            .symbol => p.rt.symbolPtr(v).package == Value.nil,
+            else => true,
+        };
+    }
+
+    fn levelExceeded(p: *P, depth: usize) bool {
+        return if (p.s.level) |l| depth >= l else false;
+    }
+
+    /// *print-circle* の下調べ：印字と同じ範囲を走査して、2回以上現れるものに印を付ける
+    fn scan(p: *P, v: Value, depth: usize) Error!void {
+        if (!p.trackable(v)) return;
+        const container = v.isCons() or (v.isOther() and switch (Runtime.kindOf(v) orelse .symbol) {
+            .simple_vector, .array => true,
+            else => false,
+        });
+        if (container and p.levelExceeded(depth)) return;
+        const gop = p.labels.getOrPut(p.rt.gpa, v.raw()) catch return error.WriteFailed;
+        if (gop.found_existing) {
+            gop.value_ptr.* = -1;
+            return;
+        }
+        gop.value_ptr.* = 0;
+        if (v.isCons()) {
+            var x = v;
+            var count: usize = 0;
+            while (true) {
+                if (p.s.length) |l| if (count >= l) return;
+                const c = Runtime.consPtr(x);
+                try p.scan(c.car, depth + 1);
+                count += 1;
+                x = c.cdr;
+                if (!x.isCons()) return p.scan(x, depth + 1);
+                const g = p.labels.getOrPut(p.rt.gpa, x.raw()) catch return error.WriteFailed;
+                if (g.found_existing) {
+                    g.value_ptr.* = -1;
+                    return;
+                }
+                g.value_ptr.* = 0;
             }
-            return w.writeByte(')');
-        },
-        .array => return printArray(rt, w, v, escape),
-        .package => return w.print("#<PACKAGE \"{s}\">", .{Runtime.packageData(v).name}),
-        .closure, .native_function => return w.print("#<object {x}>", .{v.raw()}),
-        .code => return w.print("#<CODE {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
-        .value_cell => return w.print("#<VALUE-CELL {{{X}}}>", .{v.raw() & ~@as(u64, 7)}),
-        .hash_table => {
-            const object = @import("../values/object.zig");
-            const t: *object.HashTable = @ptrCast(@alignCast(v.pointer()));
-            const name = switch (@as(object.HashTest, @fromBackingInt(t.header.aux))) {
-                .eq => "EQ",
-                .eql => "EQL",
-                .equal => "EQUAL",
-                .equalp => "EQUALP",
+        }
+        if (!v.isOther()) return;
+        switch (Runtime.kindOf(v) orelse return) {
+            .simple_vector => for (Runtime.vectorPtr(v).items(), 0..) |x, i| {
+                if (p.s.length) |l| if (i >= l) break;
+                try p.scan(x, depth + 1);
+            },
+            .array => {
+                const object = @import("../values/object.zig");
+                const a: *object.Array = @ptrCast(@alignCast(v.pointer()));
+                if (Runtime.kindOf(a.data) == .string) return;
+                const dims = a.dims();
+                const items = Runtime.vectorPtr(a.data).items();
+                const n = if (dims.len == 1) (if (a.header.flags & object.Array.has_fill_pointer != 0) a.fill_pointer else dims[0]) else items.len;
+                for (items[0..n], 0..) |x, i| {
+                    if (dims.len == 1) if (p.s.length) |l| if (i >= l) break;
+                    try p.scan(x, depth + dims.len);
+                }
+            },
+            else => {},
+        }
+    }
+
+    /// オブジェクトを書く（*print-circle* の #n= と #n# を含む）
+    fn obj(p: *P, v: Value, depth: usize) Error!void {
+        if (p.s.circle and p.trackable(v)) {
+            if (p.labels.getPtr(v.raw())) |l| {
+                if (l.* > 0) return p.w.print("#{d}#", .{l.*});
+                if (l.* < 0) {
+                    l.* = p.next_label;
+                    p.next_label += 1;
+                    try p.w.print("#{d}=", .{l.*});
+                }
+            }
+        }
+        return p.body(v, depth);
+    }
+
+    fn body(p: *P, v: Value, depth: usize) Error!void {
+        const rt = p.rt;
+        const w = p.w;
+        const escape = p.s.escape;
+        if (v.isFixnum()) return p.integer(v);
+        if (v == Value.nil) return p.symbol(v);
+        if (v.isChar()) return if (escape) printChar(w, v.asChar()) else writeCp(w, v.asChar());
+        if (v.isSingleFloat()) return p.float(f32, v.asSingle(), v);
+        if (v == Value.unbound) return w.writeAll("#<unbound>");
+        if (v == Value.unwind) return w.writeAll("#<unwind>");
+        if (v.isCons()) return p.list(v, depth);
+        if (v.isFunctionPointer()) {
+            if (p.s.readably) return p.notReadable(v);
+            return printFunction(rt, w, v);
+        }
+        switch (Runtime.kindOf(v) orelse return w.print("#<object {x}>", .{v.raw()})) {
+            .symbol => return p.symbol(v),
+            .string => return if (escape) printString(w, v) else Runtime.writeStringUtf8(v, w),
+            .double_float => return p.float(f64, Runtime.doubleValue(v), v),
+            .bignum => return p.integer(v),
+            .ratio => return p.integer(v),
+            .simple_vector => {
+                if (!p.s.array) return w.print("#<(SIMPLE-VECTOR {d}) {{{X}}}>", .{ Runtime.vectorPtr(v).items().len, v.raw() & ~@as(u64, 7) });
+                if (p.levelExceeded(depth)) return w.writeByte('#');
+                return p.vectorItems(Runtime.vectorPtr(v).items(), depth);
+            },
+            .array => return p.array(v, depth),
+            .package => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<PACKAGE \"{s}\">", .{Runtime.packageData(v).name});
+            },
+            .closure, .native_function => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<object {x}>", .{v.raw()});
+            },
+            .code => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<CODE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
+            .value_cell => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<VALUE-CELL {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
+            .hash_table => {
+                // SBCL 2.6.7 は #.(MAKE-HASH-TABLE …) で書くが、Zilisp は読み戻せないものとする（impl-dependent.toml）
+                if (p.s.readably) return p.notReadable(v);
+                const object = @import("../values/object.zig");
+                const t: *object.HashTable = @ptrCast(@alignCast(v.pointer()));
+                const name = switch (@as(object.HashTest, @fromBackingInt(t.header.aux))) {
+                    .eq => "EQ",
+                    .eql => "EQL",
+                    .equal => "EQUAL",
+                    .equalp => "EQUALP",
+                };
+                // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
+                return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
+            },
+            .stream => {
+                if (p.s.readably) return p.notReadable(v);
+                return @import("../primitives/streams.zig").printStream(rt, w, v);
+            },
+            .pathname => {
+                const pathnames = @import("../primitives/pathnames.zig");
+                if (!escape) return pathnames.writeNamestring(rt, w, v);
+                // #P"..."（" と \ はエスケープする）
+                var buf: Writer.Allocating = .init(rt.gpa);
+                defer buf.deinit();
+                pathnames.writeNamestring(rt, &buf.writer, v) catch return error.WriteFailed;
+                try w.writeAll("#P\"");
+                for (buf.written()) |c| {
+                    if (c == '"' or c == '\\') try w.writeByte('\\');
+                    try w.writeByte(c);
+                }
+                return w.writeByte('"');
+            },
+            // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
+            .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
+        }
+    }
+
+    /// リスト（*print-level* を超えれば #、*print-length* を超えた残りは ...。CLHS 22.1.3.5）
+    fn list(p: *P, v: Value, depth: usize) Error!void {
+        if (p.levelExceeded(depth)) return p.w.writeByte('#');
+        const w = p.w;
+        try w.writeByte('(');
+        var x = v;
+        var count: usize = 0;
+        while (true) {
+            if (count > 0) try w.writeByte(' ');
+            if (p.s.length) |l| if (count >= l) {
+                try w.writeAll("...");
+                x = Value.nil;
+                break;
             };
-            // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
-            return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
-        },
-        .stream => return @import("../primitives/streams.zig").printStream(rt, w, v),
-        .pathname => {
-            const pathnames = @import("../primitives/pathnames.zig");
-            if (!escape) return pathnames.writeNamestring(rt, w, v);
-            // #P"..."（" と \ はエスケープする）
-            var buf: Writer.Allocating = .init(rt.gpa);
-            defer buf.deinit();
-            pathnames.writeNamestring(rt, &buf.writer, v) catch return error.WriteFailed;
-            try w.writeAll("#P\"");
-            for (buf.written()) |c| {
-                if (c == '"' or c == '\\') try w.writeByte('\\');
-                try w.writeByte(c);
+            const c = Runtime.consPtr(x);
+            try p.obj(c.car, depth + 1);
+            count += 1;
+            x = c.cdr;
+            if (!x.isCons()) break;
+            // 尾が共有されていれば . #n# か . #n=(…) の形にする（*print-circle*）
+            if (p.s.circle) if (p.labels.get(x.raw())) |l| if (l != 0) {
+                try w.writeAll(" . ");
+                try p.obj(x, depth + 1);
+                x = Value.nil;
+                break;
+            };
+        }
+        if (x != Value.nil) {
+            try w.writeAll(" . ");
+            try p.obj(x, depth + 1);
+        }
+        try w.writeByte(')');
+    }
+
+    fn vectorItems(p: *P, items: []const Value, depth: usize) Error!void {
+        try p.w.writeAll("#(");
+        for (items, 0..) |x, i| {
+            if (i > 0) try p.w.writeByte(' ');
+            if (p.s.length) |l| if (i >= l) {
+                try p.w.writeAll("...");
+                break;
+            };
+            try p.obj(x, depth + 1);
+        }
+        try p.w.writeByte(')');
+    }
+
+    /// 単純でない配列（Phase 21）。1次元はベクタ・文字列と同じ形で、有効な部分（fill-pointer まで）だけを書く。
+    /// 多次元は #nA((…) …)、0次元は #0A要素（SBCL 2.6.7 と同じ。CLHS 22.1.3.8）
+    fn array(p: *P, v: Value, depth: usize) Error!void {
+        const object = @import("../values/object.zig");
+        const w = p.w;
+        const a: *object.Array = @ptrCast(@alignCast(v.pointer()));
+        const dims = a.dims();
+        const is_string = Runtime.kindOf(a.data) == .string;
+        if (dims.len == 1) {
+            const n = if (a.header.flags & object.Array.has_fill_pointer != 0) a.fill_pointer else dims[0];
+            if (is_string) {
+                const s = Runtime.stringPtr(a.data);
+                if (p.s.escape) try w.writeByte('"');
+                for (0..n) |i| {
+                    const cp = s.charAt(i);
+                    if (p.s.escape and (cp == '"' or cp == '\\')) try w.writeByte('\\');
+                    try writeCp(w, cp);
+                }
+                if (p.s.escape) try w.writeByte('"');
+                return;
             }
-            return w.writeByte('"');
-        },
-        // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
-        .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
+            if (!p.s.array) return w.print("#<(VECTOR T {d}) {{{X}}}>", .{ dims[0], v.raw() & ~@as(u64, 7) });
+            if (p.levelExceeded(depth)) return w.writeByte('#');
+            return p.vectorItems(Runtime.vectorPtr(a.data).items()[0..n], depth);
+        }
+        if (!p.s.array) {
+            const simple = a.header.flags & (object.Array.has_fill_pointer | object.Array.adjustable) == 0;
+            try w.print("#<({s} {s} ", .{ if (simple) "SIMPLE-ARRAY" else "ARRAY", if (is_string) "CHARACTER" else "T" });
+            if (dims.len == 0) try w.writeAll("NIL") else {
+                try w.writeByte('(');
+                for (dims, 0..) |d, i| {
+                    if (i > 0) try w.writeByte(' ');
+                    try w.print("{d}", .{d});
+                }
+                try w.writeByte(')');
+            }
+            return w.print(") {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+        }
+        try w.print("#{d}A", .{dims.len});
+        var index: usize = 0;
+        return p.arrayAxis(a.data, is_string, dims, &index, depth);
+    }
+
+    fn arrayAxis(p: *P, data: Value, is_string: bool, dims: []const usize, index: *usize, depth: usize) Error!void {
+        const w = p.w;
+        if (dims.len == 0) {
+            const x = if (is_string) Value.fromChar(Runtime.stringPtr(data).charAt(index.*)) else Runtime.vectorPtr(data).items()[index.*];
+            index.* += 1;
+            return p.obj(x, depth);
+        }
+        if (p.levelExceeded(depth)) {
+            index.* += product(dims);
+            return w.writeByte('#');
+        }
+        try w.writeByte('(');
+        for (0..dims[0]) |i| {
+            if (i > 0) try w.writeByte(' ');
+            if (p.s.length) |l| if (i >= l) {
+                try w.writeAll("...");
+                index.* += (dims[0] - i) * product(dims[1..]);
+                break;
+            };
+            try p.arrayAxis(data, is_string, dims[1..], index, depth + 1);
+        }
+        try w.writeByte(')');
+    }
+
+    /// 整数と比（*print-base*・*print-radix*。CLHS 22.1.3.1.1・22.1.3.1.2）
+    fn integer(p: *P, v: Value) Error!void {
+        const w = p.w;
+        const base = p.s.base;
+        const is_ratio = v.isOther() and Runtime.kindOf(v) == .ratio;
+        if (p.s.radix) {
+            switch (base) {
+                2 => try w.writeAll("#b"),
+                8 => try w.writeAll("#o"),
+                16 => try w.writeAll("#x"),
+                10 => if (is_ratio) try w.writeAll("#10r"),
+                else => try w.print("#{d}r", .{base}),
+            }
+        }
+        if (is_ratio) {
+            const r = Runtime.ratioPtr(v);
+            try p.digits(r.numerator);
+            try w.writeByte('/');
+            try p.digits(r.denominator);
+        } else try p.digits(v);
+        if (p.s.radix and base == 10 and !is_ratio) try w.writeByte('.');
+    }
+
+    fn digits(p: *P, v: Value) Error!void {
+        if (v.isFixnum()) {
+            const n = v.asFixnum();
+            if (p.s.base == 10) return p.w.print("{d}", .{n});
+            var buf: [72]u8 = undefined;
+            if (n < 0) try p.w.writeByte('-');
+            return p.w.writeAll(fmtBase(@abs(n), p.s.base, &buf));
+        }
+        const base = p.s.base;
+        // 2 の累乗の基数（4・8・32）は、2 進の文字列から作る（Zig 0.17.0 の toStringAlloc は、(expt 2 70) を基数 8 で
+        // 2^72 の、基数 32 で 2^71 の桁にした。基数 2・4・16 は正しい。docs/zig-std-usage.md）
+        const bits: u8 = switch (base) {
+            4 => 2,
+            8 => 3,
+            32 => 5,
+            else => 0,
+        };
+        const text = Runtime.bignumConst(v).toStringAlloc(p.rt.gpa, if (bits != 0) 2 else base, .upper) catch return error.WriteFailed;
+        defer p.rt.gpa.free(text);
+        if (bits == 0) return p.w.writeAll(text);
+        const neg = text.len > 0 and text[0] == '-';
+        const bin = if (neg) text[1..] else text;
+        if (neg) try p.w.writeByte('-');
+        // 先頭の桁の幅（2 進の桁数を bits で割った余り。0 なら bits）
+        var i: usize = 0;
+        var width: usize = bin.len % bits;
+        if (width == 0) width = bits;
+        while (i < bin.len) {
+            var d: u8 = 0;
+            for (bin[i .. i + width]) |c| d = d * 2 + (c - '0');
+            try p.w.writeByte(if (d < 10) '0' + d else 'A' + d - 10);
+            i += width;
+            width = bits;
+        }
+    }
+
+    fn float(p: *P, comptime T: type, x: T, v: Value) Error!void {
+        if (p.s.readably and (std.math.isNan(x) or std.math.isInf(x))) return p.notReadable(v);
+        return printFloat(p.w, T, x, p.s.double_default);
+    }
+
+    /// シンボル（パッケージの修飾、|…|、*print-case*、*print-gensym*）
+    fn symbol(p: *P, v: Value) Error!void {
+        const rt = p.rt;
+        const w = p.w;
+        if (v == Value.nil) {
+            if (!p.s.escape) return writeCased(w, "NIL", p.s.case);
+            return p.nilSymbol();
+        }
+        const sym = rt.symbolPtr(v);
+        var name_buf: Writer.Allocating = .init(rt.gpa);
+        defer name_buf.deinit();
+        Runtime.writeStringUtf8(sym.name, &name_buf.writer) catch return error.WriteFailed;
+        const name = name_buf.written();
+        if (!p.s.escape) return writeCased(w, name, p.s.case);
+
+        if (sym.package == Value.nil) {
+            if (p.s.gensym) try w.writeAll("#:");
+        } else {
+            const home = Runtime.packageData(sym.package);
+            if (home == rt.keyword) {
+                try w.writeByte(':');
+            } else if (qualify_all) {
+                try writeSymbolName(w, home.name, .upcase, 10);
+                try w.writeAll("::");
+            } else {
+                // 今のパッケージから同じシンボルが見えれば修飾しない
+                const cur = rt.currentPackage();
+                const visible = if (cur) |c| (if (rt.findSymbol(c, name)) |f| f.symbol == v else false) else false;
+                if (!visible) {
+                    // 今のパッケージにホームパッケージのローカルの別名があれば、それで修飾する（SBCL 2.6.7 と同じ。Phase 22）
+                    var prefix = home.name;
+                    if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == home) {
+                        prefix = n.name;
+                        break;
+                    };
+                    try writeSymbolName(w, prefix, p.s.case, p.s.base);
+                    const external = if (home.external.get(name)) |s| s == v else false;
+                    try w.writeAll(if (external) ":" else "::");
+                }
+            }
+        }
+        try writeSymbolName(w, name, if (qualify_all) .upcase else p.s.case, if (qualify_all) 10 else p.s.base);
+    }
+
+    /// NIL（即値）。エスケープ付きの印字では、ほかのシンボルと同じく、今のパッケージから見えなければ修飾する
+    /// （CL を use しないパッケージでは COMMON-LISP:NIL。SBCL 2.6.7 と同じ。Codex のレビュー P22 #5）
+    fn nilSymbol(p: *P) Error!void {
+        const rt = p.rt;
+        const w = p.w;
+        if (qualify_all) return w.writeAll("COMMON-LISP::NIL");
+        const cur = rt.currentPackage();
+        const visible = if (cur) |c| (if (rt.findSymbol(c, "NIL")) |f| f.symbol == Value.nil else false) else false;
+        if (visible) return writeCased(w, "NIL", p.s.case);
+        var prefix: []const u8 = rt.cl.name;
+        if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == rt.cl) {
+            prefix = n.name;
+            break;
+        };
+        try writeSymbolName(w, prefix, p.s.case, p.s.base);
+        try w.writeByte(':');
+        return writeCased(w, "NIL", p.s.case);
+    }
+};
+
+fn product(dims: []const usize) usize {
+    var n: usize = 1;
+    for (dims) |d| n *= d;
+    return n;
+}
+
+/// 符号なしの整数を base 進で書く（英字の数字は大文字。SBCL 2.6.7 と同じ）
+fn fmtBase(n: u64, base: u8, buf: []u8) []const u8 {
+    var i = buf.len;
+    var x = n;
+    while (true) {
+        const d: u8 = @intCast(x % base);
+        i -= 1;
+        buf[i] = if (d < 10) '0' + d else 'A' + d - 10;
+        x /= base;
+        if (x == 0) break;
+    }
+    return buf[i..];
+}
+
+/// シンボル名を *print-case* に従って書く（読み取りで大文字になる文字だけが対象。小文字はそのまま。
+/// :capitalize は、英数字の並びを単語として、単語の最初の文字だけを大文字のままにする。SBCL 2.6.7 と同じ）
+fn writeCased(w: *Writer, name: []const u8, case: Case) Writer.Error!void {
+    if (case == .upcase) return w.writeAll(name);
+    var it = (std.unicode.Utf8View.init(name) catch return w.writeAll(name)).iterator();
+    var word_start = true;
+    while (it.nextCodepoint()) |cp| {
+        const alnum = unicode.isAlnum(cp);
+        var out = cp;
+        if (unicode.isUpper(cp)) {
+            out = switch (case) {
+                .upcase => cp,
+                .downcase => unicode.downcase(cp),
+                .capitalize => if (word_start) cp else unicode.downcase(cp),
+            };
+        }
+        word_start = !alnum;
+        try writeCp(w, out);
     }
 }
 
 /// 関数（SBCL 2.6.7 と同じ形：#<FUNCTION CAR>、#<FUNCTION (LAMBDA (X)) {アドレス}>）
-fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
+fn printFunction(rt: *Runtime, w: *Writer, v: Value) Writer.Error!void {
     const function = @import("../runtime/function.zig");
     switch (function.kindOfFunction(v)) {
         .native_function => {
@@ -109,7 +601,7 @@ fn printFunction(rt: *Runtime, w: *Writer, v: Value) Error!void {
 }
 
 /// 関数の名前（Code の name）を書く：FACT、(LAMBDA (X))、(FLET F)。トップレベルのフォーム（NIL）は「トップレベル」
-pub fn printCodeName(rt: *Runtime, w: *Writer, name: Value) Error!void {
+pub fn printCodeName(rt: *Runtime, w: *Writer, name: Value) Writer.Error!void {
     if (name == Value.nil) return w.writeAll("（トップレベル）");
     if (name.isCons() and Runtime.consPtr(name).car == rt.syms.lambda) {
         // 空のラムダリストは () と書く（SBCL 2.6.7：#<FUNCTION (LAMBDA ()) {…}>）
@@ -121,71 +613,7 @@ pub fn printCodeName(rt: *Runtime, w: *Writer, name: Value) Error!void {
     try prin1(rt, w, name);
 }
 
-fn printList(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
-    try w.writeByte('(');
-    var x = v;
-    var first = true;
-    while (x.isCons()) {
-        if (!first) try w.writeByte(' ');
-        first = false;
-        const c = Runtime.consPtr(x);
-        try write(rt, w, c.car, escape);
-        x = c.cdr;
-    }
-    if (x != Value.nil) {
-        try w.writeAll(" . ");
-        try write(rt, w, x, escape);
-    }
-    try w.writeByte(')');
-}
-
-/// 単純でない配列（Phase 21）。1次元はベクタ・文字列と同じ形で、有効な部分（fill-pointer まで）だけを書く。
-/// 多次元は #nA((…) …)、0次元は #0A要素（SBCL 2.6.7 と同じ。CLHS 22.1.3.8）
-fn printArray(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
-    const object = @import("../values/object.zig");
-    const a: *object.Array = @ptrCast(@alignCast(v.pointer()));
-    const dims = a.dims();
-    const is_string = Runtime.kindOf(a.data) == .string;
-    if (dims.len == 1) {
-        const n = if (a.header.flags & object.Array.has_fill_pointer != 0) a.fill_pointer else dims[0];
-        if (is_string) {
-            const s = Runtime.stringPtr(a.data);
-            if (escape) try w.writeByte('"');
-            for (0..n) |i| {
-                const cp = s.charAt(i);
-                if (escape and (cp == '"' or cp == '\\')) try w.writeByte('\\');
-                try writeCp(w, cp);
-            }
-            if (escape) try w.writeByte('"');
-            return;
-        }
-        try w.writeAll("#(");
-        for (Runtime.vectorPtr(a.data).items()[0..n], 0..) |x, i| {
-            if (i > 0) try w.writeByte(' ');
-            try write(rt, w, x, escape);
-        }
-        return w.writeByte(')');
-    }
-    try w.print("#{d}A", .{dims.len});
-    var index: usize = 0;
-    return printArrayAxis(rt, w, a.data, is_string, dims, &index, escape);
-}
-
-fn printArrayAxis(rt: *Runtime, w: *Writer, data: Value, is_string: bool, dims: []const usize, index: *usize, escape: bool) Error!void {
-    if (dims.len == 0) {
-        const x = if (is_string) Value.fromChar(Runtime.stringPtr(data).charAt(index.*)) else Runtime.vectorPtr(data).items()[index.*];
-        index.* += 1;
-        return write(rt, w, x, escape);
-    }
-    try w.writeByte('(');
-    for (0..dims[0]) |i| {
-        if (i > 0) try w.writeByte(' ');
-        try printArrayAxis(rt, w, data, is_string, dims[1..], index, escape);
-    }
-    try w.writeByte(')');
-}
-
-fn printString(w: *Writer, v: Value) Error!void {
+fn printString(w: *Writer, v: Value) Writer.Error!void {
     const s = Runtime.stringPtr(v);
     try w.writeByte('"');
     var i: usize = 0;
@@ -197,20 +625,13 @@ fn printString(w: *Writer, v: Value) Error!void {
     try w.writeByte('"');
 }
 
-/// bignum を10進で書く（*print-base* は Phase 24）
-fn printBignum(rt: *Runtime, w: *Writer, v: Value) Error!void {
-    const text = Runtime.bignumConst(v).toStringAlloc(rt.gpa, 10, .lower) catch return error.WriteFailed;
-    defer rt.gpa.free(text);
-    try w.writeAll(text);
-}
-
-fn writeCp(w: *Writer, cp: u21) Error!void {
+fn writeCp(w: *Writer, cp: u21) Writer.Error!void {
     var b: [4]u8 = undefined;
     const n = std.unicode.utf8Encode(cp, &b) catch return w.print("\\u{x}", .{cp});
     try w.writeAll(b[0..n]);
 }
 
-fn printChar(w: *Writer, cp: u21) Error!void {
+fn printChar(w: *Writer, cp: u21) Writer.Error!void {
     try w.writeAll("#\\");
     const name: ?[]const u8 = switch (cp) {
         '\n' => "Newline",
@@ -230,12 +651,14 @@ fn printChar(w: *Writer, cp: u21) Error!void {
 
 /// 浮動小数（SBCL 2.6.7 と同じ形）：
 ///   0.001 ≦ |x| < 1e7 は小数点の形（1.5、100000.0）、それ以外は指数の形（1.0e7、1.0e-4）。
-///   桁数は読み戻せる最短の桁数。double-float には d を付ける（1.5d0、1.0d7）。
-fn printFloat(w: *Writer, comptime T: type, x: T) Error!void {
+///   桁数は読み戻せる最短の桁数。*read-default-float-format* と違う型には指数の印を付ける
+///   （既定の single-float なら double-float に d：1.5d0、1.0d7。double-float が既定なら single-float に f：1.5f0。CLHS 22.1.3.1.3）
+pub fn printFloat(w: *Writer, comptime T: type, x: T, double_default: bool) Writer.Error!void {
     if (std.math.isNan(x)) return w.writeAll(if (T == f32) "#<single-float quiet NaN>" else "#<double-float quiet NaN>");
     if (std.math.isInf(x)) return w.print("#<{s}-float {s}infinity>", .{ if (T == f32) "single" else "double", if (x < 0) "-" else "+" });
-    const suffix_fixed: []const u8 = if (T == f32) "" else "d0";
-    const marker: u8 = if (T == f32) 'e' else 'd';
+    const is_default = (T == f64) == double_default;
+    const suffix_fixed: []const u8 = if (is_default) "" else if (T == f32) "f0" else "d0";
+    const marker: u8 = if (is_default) 'e' else if (T == f32) 'f' else 'd';
     if (std.math.signbit(x)) try w.writeByte('-');
     const a = @abs(x);
     if (a == 0) return w.print("0.0{s}", .{suffix_fixed});
@@ -283,66 +706,14 @@ fn printFloat(w: *Writer, comptime T: type, x: T) Error!void {
     return w.print("{c}{d}", .{ marker, exp10 });
 }
 
-/// NIL（即値）。エスケープ付きの印字では、ほかのシンボルと同じく、今のパッケージから見えなければ修飾する
-/// （CL を use しないパッケージでは COMMON-LISP:NIL。SBCL 2.6.7 と同じ。Codex のレビュー P22 #5）
-fn printNil(rt: *Runtime, w: *Writer, escape: bool) Error!void {
-    if (!escape) return w.writeAll("NIL");
-    if (qualify_all) return w.writeAll("COMMON-LISP::NIL");
-    const cur = rt.currentPackage();
-    const visible = if (cur) |c| (if (rt.findSymbol(c, "NIL")) |f| f.symbol == Value.nil else false) else false;
-    if (visible) return w.writeAll("NIL");
-    var prefix: []const u8 = rt.cl.name;
-    if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == rt.cl) {
-        prefix = n.name;
-        break;
-    };
-    try writeSymbolName(w, prefix);
-    return w.writeAll(":NIL");
-}
-
 /// 真なら、キーワードと uninterned 以外のシンボルをすべて「パッケージ::名前」の形で書く（ネイティブバックエンドが定数を
 /// 埋め込むとき。起動時に読み直すときの *package* や、export の済んでいない順序によらず同じシンボルになる。Phase 22）
 pub var qualify_all: bool = false;
 
-fn printSymbol(rt: *Runtime, w: *Writer, v: Value) Error!void {
-    const sym = rt.symbolPtr(v);
-    var name_buf: Writer.Allocating = .init(rt.gpa);
-    defer name_buf.deinit();
-    Runtime.writeStringUtf8(sym.name, &name_buf.writer) catch return error.WriteFailed;
-    const name = name_buf.written();
-
-    if (sym.package == Value.nil) {
-        try w.writeAll("#:");
-    } else {
-        const home = Runtime.packageData(sym.package);
-        if (home == rt.keyword) {
-            try w.writeByte(':');
-        } else if (qualify_all) {
-            try writeSymbolName(w, home.name);
-            try w.writeAll("::");
-        } else {
-            // 今のパッケージから同じシンボルが見えれば修飾しない
-            const cur = rt.currentPackage();
-            const visible = if (cur) |c| (if (rt.findSymbol(c, name)) |f| f.symbol == v else false) else false;
-            if (!visible) {
-                // 今のパッケージにホームパッケージのローカルの別名があれば、それで修飾する（SBCL 2.6.7 と同じ。Phase 22）
-                var prefix = home.name;
-                if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == home) {
-                    prefix = n.name;
-                    break;
-                };
-                try writeSymbolName(w, prefix);
-                const external = if (home.external.get(name)) |s| s == v else false;
-                try w.writeAll(if (external) ":" else "::");
-            }
-        }
-    }
-    try writeSymbolName(w, name);
-}
-
-/// シンボル名を、必要なら |…| で囲んで書く（CLHS 22.1.3.3.1）
-fn writeSymbolName(w: *Writer, name: []const u8) Error!void {
-    if (!needsEscape(name)) return w.writeAll(name);
+/// シンボル名を、必要なら |…| で囲んで書く（CLHS 22.1.3.3.1）。囲まないときは *print-case* に従う。
+/// *print-base* の数として読める名前も囲む（*print-base* が 16 なら ABC は |ABC|。SBCL 2.6.7 と同じ）
+fn writeSymbolName(w: *Writer, name: []const u8, case: Case, base: u8) Writer.Error!void {
+    if (!needsEscape(name, base)) return writeCased(w, name, case);
     try w.writeByte('|');
     for (name) |c| {
         if (c == '|' or c == '\\') try w.writeByte('\\');
@@ -351,7 +722,7 @@ fn writeSymbolName(w: *Writer, name: []const u8) Error!void {
     try w.writeByte('|');
 }
 
-fn needsEscape(name: []const u8) bool {
+fn needsEscape(name: []const u8, base: u8) bool {
     if (name.len == 0) return true;
     var all_dots = true;
     var all_ascii = true;
@@ -373,9 +744,9 @@ fn needsEscape(name: []const u8) bool {
     if (all_ascii) {
         var buf: [256]u8 = undefined;
         if (name.len + 8 <= buf.len) {
-            if (number.parse(name, 10, .single, &buf) catch return true) |_| return true;
+            if (number.parse(name, base, .single, &buf) catch return true) |_| return true;
         }
-        if (number.isPotentialNumber(name, 10)) return true;
+        if (number.isPotentialNumber(name, base)) return true;
     }
     return false;
 }

@@ -59,7 +59,7 @@ fn evalText(
     stderr: *Io.Writer,
 ) Io.Writer.Error!LoadResult {
     var src = reader.Source.init(text, 1);
-    var b: vb.ValueBuilder = .{ .rt = s.rt };
+    var b: vb.ValueBuilder = .{ .rt = s.rt, .th = s.th };
     var r = reader.Reader(vb.ValueBuilder).init(gpa, &src, &b, .{});
     defer r.deinit();
     var failed = false;
@@ -72,10 +72,21 @@ fn evalText(
             }
             const d = r.diagnostic;
             try stdout.flush();
+            if (err == error.LispError) {
+                // reader macro・#. の中のエラー：評価のエラーと同じに報告する
+                try stderr.print("{s}:{d}:{d}: ", .{ name, d.loc.line, d.loc.col });
+                try s.th.writeError(stderr);
+                try stderr.writeByte('\n');
+                try stderr.flush();
+                s.th.clearError();
+                consumed.* = text.len;
+                return .failed;
+            }
             const kind = switch (err) {
                 error.EndOfFile => "END-OF-FILE",
                 error.ReaderError => "READER-ERROR",
                 error.OutOfMemory => "STORAGE-CONDITION",
+                error.LispError => unreachable,
             };
             try stderr.print("{s}:{d}:{d}: {s}: {s}\n", .{ name, d.loc.line, d.loc.col, kind, d.message });
             try stderr.flush();

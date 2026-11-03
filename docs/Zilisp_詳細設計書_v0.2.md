@@ -18,6 +18,8 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記30） | 2026-11-03 | Phase 24（P24c）：Reader の拡張（§11.2。readtable のオブジェクト、ユーザー定義の reader macro、`#.`、`#n=`／`#n#`、読み取りと印字の `readtable-case`、`*read-base*` などの読み取りの変数、`with-standard-io-syntax`） |
+| 0.2（追記29） | 2026-11-03 | Phase 24（P24b）：pretty printer 以外のすべての指示子の `format`（§11.2。SBCL と同じ字句解析と指示子の意味、`~F ~E ~G ~$` のための `flonum-to-string` の移植、`formatter`、`~T` のためのストリームの桁） |
 | 0.2（追記28） | 2026-11-03 | Phase 24（P24a）：印字の変数（§11.2。`*print-base*`・`*print-case*`・`*print-circle*`・`*print-readably*` など、`write` のすべてのキーワード、`print-not-readable`） |
 | 0.2（追記27） | 2026-11-03 | Phase 23：ストリームとパス名（§2.4、§11.2。標準のストリーム、ファイル・文字列のストリーム、#P、ファイルの操作、GC による閉じ忘れたストリームの後始末） |
 | 0.2（追記26） | 2026-11-03 | Phase 22：パッケージ（§8.2。`*package*`、パッケージの関数、defpackage・in-package、名前の衝突、load、ネイティブの定数の修飾）。シャドウイングシンボルの持ち方の変更 |
@@ -989,7 +991,7 @@ fn add1_fast(th: *Thread, x: Value) Value {
 
 - `src/native/emit.zig`：Core IR から Zig のソースを生成する。lambda 1つにつき汎用の入口（`Entry`、`callconv(.c)`）の関数を1つ、トップレベルのフォーム1つにつき引数のない関数を1つ作る。関数名は `@"lisp:名前:番号"`（§7A.5 の C1：Lisp の名前を識別子にそのまま使えることを確認した。デバッガ・リンカでの表示は未確認）。
 - 式の値は Zig の局所定数に入れ、関数の呼び出しのたびに `Value.unwind` かを確かめて、そうなら返す（§6.4 の方式1）。fixnum の高速経路（`car`・`+`・`<` など）は `src/native/rt.zig` の inline 関数で、生成したコードに展開される。
-- 定数（quote したデータ・シンボルなど）は `prin1` で印字したテキストとして埋め込み、起動時に Reader で読み直す。その後ろに、各 lambda の Code（印字用の名前と引数の個数）と、捕捉のない lambda の closure を置く（定数表。GC のルートに登録する）。uninterned のシンボルは、定数ごとに別のシンボルになる（同じファイルの中での同一性を保たない。`#n=` を実装する Phase 24 以降で直す）。
+- 定数（quote したデータ・シンボルなど）は `prin1` で印字したテキストとして埋め込み、起動時に Reader で読み直す。その後ろに、各 lambda の Code（印字用の名前と引数の個数）と、捕捉のない lambda の closure を置く（定数表。GC のルートに登録する）。uninterned のシンボルは、定数ごとに別のシンボルになる（定数をまたぐと、同じファイルの中での同一性を保たない）。Phase 24 から、定数を `*print-circle*` で書くので、1つの定数の中で共有・循環する構造（共有する uninterned のシンボルも）は保たれる（`#n=` と `#n#`）。
 - 生成したコードは局所変数の Lisp の値を GC に登録しない（§7A.4）。関数の入口で、ネイティブのスタックの残りを確かめる（§6.7。生成した実行ファイルのスタックは 64 MiB）。
 - まだ行わないこと（§7A.3）：同じファイル内の直接呼び出し、高速入口、末尾呼び出しの変換、型推論。呼び出しは常に関数セルを経由する。
 - 開発用のコマンド `zilisp --emit-zig FILE OUT.zig` と、`zig build native-test`（`tests/language/eval/*.lisp` を生成・コンパイル・実行して、VM と同じ期待値と比べる。`-Doptimize` で最適化を指定）。単一の実行ファイルを作る `zilisp build`（Phase 36）は、この仕組みの上に作る。
@@ -1318,6 +1320,25 @@ Phase 24 は4つに分けて進める：P24a 印字の変数、P24b `format`、P
   - `write`・`write-to-string` は、すべてのキーワード（`:array :base :case :circle :escape :gensym :length :level :lines :miser-width :pprint-dispatch :pretty :radix :readably :right-margin`）を受け取り、印字の間その変数を束縛する。`:base` は 2〜36 の整数、`:case` は3つのキーワードのどれか（ほかは type-error）。`prin1`・`princ`・`print`・`-to-string` の関数・`format` の `~A`・`~S`・REPL が印字する値も、変数に従う。
   - **修正**：Zig 0.17.0 の `toStringAlloc` は、基数 8 と 32 で bignum の桁を誤る（`(expt 2 70)` が、基数 8 では 2^72、基数 32 では 2^71 の桁になった。小さな試験で確認）。基数 4・8・32 は、2 進の文字列から作るようにした。
   - 試験：言語試験 `printer.lisp`（GC stress の版も。SBCL 2.6.7 と同じ出力）と、`print-not-readable` とキーワードの検査の単体テスト。
+- **P24b：`format`**（`src/primitives/format.zig`。Phase 19 の最小版を置き換えた）。SBCL 2.6.7 の `target-format.lisp`・`format.lisp`・`print.lisp`（public domain）と同じ動作になるように、Zig で書いた。
+  - 制御文字列を、SBCL と同じに指示子に分ける（`%tokenize-control-string`・`parse-directive`・`combine-directives`。`~` と改行・`~%`・`~~`・`~|` は文字にする）。引数は、整数・`'文字`・`v`（引数が NIL なら既定値）・`#`・空。
+  - 指示子：`~A ~S`（欄の幅・埋め字・`:` で `()`）、`~W`、`~C`（`:` は `Space`・`Soh` などの名前、`@` は `#\a`）、`~D ~B ~O ~X`（幅・埋め字・`:` の桁区切り・`@` の符号。整数でなければその基数で `princ`）、`~R`（基数、英語の基数詞と序数詞（vigintillion まで）、新旧のローマ数字）、`~P`、`~F ~E ~G ~$`、`~% ~& ~| ~~`、`~T`（絶対・相対。ストリームの桁を使う）、`~*`（`:`・`@`）、`~?`（`@`）、`~( ~)`（4種類の大文字・小文字の変換。中の出力の全体に効く）、`~[ ~; ~]`（`:`・`@`・既定の `~:;`・`#`）、`~{ ~}`（`:`・`@`・`~:}`・回数・中身が空なら引数を制御にする）、`~^`（0〜3個の引数。`~:{` の中の `~:^`）、`~< ~>` の左右揃え（`:`・`@`・行の幅を指定する `~:;`。既定は 72）、`~/名前/`（名前は大文字にし、パッケージの指定がなければ CL-USER に intern する。関数には、ストリーム・引数・`:` と `@` の有無・指示子の引数を渡す）。
+  - `~^` は Zig のエラー（`Up`・`UpUp`）で抜け、SBCL が catch する場所（`~{`・`~<`・`format`）で受け止める。出力はいったんバッファに溜め、終わりと、ユーザーの関数を呼ぶ前にストリームに書く（`~/名前/` と関数の制御には本来のストリームを渡す。出力先が文字列なら文字列の出力ストリームを渡す）。`~T` のため、ストリームは今の桁を持つようにした（`StreamState.column`）。
+  - 浮動小数：`flonum-to-string` と `%flonum-to-digits`（Burger と Dybvig の方法に、桁の位置での丸めを加えたもの）を多倍長整数で移植したので、丸めは SBCL と同じ（`(format nil "~,2F" 0.005)` は `0.01`、0.25 の `~,1F` は `0.3`）。有理数は single-float にする。数でないものは、10 進の `~A` と同じに、幅を mincol として書く。
+  - `formatter`（`boot.lisp` のマクロ。`zilisp-system:%format-rest` を呼ぶ）と、関数の制御も使える。
+  - pretty printer の指示子は、P24d までは pretty printing のストリームでない場合と同じに扱う（`~_`・`~I`・`~:T` は何もしない。`~<…~:>` は明示的なエラー）。
+  - エラー：SBCL の `format-error` は、Zilisp では `simple-error`（Phase 19 と同じ）。SBCL が type-error にする場合（`~{` の引数がリストでない、指示子の引数の型が違う）は、Zilisp も type-error。
+  - 結果：教材のブロックの一致は 467 から 478 に。`format` のために Zilisp だけがエラーになるブロックはなくなった。試験：言語試験 `format.lisp`（145 行の出力が SBCL 2.6.7 と同じ。GC stress の版も）と、SBCL と比べた 24 個のエラーの場合の単体テスト。
+- **P24c：Reader の拡張**（`src/reader/readtable.zig`・`src/reader/reader.zig`・`src/reader/value_builder.zig`）。
+  - **readtable** は新しいオブジェクトの種類（`object.Readtable`）：ASCII の文字の構文型、マクロ関数の 128 要素の simple-vector、それ以外の文字の連想リスト、dispatch 文字ごとの表（129 要素のベクタ）。標準の readtable は `zilisp-system:*standard-readtable*` で、`*readtable*` の初期値はその写し（SBCL と同じ）。標準の readtable は変えられない。
+  - 標準のマクロ文字は、組み込みの関数（`zilisp-system::%READ-LIST`・`%READ-SHARP-QUOTE` など。`reader.Builtin` ごとに1つ）。文字のマクロ関数がそのどれかなら、Reader は Zig のコードを直接使うので、標準のマクロを別の文字に写せる（`(set-macro-character #\] (get-macro-character #\)))`）。`get-macro-character` は、それらには名前のシンボルを返す（SBCL も `SB-IMPL::READ-LIST` などのシンボルを返す）。
+  - Reader は、Builder の `charInfo`・`dispatchInfo` で文字を引く。readtable が標準の印を持つままなら、標準の静的な表を使う（速い経路）。`beginRead` が、read のたびに `*read-base*`・`*read-default-float-format*`・`*read-suppress*`・`*readtable*` から Options を作り直すので、それを変えるフォームは、同じファイルの次のフォームの読み方に効く。
+  - **ユーザー定義の reader macro** には、Reader の位置に合わせたストリームを渡して呼ぶ（読んでいるストリーム。`load`・`read-from-string` では同じテキストの文字列の入力ストリーム）。呼んだ後は、ストリームの新しい位置から読み続ける。値を返さないマクロは、何も読まなかったことになる。`recursive-p` が真の `read` は、外側の read の `#n=` のラベルを使う。reader macro の中のエラーは、その種類のまま伝わる（Reader の新しいエラー `LispError` で外に出す）。
+  - `#.` は `*read-eval*` が真なら評価する（偽なら reader-error）。`#n=` と `#n#` は循環する構造も読める（仮の cons を、cons・単純ベクタ・配列の中で置き換える）。`*read-suppress*` では、リストとベクタも NIL になる（SBCL と同じ）。
+  - `readtable-case`（`:upcase`・`:downcase`・`:preserve`・`:invert`）は、トークンと印字（エスケープと `*print-case*`。SBCL の `output-symbol-case-dispatch`。`*print-readably*` のシンボルは標準の readtable 向けに書く）に効く。今の readtable のマクロ文字で始まるシンボルと、終端マクロ文字を含むシンボルは囲む（SBCL の `symbol-quotep`）。
+  - 関数：`readtablep`・`copy-readtable`・`set-macro-character`・`get-macro-character`・`make-dispatch-macro-character`・`set-dispatch-macro-character`・`get-dispatch-macro-character`・`set-syntax-from-char`・`readtable-case` とその `setf`・`read-delimited-list`、マクロ `with-standard-io-syntax`。
+  - ネイティブバックエンド：定数を `*print-circle*` で書くので、循環する定数（`'#1=(a . #1#)`）も保たれる。後ろのフォームで使う reader macro は、`compile-file` と同じく `eval-when` の中で定義する。
+  - 試験：言語試験 `readtable.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と、SBCL と比べた 17 個のエラーの場合の単体テスト。
 
 ### 11.3 標準ライブラリのビルド
 

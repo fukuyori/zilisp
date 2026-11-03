@@ -13,6 +13,8 @@ const rt_mod = @import("../runtime/runtime.zig");
 const syntax = @import("../reader/syntax.zig");
 const number = @import("../reader/number.zig");
 const unicode = @import("../unicode/unicode.zig");
+const reader = @import("../reader/reader.zig");
+const readtable_mod = @import("../reader/readtable.zig");
 const Runtime = rt_mod.Runtime;
 const Value = rt_mod.Value;
 const Writer = std.Io.Writer;
@@ -35,6 +37,9 @@ pub const Settings = struct {
     gensym: bool = true,
     /// *read-default-float-format* が double-float（または long-float）
     double_default: bool = false,
+    /// *readtable* の readtable-case と、標準でない readtable（マクロ文字のエスケープの判定に使う。標準なら NIL。Phase 24）
+    rt_case: reader.Case = .upcase,
+    readtable: Value = Value.nil,
 
     /// 印字の変数によらない設定（処理系の内部の印字）
     pub fn standard(escape: bool) Settings {
@@ -63,12 +68,22 @@ pub const Settings = struct {
         s.gensym = truthy(rt, y.@"*print-gensym*", true);
         const f = rt.symbolPtr(y.@"*read-default-float-format*").value;
         s.double_default = f == y.@"double-float" or f == y.@"long-float";
+        // princ（escape を偽と指定）は *print-readably* も偽で印字する（CLHS princ）
+        if (escape) |e| if (!e) {
+            s.readably = false;
+        };
         if (s.readably) {
             s.escape = true;
             s.array = true;
             s.gensym = true;
             s.level = null;
             s.length = null;
+        }
+        // シンボルは *readtable* に従って書く。*print-readably* なら標準の readtable（SBCL 2.6.7 の output-symbol と同じ）
+        if (!s.readably) {
+            const rtv = readtable_mod.current(rt);
+            s.rt_case = readtable_mod.caseOf(rtv);
+            if (readtable_mod.ptr(rtv).header.flags & readtable_mod.Table.standard_flag == 0) s.readtable = rtv;
         }
         return s;
     }
@@ -291,6 +306,10 @@ const P = struct {
                 }
                 return w.writeByte('"');
             },
+            .readtable => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<READTABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
             // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
             .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
         }
@@ -479,7 +498,7 @@ const P = struct {
         const rt = p.rt;
         const w = p.w;
         if (v == Value.nil) {
-            if (!p.s.escape) return writeCased(w, "NIL", p.s.case);
+            if (!p.s.escape) return writeCased(w, "NIL", p.s.case, p.s.rt_case);
             return p.nilSymbol();
         }
         const sym = rt.symbolPtr(v);
@@ -487,7 +506,7 @@ const P = struct {
         defer name_buf.deinit();
         Runtime.writeStringUtf8(sym.name, &name_buf.writer) catch return error.WriteFailed;
         const name = name_buf.written();
-        if (!p.s.escape) return writeCased(w, name, p.s.case);
+        if (!p.s.escape) return writeCased(w, name, p.s.case, p.s.rt_case);
 
         if (sym.package == Value.nil) {
             if (p.s.gensym) try w.writeAll("#:");
@@ -496,7 +515,7 @@ const P = struct {
             if (home == rt.keyword) {
                 try w.writeByte(':');
             } else if (qualify_all) {
-                try writeSymbolName(w, home.name, .upcase, 10);
+                try writeSymbolName(rt, w, home.name, &standard_token);
                 try w.writeAll("::");
             } else {
                 // 今のパッケージから同じシンボルが見えれば修飾しない
@@ -509,13 +528,13 @@ const P = struct {
                         prefix = n.name;
                         break;
                     };
-                    try writeSymbolName(w, prefix, p.s.case, p.s.base);
+                    try writeSymbolName(rt, w, prefix, &p.s);
                     const external = if (home.external.get(name)) |s| s == v else false;
                     try w.writeAll(if (external) ":" else "::");
                 }
             }
         }
-        try writeSymbolName(w, name, if (qualify_all) .upcase else p.s.case, if (qualify_all) 10 else p.s.base);
+        try writeSymbolName(rt, w, name, if (qualify_all) &standard_token else &p.s);
     }
 
     /// NIL（即値）。エスケープ付きの印字では、ほかのシンボルと同じく、今のパッケージから見えなければ修飾する
@@ -526,15 +545,15 @@ const P = struct {
         if (qualify_all) return w.writeAll("COMMON-LISP::NIL");
         const cur = rt.currentPackage();
         const visible = if (cur) |c| (if (rt.findSymbol(c, "NIL")) |f| f.symbol == Value.nil else false) else false;
-        if (visible) return writeCased(w, "NIL", p.s.case);
+        if (visible) return writeCased(w, "NIL", p.s.case, p.s.rt_case);
         var prefix: []const u8 = rt.cl.name;
         if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == rt.cl) {
             prefix = n.name;
             break;
         };
-        try writeSymbolName(w, prefix, p.s.case, p.s.base);
+        try writeSymbolName(rt, w, prefix, &p.s);
         try w.writeByte(':');
-        return writeCased(w, "NIL", p.s.case);
+        return writeCased(w, "NIL", p.s.case, p.s.rt_case);
     }
 };
 
@@ -558,25 +577,52 @@ fn fmtBase(n: u64, base: u8, buf: []u8) []const u8 {
     return buf[i..];
 }
 
-/// シンボル名を *print-case* に従って書く（読み取りで大文字になる文字だけが対象。小文字はそのまま。
-/// :capitalize は、英数字の並びを単語として、単語の最初の文字だけを大文字のままにする。SBCL 2.6.7 と同じ）
-fn writeCased(w: *Writer, name: []const u8, case: Case) Writer.Error!void {
-    if (case == .upcase) return w.writeAll(name);
+/// シンボル名を、*print-case* と readtable-case に従って書く（SBCL 2.6.7 の output-symbol-case-dispatch と同じ）：
+///   :upcase の readtable   *print-case* :upcase はそのまま、:downcase はすべて小文字、:capitalize は単語の先頭以外の大文字を小文字に
+///   :downcase の readtable :upcase はすべて大文字、:downcase はそのまま、:capitalize は単語の先頭を大文字に
+///   :preserve はそのまま、:invert は大文字だけなら小文字に、小文字だけなら大文字に（*print-case* によらない）
+/// 単語は英数字の並び
+fn writeCased(w: *Writer, name: []const u8, case: Case, rt_case: reader.Case) Writer.Error!void {
+    const Mode = enum { preserve, lower, upper, cap_up, cap_down };
+    var mode: Mode = switch (rt_case) {
+        .upcase => switch (case) {
+            .upcase => .preserve,
+            .downcase => .lower,
+            .capitalize => .cap_up,
+        },
+        .downcase => switch (case) {
+            .upcase => .upper,
+            .downcase => .preserve,
+            .capitalize => .cap_down,
+        },
+        .preserve => .preserve,
+        .invert => blk: {
+            var all_upper = true;
+            var all_lower = true;
+            var view = std.unicode.Utf8View.init(name) catch return w.writeAll(name);
+            var it0 = view.iterator();
+            while (it0.nextCodepoint()) |cp| {
+                if (unicode.isUpper(cp)) all_lower = false;
+                if (unicode.isLower(cp)) all_upper = false;
+            }
+            break :blk if (all_upper) .lower else if (all_lower) .upper else .preserve;
+        },
+    };
+    if (mode == .preserve) return w.writeAll(name);
     var it = (std.unicode.Utf8View.init(name) catch return w.writeAll(name)).iterator();
-    var word_start = true;
+    var prev_not_alnum = true;
     while (it.nextCodepoint()) |cp| {
-        const alnum = unicode.isAlnum(cp);
-        var out = cp;
-        if (unicode.isUpper(cp)) {
-            out = switch (case) {
-                .upcase => cp,
-                .downcase => unicode.downcase(cp),
-                .capitalize => if (word_start) cp else unicode.downcase(cp),
-            };
-        }
-        word_start = !alnum;
+        const out = switch (mode) {
+            .preserve => cp,
+            .lower => unicode.downcase(cp),
+            .upper => unicode.upcase(cp),
+            .cap_up => if (prev_not_alnum or unicode.isLower(cp)) cp else unicode.downcase(cp),
+            .cap_down => if (prev_not_alnum) unicode.upcase(cp) else cp,
+        };
+        prev_not_alnum = !unicode.isAlnum(cp);
         try writeCp(w, out);
     }
+    mode = .preserve;
 }
 
 /// 関数（SBCL 2.6.7 と同じ形：#<FUNCTION CAR>、#<FUNCTION (LAMBDA (X)) {アドレス}>）
@@ -710,10 +756,13 @@ pub fn printFloat(w: *Writer, comptime T: type, x: T, double_default: bool) Writ
 /// 埋め込むとき。起動時に読み直すときの *package* や、export の済んでいない順序によらず同じシンボルになる。Phase 22）
 pub var qualify_all: bool = false;
 
-/// シンボル名を、必要なら |…| で囲んで書く（CLHS 22.1.3.3.1）。囲まないときは *print-case* に従う。
+/// パッケージ名・qualify_all の印字の設定（標準の構文）
+const standard_token: Settings = .{};
+
+/// シンボル名を、必要なら |…| で囲んで書く（CLHS 22.1.3.3.1）。囲まないときは *print-case* と readtable-case に従う。
 /// *print-base* の数として読める名前も囲む（*print-base* が 16 なら ABC は |ABC|。SBCL 2.6.7 と同じ）
-fn writeSymbolName(w: *Writer, name: []const u8, case: Case, base: u8) Writer.Error!void {
-    if (!needsEscape(name, base)) return writeCased(w, name, case);
+fn writeSymbolName(rt: *Runtime, w: *Writer, name: []const u8, s: *const Settings) Writer.Error!void {
+    if (!needsEscape(rt, name, s)) return writeCased(w, name, s.case, s.rt_case);
     try w.writeByte('|');
     for (name) |c| {
         if (c == '|' or c == '\\') try w.writeByte('\\');
@@ -722,16 +771,29 @@ fn writeSymbolName(w: *Writer, name: []const u8, case: Case, base: u8) Writer.Er
     try w.writeByte('|');
 }
 
-fn needsEscape(name: []const u8, base: u8) bool {
+fn needsEscape(rt: *Runtime, name: []const u8, s: *const Settings) bool {
+    const base = s.base;
     if (name.len == 0) return true;
     var all_dots = true;
     var all_ascii = true;
     var it = (std.unicode.Utf8View.init(name) catch return true).iterator();
-    while (it.nextCodepoint()) |cp| {
+    var index: usize = 0;
+    while (it.nextCodepoint()) |cp| : (index += 1) {
         if (cp != '.') all_dots = false;
         if (cp > 0x7F) all_ascii = false;
-        // 読み取りで大文字に変わる文字（Reader は char-upcase で変換する。Unicode の小文字も含む）
-        if (syntax.upcase(cp) != cp) return true;
+        // 読み取りで大文字・小文字が変わる文字（:upcase なら小文字、:downcase なら大文字。:preserve・:invert は囲まない）
+        switch (s.rt_case) {
+            .upcase => if (syntax.upcase(cp) != cp) return true,
+            .downcase => if (syntax.downcase(cp) != cp) return true,
+            .preserve, .invert => {},
+        }
+        // 標準でない readtable：先頭のマクロ文字、途中の終端マクロ文字（SBCL 2.6.7 の symbol-quotep と同じ）
+        if (s.readtable != Value.nil) {
+            const st = readtable_mod.charEntry(s.readtable, cp).syntax;
+            if (st == .terminating_macro) return true;
+            if (index == 0 and st == .non_terminating_macro) return true;
+        }
+        _ = rt;
         switch (syntax.syntaxType(cp)) {
             .constituent => {},
             // # は先頭以外なら囲まなくても読み戻せるが、SBCL 2.6.7 は位置にかかわらず囲む（A#B → |A#B|）ので合わせる

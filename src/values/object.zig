@@ -34,6 +34,8 @@ pub const ObjKind = enum(u8) {
     stream,
     /// パス名（Phase 23。src/primitives/pathnames.zig）
     pathname,
+    /// readtable（Phase 24。src/reader/readtable.zig）
+    readtable,
     _,
 };
 
@@ -206,6 +208,23 @@ pub const Pathname = extern struct {
     name: Value,
     type: Value,
     version: Value,
+};
+
+/// readtable（Phase 24。CLHS 2.1.1）。header.aux は readtable-case（0 :upcase、1 :downcase、2 :preserve、3 :invert）、
+/// header.flags の standard は「標準の readtable と同じ構文とマクロ」（Reader が速い経路で読める）。
+/// syntax は ASCII の文字の構文型（reader.SyntaxType の番号）。Lisp の値（GC が走査する）：
+///   macros   ASCII の文字のマクロ関数の simple-vector（128 要素。マクロでなければ NIL）
+///   other    ASCII 以外の文字の ((文字 構文型の番号 . 関数) …)
+///   dispatch dispatch 文字ごとの ((文字 . 表) …)。表は 129 要素の simple-vector（ASCII の後ろの文字（大文字にしたもの）の
+///            関数と、最後に ASCII 以外の ((文字 . 関数) …)）
+pub const Readtable = extern struct {
+    header: ObjHeader,
+    syntax: [128]u8,
+    macros: Value,
+    other: Value,
+    dispatch: Value,
+
+    pub const standard_flag: u8 = 1 << 0;
 };
 
 /// GC が中を走査しない数の配列。header.len は要素の数、header.aux は要素のバイト数（4 か 8）

@@ -125,6 +125,7 @@ pub const Syms = struct {
     @"*read-default-float-format*": Value,
     @"*read-eval*": Value,
     @"*read-suppress*": Value,
+    @"*readtable*": Value,
     @"single-float": Value,
     @"double-float": Value,
     @"long-float": Value,
@@ -243,6 +244,10 @@ pub const Runtime = struct {
     sys_quasiquote: Value = Value.nil,
     /// ZILISP-SYSTEM::%MISSING（分解束縛で、キーワード引数がないことを表す印）
     sys_missing: Value = Value.nil,
+    /// 標準のマクロ文字の働きの関数（reader.Builtin の順。zl-sys::%READ-LIST など。Phase 24）
+    reader_builtins: [@typeInfo(@import("../reader/reader.zig").Builtin).@"enum".field_names.len]Value = @splat(Value.nil),
+    /// ZILISP-SYSTEM::*STANDARD-READTABLE*（値が標準の readtable。Phase 24）
+    standard_readtable: Value = Value.nil,
     /// 標準ライブラリ（src/lisp/boot.lisp）を読み込んでいる間は真（CL のシンボルにマクロ・関数を定義してよい）
     booting: bool = false,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
@@ -381,6 +386,7 @@ pub const Runtime = struct {
         try primitives.install(rt);
         try rt.setStandardConstants();
         try initPrinterVariables(rt);
+        try @import("../reader/readtable.zig").install(rt);
 
         for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
             const s = try rt.intern(rt.sys, n);

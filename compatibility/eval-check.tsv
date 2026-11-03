@@ -290,12 +290,12 @@ seq	id	outcome	detail
 00298	chapters/13-Level 9.md#L130	both-error	
 00299	chapters/13-Level 9.md#L142	match	
 00300	chapters/13-Level 9.md#L172	match	
-00301	chapters/13-Level 9.md#L192	zilisp-error	未実装："~5"
-00302	chapters/13-Level 9.md#L204	zilisp-error	未実装："~5"
-00303	chapters/13-Level 9.md#L212	zilisp-error	未実装："~:"
-00304	chapters/13-Level 9.md#L224	zilisp-error	未実装："~["
-00305	chapters/13-Level 9.md#L233	zilisp-error	未実装："~:"
-00306	chapters/13-Level 9.md#L243	zilisp-error	未実装："~{"
+00301	chapters/13-Level 9.md#L192	match	
+00302	chapters/13-Level 9.md#L204	match	
+00303	chapters/13-Level 9.md#L212	match	
+00304	chapters/13-Level 9.md#L224	match	
+00305	chapters/13-Level 9.md#L233	match	
+00306	chapters/13-Level 9.md#L243	match	
 00307	chapters/13-Level 9.md#L263	match	
 00308	chapters/13-Level 9.md#L279	match	
 00309	chapters/13-Level 9.md#L291	match	
@@ -324,7 +324,7 @@ seq	id	outcome	detail
 00333	chapters/13-Level 9.md#L790	both-error	
 00334	chapters/13-Level 9.md#L801	match	
 00335	chapters/13-Level 9.md#L817	both-error	
-00336	chapters/13-Level 9.md#L847	zilisp-error	未実装："~5"
+00336	chapters/13-Level 9.md#L847	match	
 00337	chapters/13-Level 9.md#L858	both-error	
 00338	chapters/13-Level 9.md#L864	match	
 00339	chapters/13-Level 9.md#L888	match	
@@ -352,7 +352,7 @@ seq	id	outcome	detail
 00361	chapters/14-Level 10.md#L310	match	
 00362	chapters/14-Level 10.md#L338	match	
 00363	chapters/14-Level 10.md#L383	both-error	
-00364	chapters/14-Level 10.md#L401	zilisp-error	未実装："~{"
+00364	chapters/14-Level 10.md#L401	match	
 00365	chapters/14-Level 10.md#L421	match	
 00366	chapters/14-Level 10.md#L439	match	
 00367	chapters/14-Level 10.md#L475	match	
@@ -372,7 +372,7 @@ seq	id	outcome	detail
 00381	chapters/14-Level 10.md#L753	both-error	
 00382	chapters/14-Level 10.md#L760	match	
 00383	chapters/14-Level 10.md#L774	both-error	
-00384	chapters/14-Level 10.md#L781	zilisp-error	未実装："~v"
+00384	chapters/14-Level 10.md#L781	match	
 00385	chapters/14-Level 10.md#L824	both-error	
 00386	chapters/15-Level 11.md#L18	match	
 00387	chapters/15-Level 11.md#L143	match	
@@ -422,7 +422,7 @@ seq	id	outcome	detail
 00432	chapters/16-Level 12.md#L427	zilisp-error	未実装の関数：RANDOM
 00433	chapters/16-Level 12.md#L459	match	
 00434	chapters/16-Level 12.md#L479	zilisp-error	未実装の関数：LOGBITP
-00436	chapters/16-Level 12.md#L516	zilisp-error	未実装："~B"
+00436	chapters/16-Level 12.md#L516	match	
 00437	chapters/16-Level 12.md#L545	match	
 00438	chapters/16-Level 12.md#L576	zilisp-error	未実装："FOR"
 00439	chapters/16-Level 12.md#L624	match	
@@ -604,7 +604,7 @@ seq	id	outcome	detail
 00632	chapters/24-Level 18-A.md#L535	match	
 00633	chapters/24-Level 18-A.md#L550	both-error	
 00634	chapters/24-Level 18-A.md#L566	both-error	
-00635	chapters/24-Level 18-A.md#L608	zilisp-error	未実装："~{"
+00635	chapters/24-Level 18-A.md#L608	match	
 00636	chapters/24-Level 18-A.md#L624	match	
 00637	chapters/24-Level 18-A.md#L639	both-error	
 00638	chapters/24-Level 18-A.md#L647	match	

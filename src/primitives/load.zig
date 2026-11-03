@@ -50,7 +50,7 @@ pub fn load(th: *Thread, args: []const Value) Value {
     defer th.unbindTo(depth);
 
     var src = reader.Source.init(text, 0);
-    var b: vb.ValueBuilder = .{ .rt = rt };
+    var b: vb.ValueBuilder = .{ .rt = rt, .th = th };
     var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{});
     defer r.deinit();
     while (true) {
@@ -58,6 +58,7 @@ pub fn load(th: *Thread, args: []const Value) Value {
             error.OutOfMemory => return th.outOfMemory(),
             error.EndOfFile => return th.signal(.end_of_file, "ファイルの途中でフォームが終わっています", spec, Value.unbound),
             error.ReaderError => return th.signal(.reader_error, r.diagnostic.message, spec, Value.unbound),
+            error.LispError => return Value.unwind,
         } orelse break;
         if (eval_mod.eval(th, form) == Value.unwind) return Value.unwind;
     }

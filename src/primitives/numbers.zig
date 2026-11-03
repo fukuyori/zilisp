@@ -548,6 +548,11 @@ pub fn numEqual(th: *Thread, a: Value, b: Value) ?bool {
     return o == .eq;
 }
 
+/// 実数を single-float にする（format の ~F など。有理数は正しく丸める）
+pub fn toSingleFloat(th: *Thread, v: Value) ?f32 {
+    return toF32(th, toNum(v).?);
+}
+
 fn toF32(th: *Thread, n: Num) ?f32 {
     return switch (n) {
         .single => |f| f,

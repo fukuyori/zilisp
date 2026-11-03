@@ -1,5 +1,5 @@
 //! 標準の readtable の構文型（CLHS 2.1.4「Character Syntax Types」）。
-//! ユーザー定義の readtable（set-macro-character など）は Phase 24 で追加する。
+//! ユーザー定義の readtable（set-macro-character など）は src/reader/readtable.zig（Phase 24）。
 
 pub const SyntaxType = enum {
     whitespace,
@@ -29,6 +29,8 @@ pub fn syntaxType(cp: u21) SyntaxType {
 /// readtable-case が :upcase のときの変換（char-upcase と同じ。Unicode 15.0.0 に従う：Phase 21.5。
 /// SBCL 2.6.7 と同じく é → É、λ → Λ のように変換する）
 pub const upcase = @import("../unicode/unicode.zig").upcase;
+/// readtable-case が :downcase・:invert のときの変換（char-downcase と同じ。Phase 24）
+pub const downcase = @import("../unicode/unicode.zig").downcase;
 
 test "syntax types" {
     const std = @import("std");

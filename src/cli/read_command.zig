@@ -55,6 +55,8 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, s
                 error.EndOfFile => "end-of-file",
                 error.ReaderError => "reader-error",
                 error.OutOfMemory => "storage-condition",
+                // read のコマンドは Thread を渡さないので、reader macro・#. は使われない
+                error.LispError => "error",
             };
             try stderr.print("{s}:{d}:{d}: {s}: {s}\n", .{ path, d.loc.line, d.loc.col, kind, d.message });
             return .failed;

@@ -135,8 +135,12 @@ pub const Emitter = struct {
         // シンボルは「パッケージ::名前」の形で書く（起動時の *package* によらず同じシンボルを読む。Phase 22）
         printer.qualify_all = true;
         defer printer.qualify_all = false;
+        // 循環・共有する構造（#1=(a . #1#) など）は #n= と #n# で書く（Phase 24。起動時の Reader が同じ形に読む）
+        var settings = printer.Settings.standard(true);
+        settings.circle = true;
         for (e.consts.items) |v| {
-            try printer.prin1(e.rt, &text.writer, v);
+            var bad: Value = Value.nil;
+            printer.writeObject(e.rt, &text.writer, v, settings, &bad) catch return error.WriteFailed;
             try text.writer.writeByte('\n');
         }
         try w.writeAll("const constants_text = ");

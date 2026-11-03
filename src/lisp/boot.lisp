@@ -1176,3 +1176,21 @@
      (unwind-protect
           (progn ,@(zl-sys::%body-forms body))
        (close ,var))))
+
+;; (formatter 制御文字列)：(funcall 関数 ストリーム 引数...) で format と同じに書き、残りの引数を返す関数（CLHS formatter。Phase 24）
+(defmacro formatter (control-string)
+  `(function (lambda (stream &rest args)
+               (zl-sys::%format-rest stream ,control-string args))))
+
+;; (setf (readtable-case readtable) 値)（Phase 24）
+(defsetf readtable-case zl-sys::%set-readtable-case)
+
+;; (with-standard-io-syntax 本体...)：印字と読み取りの変数を標準の値に束縛する（CLHS with-standard-io-syntax。Phase 24）
+(defmacro with-standard-io-syntax (&body body)
+  `(let ((*package* (find-package "COMMON-LISP-USER"))
+         (*print-array* t) (*print-base* 10) (*print-case* :upcase) (*print-circle* nil) (*print-escape* t)
+         (*print-gensym* t) (*print-length* nil) (*print-level* nil) (*print-lines* nil) (*print-miser-width* nil)
+         (*print-pretty* nil) (*print-radix* nil) (*print-readably* t) (*print-right-margin* nil)
+         (*read-base* 10) (*read-default-float-format* 'single-float) (*read-eval* t) (*read-suppress* nil)
+         (*readtable* zl-sys::*standard-readtable*))
+     ,@body))

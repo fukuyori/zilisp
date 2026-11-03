@@ -997,9 +997,8 @@ test "tagbody, go, iteration macros, loop and helpers like SBCL 2.6.7 (Phase 19)
     try expectError(&e, "(endp 3)", .type_error);
     try expectError(&e, "(format nil \"~A\")", .simple_error);
     try expectError(&e, "(psetq a)", .program_error);
-    // 範囲外のもの（明示的なエラー）：format の引数付きの指示子・未実装の指示子、loop の並列の束縛
-    try expectError(&e, "(format nil \"~5D\" 3)", .unimplemented);
-    try expectError(&e, "(format nil \"~X\" 255)", .unimplemented);
+    // 範囲外のもの（明示的なエラー）：format の出力先の文字列、loop の並列の束縛（format の指示子は Phase 24 で実装）
+    try expectValue(&e, "(format nil \"~5D|~X\" 3 255)", "\"    3|FF\"");
     try expectError(&e, "(format (make-array 3 :element-type 'character) \"x\")", .unimplemented);
     try expectError(&e, "(loop for x in '(1 2) and y = 1 collect x)", .unimplemented);
     try expectError(&e, "(loop for x being the elements of #(1) collect x)", .unimplemented);
@@ -1828,6 +1827,49 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
     try expectError(&e, "(write-to-string 1 :base 37)", .type_error);
     try expectError(&e, "(write-to-string 1 :case :up)", .type_error);
     try expectError(&e, "(write-to-string 1 :nosuch 1)", .program_error);
+    // format の誤り（SBCL 2.6.7 は format-error。Zilisp は simple-error）
+    for ([_][]const u8{
+        "(format nil \"~A\")",          "(format nil \"~\")",              "(format nil \"~@,2F\" 1.5)",
+        "(format nil \"~::A\" 1)",      "(format nil \"~1,2,3,4,5A\" 1)",  "(format nil \"~Q\")",
+        "(format nil \"~(abc\")",       "(format nil \"~[a\" 0)",          "(format nil \"~{a\" nil)",
+        "(format nil \"a~]\")",         "(format nil \"~;\")",             "(format nil \"~:^\")",
+        "(format nil \"~@R\" 4000)",    "(format nil \"~R\" 1.5)",         "(format nil \"~C\" 1)",
+        "(format nil \"~:P\")",         "(format nil \"~:[a~]\" t)",       "(format nil \"~{~A~}\" 1)",
+        "(format nil \"~3@*\" 1)",      "(format nil \"~/nosuch-fn/\" 1)", "(format nil \"~10<a~W~>\" 1)",
+        "(format nil \"~,,0:D\" 1234)", "(format nil \"~1,0A\" 1)",        "(format nil \"~R\" (expt 10 66))",
+    }) |t| {
+        // SBCL 2.6.7 で undefined-function・type-error になるものは同じ種類
+        const kind: @import("../runtime/thread.zig").ErrorKind = if (std.mem.indexOf(u8, t, "nosuch-fn") != null)
+            .undefined_function
+        else if (std.mem.indexOf(u8, t, "~{~A~}") != null or std.mem.indexOf(u8, t, "~,,0:D") != null)
+            .type_error
+        else
+            .simple_error;
+        try expectError(&e, t, kind);
+    }
+    // Reader の拡張（P24c）のエラー（SBCL 2.6.7 と同じ種類。SBCL の standard-readtable-modified-error は simple-error）
+    for ([_]struct { []const u8, @import("../runtime/thread.zig").ErrorKind }{
+        .{ "(let ((*read-eval* nil)) (read-from-string \"#.(+ 1 2)\"))", .reader_error },
+        .{ "(read-from-string \"#1#\")", .reader_error },
+        .{ "(read-from-string \"(#1=a #1=b)\")", .reader_error },
+        .{ "(read-from-string \"#1=#1#\")", .reader_error },
+        .{ "(read-from-string \"#=a\")", .reader_error },
+        .{ "(read-from-string \"##\")", .reader_error },
+        .{ "(read-from-string \"#!\")", .reader_error },
+        .{ "(set-macro-character #\\! #'car nil zl-sys::*standard-readtable*)", .simple_error },
+        .{ "(get-dispatch-macro-character #\\a #\\b)", .simple_error },
+        .{ "(set-dispatch-macro-character #\\a #\\b #'car)", .simple_error },
+        .{ "(let ((*readtable* (copy-readtable))) (set-dispatch-macro-character #\\# #\\1 #'car))", .simple_error },
+        .{ "(set-macro-character 1 #'car)", .type_error },
+        .{ "(readtable-case 1)", .type_error },
+        .{ "(copy-readtable 1)", .type_error },
+        .{ "(let ((*readtable* (copy-readtable))) (setf (readtable-case *readtable*) :foo))", .type_error },
+        // reader macro の中のエラーは、その種類のまま伝わる
+        .{ "(let ((*readtable* (copy-readtable))) (set-macro-character #\\! (lambda (s c) (declare (ignore s c)) (car 1))) (read-from-string \"!\"))", .type_error },
+        .{ "(read-delimited-list #\\] (make-string-input-stream \"1 2\"))", .end_of_file },
+    }) |c| try expectError(&e, c[0], c[1]);
+    // ~<…~:>（pretty printer の論理ブロック）は P24d まで未実装
+    try expectError(&e, "(format nil \"~<a~:>\" nil)", .simple_error);
     // 束縛は印字の後に戻る
     try expectValue(&e, "(progn (write-to-string 1 :base 16) *print-base*)", "10");
     try expectValue(&e, "(let ((*print-base* 2)) (prin1-to-string 5))", "\"101\"");

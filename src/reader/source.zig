@@ -53,6 +53,23 @@ pub const Source = struct {
         }
     }
 
+    /// 位置を pos にする（行と列も合わせる。reader macro がストリームを読み進めた後。Phase 24）
+    pub fn seekTo(s: *Source, pos: usize) void {
+        const target = @min(pos, s.text.len);
+        if (target < s.pos) {
+            s.pos = 0;
+            s.line = 1;
+            s.col = 1;
+        }
+        while (s.pos < target) {
+            const ch = (s.peek() catch null) orelse {
+                s.pos = target;
+                break;
+            };
+            s.advance(ch);
+        }
+    }
+
     pub fn next(s: *Source) error{InvalidUtf8}!?u21 {
         const ch = (try s.peek()) orelse return null;
         s.advance(ch);

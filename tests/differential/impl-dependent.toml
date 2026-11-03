@@ -178,6 +178,30 @@ clhs = "most-positive-fixnum、call-arguments-limit、lambda-parameters-limit、
 since = "Phase 13"
 
 [[items]]
+id = "standard-reader-macro-functions"
+description = "標準のマクロ文字の関数（get-macro-character・get-dispatch-macro-character の値）"
+sbcl = "マクロ文字は SB-IMPL::READ-LIST などのシンボル、dispatch の後の文字は関数"
+zilisp = "マクロ文字は ZILISP-SYSTEM::%READ-LIST などのシンボル、dispatch の後の文字は ZILISP-SYSTEM::%READ-SHARP-QUOTE などの関数（Phase 24）"
+clhs = "get-macro-character（標準のマクロ文字の関数は処理系依存）"
+since = "Phase 24"
+
+[[items]]
+id = "format-error-type"
+description = "format の制御文字列の誤り（引数が足りない、閉じの指示子がないなど）のエラーの型"
+sbcl = "SB-FORMAT:FORMAT-ERROR（処理系固有の condition。error の一種）"
+zilisp = "simple-error（error の一種。SBCL が type-error にする場合は Zilisp も type-error。Phase 19・Phase 24）"
+clhs = "22.3（誤りのときは error の型の condition を通知する。どの型かは規定されていない）"
+since = "Phase 24"
+
+[[items]]
+id = "format-named-character"
+description = "~:C で書く、名前の付いていない文字（ASCII 以外の制御文字など）"
+sbcl = "SBCL の char-name の名前（Unicode の名前など）"
+zilisp = "ASCII の制御文字は SBCL と同じ名前（Nul・Soh・Space・Rubout など）。それ以外の印字されない文字は U+XXXX（Phase 24）"
+clhs = "22.3.1.1 Tilde C（印字されない文字は、名前を書く。名前は処理系定義）"
+since = "Phase 24"
+
+[[items]]
 id = "print-readably-hash-table"
 description = "*print-readably* が真のときのハッシュ表の印字"
 sbcl = "#.(MAKE-HASH-TABLE …) の形で書く（*read-eval* で読み戻せる）"

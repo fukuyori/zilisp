@@ -21,6 +21,8 @@ const packages = @import("packages.zig");
 const load_mod = @import("load.zig");
 const streams = @import("streams.zig");
 const pathnames = @import("pathnames.zig");
+const format_mod = @import("format.zig");
+const readtable_mod = @import("../reader/readtable.zig");
 
 const any = function.any_args;
 
@@ -93,7 +95,7 @@ pub const table = [_]Entry{
     .{ .name = "ENDP", .impl = sequences.endp, .min = 1, .max = 1 },
     .{ .name = "SYMBOL-NAME", .impl = sequences.symbolName, .min = 1, .max = 1 },
     .{ .name = "PRINC", .impl = streams.princ, .min = 1, .max = 2 },
-    .{ .name = "FORMAT", .impl = functions.format, .min = 2, .max = any },
+    .{ .name = "FORMAT", .impl = format_mod.format, .min = 2, .max = any },
     .{ .name = "/=", .impl = numbers.numNe, .min = 1, .max = any },
     .{ .name = "<", .impl = numbers.lessThan, .min = 1, .max = any },
     .{ .name = ">", .impl = numbers.greaterThan, .min = 1, .max = any },
@@ -378,6 +380,17 @@ pub const table = [_]Entry{
     .{ .name = "WRITE-SEQUENCE", .impl = streams.writeSequence, .min = 2, .max = any },
     .{ .name = "READ", .impl = streams.read, .min = 0, .max = 4 },
     .{ .name = "READ-PRESERVING-WHITESPACE", .impl = streams.readPreservingWhitespace, .min = 0, .max = 4 },
+    .{ .name = "READ-DELIMITED-LIST", .impl = streams.readDelimitedList, .min = 1, .max = 3 },
+    // readtable（Phase 24）
+    .{ .name = "READTABLEP", .impl = readtable_mod.readtablep, .min = 1, .max = 1 },
+    .{ .name = "COPY-READTABLE", .impl = readtable_mod.copyReadtable, .min = 0, .max = 2 },
+    .{ .name = "SET-MACRO-CHARACTER", .impl = readtable_mod.setMacroCharacter, .min = 2, .max = 4 },
+    .{ .name = "GET-MACRO-CHARACTER", .impl = readtable_mod.getMacroCharacter, .min = 1, .max = 2 },
+    .{ .name = "MAKE-DISPATCH-MACRO-CHARACTER", .impl = readtable_mod.makeDispatchMacroCharacter, .min = 1, .max = 3 },
+    .{ .name = "SET-DISPATCH-MACRO-CHARACTER", .impl = readtable_mod.setDispatchMacroCharacter, .min = 3, .max = 4 },
+    .{ .name = "GET-DISPATCH-MACRO-CHARACTER", .impl = readtable_mod.getDispatchMacroCharacter, .min = 2, .max = 3 },
+    .{ .name = "SET-SYNTAX-FROM-CHAR", .impl = readtable_mod.setSyntaxFromChar, .min = 2, .max = 4 },
+    .{ .name = "READTABLE-CASE", .impl = readtable_mod.readtableCase, .min = 1, .max = 1 },
     .{ .name = "READ-FROM-STRING", .impl = streams.readFromString, .min = 1, .max = any },
     .{ .name = "MAKE-STRING-INPUT-STREAM", .impl = streams.makeStringInputStream, .min = 1, .max = 3 },
     .{ .name = "MAKE-STRING-OUTPUT-STREAM", .impl = streams.makeStringOutputStream, .min = 0, .max = any },
@@ -460,6 +473,8 @@ pub const sys_table = [_]Entry{
     .{ .name = "%PACKAGE-SYMBOLS", .impl = packages.sysPackageSymbols, .min = 2, .max = 2 },
     .{ .name = "%ALL-PACKAGE-SYMBOLS", .impl = packages.sysAllPackageSymbols, .min = 0, .max = 0 },
     .{ .name = "%DEFPACKAGE", .impl = packages.sysDefpackage, .min = 10, .max = 10 },
+    .{ .name = "%FORMAT-REST", .impl = format_mod.formatRest, .min = 3, .max = 3 },
+    .{ .name = "%SET-READTABLE-CASE", .impl = readtable_mod.setReadtableCase, .min = 2, .max = 2 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {

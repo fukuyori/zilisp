@@ -72,6 +72,16 @@
   `print`, the `-to-string` functions, `~A` and `~S` of `format`, and the values printed by the REPL. `write` and
   `write-to-string` take all their keywords. The printer and reader variables have SBCL 2.6.7's initial values
   (`*print-pretty*` stays NIL until the pretty printer). Language test `printer.lisp` (same output as SBCL 2.6.7)
+- Phase 24 (P24b): `format` with all directives except the pretty printer ones, following SBCL 2.6.7: `~A ~S ~W ~C`,
+  `~D ~B ~O ~X ~R ~P`, `~F ~E ~G ~$` (SBCL's `flonum-to-string` ported, so rounding is the same), `~% ~& ~| ~~ ~T`,
+  `~* ~? ~( ~) ~[ ~; ~] ~{ ~} ~^`, `~< ~>` justification and `~/name/`, with parameters (`v`, `#`, `'c`) and modifiers.
+  `formatter` and function controls. Curriculum blocks went from 467 to 478 matches. Language test `format.lisp`
+- Phase 24 (P24c): reader extensions. Readtables (`*readtable*`, `copy-readtable`, `readtablep`, `readtable-case` and its
+  `setf`), user reader macros (`set-macro-character`, `get-macro-character`, `make-dispatch-macro-character`,
+  `set-dispatch-macro-character`, `get-dispatch-macro-character`, `set-syntax-from-char`, `read-delimited-list`), `#.`
+  with `*read-eval*`, `#n=` and `#n#` (also circular), `readtable-case` for reading and printing, `*read-base*`,
+  `*read-default-float-format*` and `*read-suppress*` in every read, and `with-standard-io-syntax`. Native programs keep
+  circular constants. Language test `readtable.lisp`
 
 ### Fixed
 - Bignums printed in bases 8 and 32 had wrong digits (Zig 0.17.0's `toStringAlloc`; now built from the base-2 digits)

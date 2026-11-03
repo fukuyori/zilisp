@@ -41,12 +41,18 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
     defer toplevels.deinit(gpa);
 
     var src = reader.Source.init(text, 1);
-    var b: vb.ValueBuilder = .{ .rt = rt };
+    var b: vb.ValueBuilder = .{ .rt = rt, .th = s.th };
     var r = reader.Reader(vb.ValueBuilder).init(gpa, &src, &b, .{});
     defer r.deinit();
     while (true) {
         const form = r.read() catch |err| {
             const d = r.diagnostic;
+            if (err == error.LispError) {
+                try stderr.print("{s}:{d}:{d}: ", .{ path, d.loc.line, d.loc.col });
+                try s.th.writeError(stderr);
+                try stderr.writeByte('\n');
+                return .failed;
+            }
             try stderr.print("{s}:{d}:{d}: {s}: {s}\n", .{ path, d.loc.line, d.loc.col, @errorName(err), d.message });
             return .failed;
         } orelse break;

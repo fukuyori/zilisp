@@ -21,7 +21,13 @@
 //!
 //! Phase 04 の範囲：quote、文字列、リスト（ドット対を含む）、#'、#(、#\、#:、#b #o #x #nR、
 //! backquote（zl-sys:quasiquote / unquote / unquote-splicing / unquote-nsplicing）、#+ / #-（*read-suppress*）。
-//! #S（Phase 26）、#C（Phase 20）、#A（Phase 21）、#. #= ##（Phase 24）は「未実装」の reader-error にする。
+//! #S（Phase 26）、#C（Phase 20）、#A（Phase 21）は「未実装」の reader-error にする。
+//!
+//! readtable（Phase 24）：Builder が charInfo・dispatchInfo を持てば、文字の構文とマクロをそれで引く（ユーザー定義の
+//! readtable）。持たないか null を返せば、標準の readtable の表（standardChar・standardSharp）を使う（速い経路）。
+//! マクロは、組み込み（Builtin。標準のマクロ文字の働き）か、ユーザーの関数（Builder.callMacro で呼ぶ）。
+//! readtable-case は Options.case。#. は Builder.readEval、#n= と #n# は Builder.labelDefine・labelFinish・labelRef。
+//! Builder.beginRead があれば、read のたびに Options を今の値（*read-base* など）にする。
 
 const std = @import("std");
 pub const source = @import("source.zig");
@@ -38,7 +44,101 @@ pub const Error = error{
     /// データの途中でテキストが終わった（CL の end-of-file）
     EndOfFile,
     OutOfMemory,
+    /// reader macro・#. が呼んだ Lisp のコードでエラーが起きた（エラーは Thread に記録してある。Phase 24）
+    LispError,
 };
+
+pub const SyntaxType = syntax.SyntaxType;
+
+/// 組み込みのマクロの働き（標準の readtable のマクロ文字と、# の後の文字。Phase 24）
+pub const Builtin = enum(u8) {
+    none,
+    list,
+    close,
+    quote,
+    backquote,
+    comma,
+    string,
+    comment,
+    dispatch,
+    sharp_quote,
+    sharp_paren,
+    sharp_backslash,
+    sharp_colon,
+    sharp_b,
+    sharp_o,
+    sharp_x,
+    sharp_r,
+    sharp_bar,
+    sharp_plus,
+    sharp_minus,
+    sharp_p,
+    sharp_s,
+    sharp_c,
+    sharp_a,
+    sharp_dot,
+    sharp_equal,
+    sharp_sharp,
+};
+
+/// マクロ文字の関数：なし・組み込み・ユーザーの関数（Builder が解釈する値）
+pub const Macro = union(enum) { none, builtin: Builtin, user: u64 };
+
+pub const CharInfo = struct { syntax: SyntaxType, macro: Macro = .none };
+
+pub const Case = enum(u2) { upcase, downcase, preserve, invert };
+
+/// 標準の readtable の ASCII の文字の構文とマクロ（コンパイル時に作る表）
+const standard_ascii: [128]CharInfo = blk: {
+    var t: [128]CharInfo = undefined;
+    for (&t, 0..) |*e, i| e.* = standardCharSlow(@intCast(i));
+    break :blk t;
+};
+
+/// 標準の readtable の文字の構文とマクロ
+pub inline fn standardChar(cp: u21) CharInfo {
+    if (cp < 128) return standard_ascii[cp];
+    return .{ .syntax = syntax.syntaxType(cp) };
+}
+
+fn standardCharSlow(cp: u21) CharInfo {
+    return .{ .syntax = syntax.syntaxType(cp), .macro = switch (cp) {
+        '(' => .{ .builtin = .list },
+        ')' => .{ .builtin = .close },
+        '\'' => .{ .builtin = .quote },
+        '`' => .{ .builtin = .backquote },
+        ',' => .{ .builtin = .comma },
+        '"' => .{ .builtin = .string },
+        ';' => .{ .builtin = .comment },
+        '#' => .{ .builtin = .dispatch },
+        else => .none,
+    } };
+}
+
+/// 標準の readtable の # の後の文字（大文字・小文字を区別しない）
+pub fn standardSharp(sub: u21) Builtin {
+    return switch (syntax.upcase(sub)) {
+        '\'' => .sharp_quote,
+        '(' => .sharp_paren,
+        '\\' => .sharp_backslash,
+        ':' => .sharp_colon,
+        'B' => .sharp_b,
+        'O' => .sharp_o,
+        'X' => .sharp_x,
+        'R' => .sharp_r,
+        '|' => .sharp_bar,
+        '+' => .sharp_plus,
+        '-' => .sharp_minus,
+        'P' => .sharp_p,
+        'S' => .sharp_s,
+        'C' => .sharp_c,
+        'A' => .sharp_a,
+        '.' => .sharp_dot,
+        '=' => .sharp_equal,
+        '#' => .sharp_sharp,
+        else => .none,
+    };
+}
 
 pub const Diagnostic = struct {
     loc: SourceLoc = .{ .line = 0, .col = 0 },
@@ -65,6 +165,10 @@ pub const Options = struct {
     preserve_whitespace: bool = false,
     /// *features*（キーワードの名前。大文字）
     features: []const []const u8 = features.default,
+    /// readtable-case（Phase 24）
+    case: Case = .upcase,
+    /// *read-suppress*（Phase 24）
+    suppress: bool = false,
 };
 
 const TokenChar = struct { cp: u21, escaped: bool };
@@ -101,6 +205,8 @@ pub fn Reader(comptime Builder: type) type {
         bq_depth: usize = 0,
         /// *read-suppress*（#+ / #- で読み飛ばしている間）
         suppress: bool = false,
+        /// 標準でない readtable で読んでいる（偽なら、文字を標準の静的な表で引く。read のたびに決める）
+        custom_syntax: bool = false,
         /// 直前の read で読んだデータの始まりの位置（行コメントと空白を除く。エラーの報告に使う）
         start_loc: ?SourceLoc = null,
 
@@ -128,8 +234,72 @@ pub fn Reader(comptime Builder: type) type {
             return self.src.peek() catch self.fail(self.src.loc(), "UTF-8 として正しくないバイト列です");
         }
 
+        /// read のたびに、Builder が Options を今の値にする（*read-base*・*readtable* など。Phase 24）
+        fn begin(self: *Self) void {
+            if (comptime @hasDecl(Builder, "beginRead")) self.builder.beginRead(&self.options);
+            self.suppress = self.options.suppress;
+            if (comptime @hasDecl(Builder, "customSyntax")) self.custom_syntax = self.builder.customSyntax();
+        }
+
+        inline fn charInfo(self: *Self, cp: u21) CharInfo {
+            if (comptime @hasDecl(Builder, "charInfo")) {
+                if (self.custom_syntax) if (self.builder.charInfo(cp)) |ci| return ci;
+            }
+            return standardChar(cp);
+        }
+
+        inline fn syntaxOf(self: *Self, cp: u21) SyntaxType {
+            return self.charInfo(cp).syntax;
+        }
+
+        fn dispatchInfo(self: *Self, disp: u21, sub: u21) Macro {
+            if (comptime @hasDecl(Builder, "dispatchInfo")) {
+                if (self.custom_syntax) if (self.builder.dispatchInfo(disp, sub)) |m| return m;
+            }
+            if (disp != '#') return .none;
+            const k = standardSharp(sub);
+            return if (k == .none) .none else .{ .builtin = k };
+        }
+
+        /// 組み込みのマクロの働きを1つ行う（Lisp から呼ばれた標準のマクロ関数。Phase 24）。何も作らなければ null
+        pub fn readBuiltin(self: *Self, k: Builtin, cp: u21, arg: ?usize) Error!?Datum {
+            self.begin();
+            const obj = (try self.builtinMacro(k, cp, self.src.loc(), arg)) orelse return null;
+            return switch (obj) {
+                .datum => |d| d,
+                .dot => |loc| self.fail(loc, "ドット（.）はリストの中でしか使えません"),
+                .close => |loc| self.fail(loc, "対応する開き括弧のない ) です"),
+            };
+        }
+
+        /// read-delimited-list：close の文字までのデータのリスト（Phase 24。CLHS read-delimited-list）
+        pub fn readDelimitedList(self: *Self, close: u21) Error!Datum {
+            self.begin();
+            const start = self.src.loc();
+            var list = try self.builder.listBegin(start);
+            while (true) {
+                const ch = (try self.peek()) orelse return self.eof(start, "READ-DELIMITED-LIST の途中でテキストが終わりました");
+                if (ch.cp == close) {
+                    self.src.advance(ch);
+                    break;
+                }
+                if (self.syntaxOf(ch.cp) == .whitespace) {
+                    self.src.advance(ch);
+                    continue;
+                }
+                const obj = (try self.readObj()) orelse return self.eof(start, "READ-DELIMITED-LIST の途中でテキストが終わりました");
+                switch (obj) {
+                    .datum => |d| try self.builder.listPush(&list, d),
+                    .dot => |loc| return self.fail(loc, "ここにドット（.）は置けません"),
+                    .close => break,
+                }
+            }
+            return self.builder.listEnd(&list, null);
+        }
+
         /// 次のデータを1つ読む。データの前でテキストが終われば null を返す。
         pub fn read(self: *Self) Error!?Datum {
+            self.begin();
             self.start_loc = null;
             const obj = (try self.readObj()) orelse return null;
             return switch (obj) {
@@ -144,34 +314,55 @@ pub fn Reader(comptime Builder: type) type {
             while (true) {
                 const ch = (try self.peek()) orelse return null;
                 const loc = self.src.loc();
-                if (self.start_loc == null and ch.cp != ';' and syntax.syntaxType(ch.cp) != .whitespace) self.start_loc = loc;
-                switch (syntax.syntaxType(ch.cp)) {
+                const info = self.charInfo(ch.cp);
+                const is_comment = info.macro == .builtin and info.macro.builtin == .comment;
+                if (self.start_loc == null and !is_comment and info.syntax != .whitespace) self.start_loc = loc;
+                switch (info.syntax) {
                     .invalid => return self.fail(loc, "この文字はトークンに使えません（Backspace・Rubout）"),
                     .whitespace => self.src.advance(ch),
-                    .terminating_macro => {
+                    .terminating_macro, .non_terminating_macro => {
                         self.src.advance(ch);
-                        switch (ch.cp) {
-                            ';' => try self.skipLineComment(),
-                            '(' => return .{ .datum = try self.readList(loc) },
-                            ')' => return .{ .close = loc },
-                            '\'' => return .{ .datum = try self.wrap(loc, cl_package, "QUOTE", try self.readRequired(loc, "' の後")) },
-                            '`' => {
-                                self.bq_depth += 1;
-                                defer self.bq_depth -= 1;
-                                const x = try self.readRequired(loc, "` の後");
-                                return .{ .datum = try self.wrap(loc, sys_package, "QUASIQUOTE", x) };
-                            },
-                            ',' => return .{ .datum = try self.readComma(loc) },
-                            '"' => return .{ .datum = try self.readString(loc) },
-                            else => unreachable,
-                        }
-                    },
-                    .non_terminating_macro => {
-                        self.src.advance(ch);
-                        if (try self.readDispatch(loc)) |d| return .{ .datum = d };
+                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| return obj;
                     },
                     .single_escape, .multiple_escape, .constituent => return try self.readToken(.normal),
                 }
+            }
+        }
+
+        /// マクロ文字の関数を呼ぶ。null は「何も作らなかった」（コメント・値を返さない関数）
+        fn runMacro(self: *Self, m: Macro, cp: u21, loc: SourceLoc) Error!?Obj {
+            switch (m) {
+                .none => return self.fail(loc, "マクロ文字の関数がありません"),
+                .builtin => |k| return self.builtinMacro(k, cp, loc, null),
+                .user => |f| {
+                    if (comptime !@hasDecl(Builder, "callMacro")) return self.fail(loc, "ユーザー定義の reader macro はここでは使えません");
+                    const d = try self.builder.callMacro(&self.diagnostic, loc, self.src, f, cp, null, false);
+                    return if (d) |x| .{ .datum = x } else null;
+                },
+            }
+        }
+
+        /// 組み込みのマクロの働き（標準のマクロ文字）
+        fn builtinMacro(self: *Self, k: Builtin, cp: u21, loc: SourceLoc, arg: ?usize) Error!?Obj {
+            switch (k) {
+                .none => return self.fail(loc, "マクロ文字の関数がありません"),
+                .list => return .{ .datum = try self.readList(loc) },
+                .close => return .{ .close = loc },
+                .quote => return .{ .datum = try self.wrap(loc, cl_package, "QUOTE", try self.readRequired(loc, "' の後")) },
+                .backquote => {
+                    self.bq_depth += 1;
+                    defer self.bq_depth -= 1;
+                    const x = try self.readRequired(loc, "` の後");
+                    return .{ .datum = try self.wrap(loc, sys_package, "QUASIQUOTE", x) };
+                },
+                .comma => return .{ .datum = try self.readComma(loc) },
+                .string => return .{ .datum = try self.readString(loc, cp) },
+                .comment => {
+                    try self.skipLineComment();
+                    return null;
+                },
+                .dispatch => return if (try self.readDispatch(loc, cp)) |d| .{ .datum = d } else null,
+                else => return if (try self.sharpBuiltin(k, loc, arg, cp)) |d| .{ .datum = d } else null,
             }
         }
 
@@ -233,9 +424,9 @@ pub fn Reader(comptime Builder: type) type {
             while (true) {
                 const obj = (try self.readObj()) orelse return self.eof(start, "( が閉じられていません");
                 switch (obj) {
-                    .close => return self.builder.listEnd(&list, null),
+                    .close => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, null),
                     .datum => |d| {
-                        try self.builder.listPush(&list, d);
+                        if (!self.suppress) try self.builder.listPush(&list, d);
                         count += 1;
                     },
                     .dot => |loc| {
@@ -243,7 +434,7 @@ pub fn Reader(comptime Builder: type) type {
                         const tail = try self.readRequired(loc, ". の後");
                         const after = (try self.readObj()) orelse return self.eof(start, "( が閉じられていません");
                         switch (after) {
-                            .close => return self.builder.listEnd(&list, tail),
+                            .close => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, tail),
                             .datum, .dot => return self.fail(loc, "ドット（.）の後には要素を1つだけ置けます"),
                         }
                     },
@@ -270,14 +461,15 @@ pub fn Reader(comptime Builder: type) type {
             return self.wrap(loc, sys_package, name, x);
         }
 
-        fn readString(self: *Self, start: SourceLoc) Error!Datum {
+        /// 文字列（閉じの文字は、開きと同じ文字。SBCL の read-string と同じ）
+        fn readString(self: *Self, start: SourceLoc, delim: u21) Error!Datum {
             self.scratch.clearRetainingCapacity();
             while (true) {
                 const ch = (try self.peek()) orelse return self.eof(start, "文字列が閉じられていません");
                 self.src.advance(ch);
                 var cp = ch.cp;
-                if (cp == '"') break;
-                if (syntax.syntaxType(cp) == .single_escape) {
+                if (cp == delim) break;
+                if (self.syntaxOf(cp) == .single_escape) {
                     const e = (try self.peek()) orelse return self.eof(start, "文字列が閉じられていません");
                     self.src.advance(e);
                     cp = e.cp;
@@ -288,8 +480,8 @@ pub fn Reader(comptime Builder: type) type {
             return self.builder.string(start, self.scratch.items);
         }
 
-        /// # の後。null は「何も作らなかった」（コメント・#+ / #- で読み飛ばした）ことを表す
-        fn readDispatch(self: *Self, loc: SourceLoc) Error!?Datum {
+        /// dispatch 文字（# など）の後。null は「何も作らなかった」（コメント・#+ / #- で読み飛ばした）ことを表す
+        fn readDispatch(self: *Self, loc: SourceLoc, disp: u21) Error!?Datum {
             // #n( などの10進の引数
             var arg: ?usize = null;
             var ch = (try self.peek()) orelse return self.eof(loc, "# の後でテキストが終わりました");
@@ -300,31 +492,43 @@ pub fn Reader(comptime Builder: type) type {
                 ch = (try self.peek()) orelse return self.eof(loc, "# の後でテキストが終わりました");
             }
             self.src.advance(ch);
-            switch (syntax.upcase(ch.cp)) {
-                '\'' => return try self.wrap(loc, cl_package, "FUNCTION", try self.readRequired(loc, "#' の後")),
-                '(' => return try self.readVector(loc, arg),
-                '\\' => return try self.readCharacter(loc),
-                ':' => {
+            switch (self.dispatchInfo(disp, ch.cp)) {
+                .none => return self.fail(loc, "この # の dispatch 文字は定義されていません"),
+                .builtin => |k| return self.sharpBuiltin(k, loc, arg, ch.cp),
+                .user => |f| {
+                    if (comptime !@hasDecl(Builder, "callMacro")) return self.fail(loc, "ユーザー定義の reader macro はここでは使えません");
+                    return self.builder.callMacro(&self.diagnostic, loc, self.src, f, ch.cp, arg, true);
+                },
+            }
+        }
+
+        /// # の後の文字の組み込みの働き（sub は # の後の文字、arg は #n の n）
+        fn sharpBuiltin(self: *Self, k: Builtin, loc: SourceLoc, arg: ?usize, sub: u21) Error!?Datum {
+            switch (k) {
+                .sharp_quote => return try self.wrap(loc, cl_package, "FUNCTION", try self.readRequired(loc, "#' の後")),
+                .sharp_paren => return try self.readVector(loc, arg),
+                .sharp_backslash => return try self.readCharacter(loc),
+                .sharp_colon => {
                     const obj = try self.readToken(.uninterned);
                     return switch (obj) {
                         .datum => |d| d,
                         else => self.fail(loc, "#: の後にシンボル名がありません"),
                     };
                 },
-                'B' => return try self.readRadix(loc, 2),
-                'O' => return try self.readRadix(loc, 8),
-                'X' => return try self.readRadix(loc, 16),
-                'R' => {
+                .sharp_b => return try self.readRadix(loc, 2),
+                .sharp_o => return try self.readRadix(loc, 8),
+                .sharp_x => return try self.readRadix(loc, 16),
+                .sharp_r => {
                     const base = arg orelse return self.fail(loc, "#R には基数（2〜36）が必要です");
                     if (base < 2 or base > 36) return self.fail(loc, "#R の基数は 2〜36 です");
                     return try self.readRadix(loc, @intCast(base));
                 },
-                '|' => {
+                .sharp_bar => {
                     try self.skipBlockComment(loc);
                     return null;
                 },
-                '+', '-' => {
-                    const want = ch.cp == '+';
+                .sharp_plus, .sharp_minus => {
+                    const want = k == .sharp_plus;
                     const saved = self.suppress;
                     // 機能式は KEYWORD パッケージで読む（CLHS 24.1.2.1）。
                     // 読み飛ばしの最中でも機能式は評価し、偽なら次の要素をさらに読み飛ばす
@@ -337,7 +541,7 @@ pub fn Reader(comptime Builder: type) type {
                     }
                     return null;
                 },
-                'P', 'p' => {
+                .sharp_p => {
                     // #P"..."：続く文字列をパス名にする（Phase 23）
                     if (self.suppress) {
                         _ = try self.readRequired(loc, "#P の後");
@@ -346,22 +550,50 @@ pub fn Reader(comptime Builder: type) type {
                     const obj = try self.readRequired(loc, "#P の後");
                     return try self.builder.pathname(&self.diagnostic, loc, obj);
                 },
-                'S', 'C', 'A', '.', '=', '#' => {
+                .sharp_s, .sharp_c, .sharp_a => {
                     if (self.suppress) {
-                        // #n= は値を返さず、続くオブジェクトがそのまま読み飛ばしの対象になる
-                        // （SBCL 2.6.7：#+nosuch #1=(a b) c → C）。## は NIL を返す
-                        if (ch.cp == '=') return null;
-                        if (ch.cp != '#') _ = try self.readRequired(loc, "# の後");
+                        _ = try self.readRequired(loc, "# の後");
                         return try self.builder.nil(loc);
                     }
-                    return self.fail(loc, switch (syntax.upcase(ch.cp)) {
-                        'S' => "#S（構造体）は未実装です（Phase 26 で実装予定）",
-                        'C' => "#C（複素数）は未実装です（Phase 20 で実装予定）",
-                        'A' => "#A（配列）は未実装です（Phase 21 で実装予定）",
-                        else => "#. #= ## は未実装です（Phase 24 で実装予定）",
+                    return self.fail(loc, switch (k) {
+                        .sharp_s => "#S（構造体）は未実装です（Phase 26 で実装予定）",
+                        .sharp_c => "#C（複素数）は未実装です（Phase 20 で実装予定）",
+                        else => "#A（配列）は未実装です（Phase 21 で実装予定）",
                     });
                 },
-                else => return self.fail(loc, "この # の dispatch 文字は定義されていません"),
+                .sharp_dot => {
+                    // #.：*read-eval* が真なら、続くフォームを評価した値（CLHS 2.4.8.6）
+                    const form = try self.readRequired(loc, "#. の後");
+                    if (self.suppress) return try self.builder.nil(loc);
+                    if (comptime !@hasDecl(Builder, "readEval")) return self.fail(loc, "#. はここでは使えません");
+                    return try self.builder.readEval(&self.diagnostic, loc, form);
+                },
+                .sharp_equal => {
+                    // 読み飛ばしの最中の #n= は値を返さず、続くオブジェクトがそのまま読み飛ばしの対象になる
+                    // （SBCL 2.6.7：#+nosuch #1=(a b) c → C）
+                    if (self.suppress) return null;
+                    const n = arg orelse return self.fail(loc, "#= には数の引数が必要です（#1= のように）");
+                    if (comptime !@hasDecl(Builder, "labelDefine")) return self.fail(loc, "#= はここでは使えません");
+                    const ph = try self.builder.labelDefine(&self.diagnostic, loc, n);
+                    const obj = try self.readRequired(loc, "#= の後");
+                    return try self.builder.labelFinish(&self.diagnostic, loc, n, ph, obj);
+                },
+                .sharp_sharp => {
+                    if (self.suppress) return try self.builder.nil(loc);
+                    const n = arg orelse return self.fail(loc, "## には数の引数が必要です（#1# のように）");
+                    if (comptime !@hasDecl(Builder, "labelRef")) return self.fail(loc, "## はここでは使えません");
+                    return try self.builder.labelRef(&self.diagnostic, loc, n);
+                },
+                // # の後の文字としては使えない組み込みの働き（マクロ文字の関数を dispatch に設定した場合）
+                .list, .close, .quote, .backquote, .comma, .string, .comment, .dispatch => {
+                    const obj = (try self.builtinMacro(k, sub, loc, arg)) orelse return null;
+                    return switch (obj) {
+                        .datum => |d| d,
+                        .dot => |l| self.fail(l, "ここにドット（.）は置けません"),
+                        .close => |l| self.fail(l, "ここに ) は置けません"),
+                    };
+                },
+                .none => return self.fail(loc, "この # の dispatch 文字は定義されていません"),
             }
         }
 
@@ -381,6 +613,7 @@ pub fn Reader(comptime Builder: type) type {
                     },
                 }
             }
+            if (self.suppress) return self.builder.nil(start);
             if (length) |n| {
                 if (count > n) return self.fail(start, "#n( の要素が n より多くあります");
                 if (count < n) {
@@ -409,7 +642,7 @@ pub fn Reader(comptime Builder: type) type {
             var len: usize = 1;
             // 続く構成文字を集める（名前の場合）
             while (try self.peek()) |ch| {
-                switch (syntax.syntaxType(ch.cp)) {
+                switch (self.syntaxOf(ch.cp)) {
                     .constituent, .non_terminating_macro => {
                         self.src.advance(ch);
                         try self.appendUtf8(&self.scratch, ch.cp);
@@ -467,7 +700,7 @@ pub fn Reader(comptime Builder: type) type {
         fn featureExpr(self: *Self, start: SourceLoc) Error!bool {
             while (true) {
                 const ch = (try self.peek()) orelse return self.eof(start, "#+ / #- の機能式がありません");
-                switch (syntax.syntaxType(ch.cp)) {
+                switch (self.syntaxOf(ch.cp)) {
                     .whitespace => self.src.advance(ch),
                     .terminating_macro => {
                         if (ch.cp == ';') {
@@ -502,7 +735,7 @@ pub fn Reader(comptime Builder: type) type {
         fn featureList(self: *Self, start: SourceLoc) Error!bool {
             // 演算子
             while (try self.peek()) |ch| {
-                if (syntax.syntaxType(ch.cp) != .whitespace) break;
+                if (self.syntaxOf(ch.cp) != .whitespace) break;
                 self.src.advance(ch);
             }
             _ = try self.readToken(.raw);
@@ -522,7 +755,7 @@ pub fn Reader(comptime Builder: type) type {
             var count: usize = 0;
             while (true) {
                 const ch = (try self.peek()) orelse return self.eof(start, "機能式の ( が閉じられていません");
-                if (syntax.syntaxType(ch.cp) == .whitespace) {
+                if (self.syntaxOf(ch.cp) == .whitespace) {
                     self.src.advance(ch);
                     continue;
                 }
@@ -555,7 +788,7 @@ pub fn Reader(comptime Builder: type) type {
                 if (in_multiple) {
                     const ch = ch_opt orelse return self.eof(start, "| で始まるエスケープが閉じられていません");
                     self.src.advance(ch);
-                    switch (syntax.syntaxType(ch.cp)) {
+                    switch (self.syntaxOf(ch.cp)) {
                         .multiple_escape => in_multiple = false,
                         .single_escape => {
                             const e = (try self.peek()) orelse return self.eof(start, "\\ の後でテキストが終わりました");
@@ -567,10 +800,10 @@ pub fn Reader(comptime Builder: type) type {
                     continue;
                 }
                 const ch = ch_opt orelse break;
-                switch (syntax.syntaxType(ch.cp)) {
+                switch (self.syntaxOf(ch.cp)) {
                     .constituent, .non_terminating_macro => {
                         self.src.advance(ch);
-                        try self.token.append(self.gpa, .{ .cp = syntax.upcase(ch.cp), .escaped = false });
+                        try self.token.append(self.gpa, .{ .cp = ch.cp, .escaped = false });
                     },
                     .single_escape => {
                         self.src.advance(ch);
@@ -599,8 +832,41 @@ pub fn Reader(comptime Builder: type) type {
                     },
                 }
             }
+            self.applyCase();
             if (mode == .raw) return .{ .datum = undefined };
             return self.interpretToken(start, mode);
+        }
+
+        /// readtable-case に従って、エスケープされていない文字の大文字・小文字を変える（CLHS 23.1.2）
+        fn applyCase(self: *Self) void {
+            const tok = self.token.items;
+            switch (self.options.case) {
+                .upcase => for (tok) |*c| if (!c.escaped) {
+                    c.cp = syntax.upcase(c.cp);
+                },
+                .downcase => for (tok) |*c| if (!c.escaped) {
+                    c.cp = syntax.downcase(c.cp);
+                },
+                .preserve => {},
+                .invert => {
+                    // エスケープされていない英字がすべて大文字ならすべて小文字に、すべて小文字ならすべて大文字にする
+                    var upper = false;
+                    var lower = false;
+                    for (tok) |c| if (!c.escaped) {
+                        if (syntax.upcase(c.cp) != c.cp) lower = true;
+                        if (syntax.downcase(c.cp) != c.cp) upper = true;
+                    };
+                    if (upper and !lower) {
+                        for (tok) |*c| if (!c.escaped) {
+                            c.cp = syntax.downcase(c.cp);
+                        };
+                    } else if (lower and !upper) {
+                        for (tok) |*c| if (!c.escaped) {
+                            c.cp = syntax.upcase(c.cp);
+                        };
+                    }
+                },
+            }
         }
 
         fn interpretToken(self: *Self, loc: SourceLoc, mode: TokenMode) Error!Obj {
@@ -758,7 +1024,7 @@ const TestBuilder = struct {
 
 const testing = std.testing;
 
-const Case = struct { input: []const u8, expect: []const u8 };
+const TestCase = struct { input: []const u8, expect: []const u8 };
 
 fn readOne(input: []const u8, options: Options) ![]const u8 {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
@@ -770,7 +1036,7 @@ fn readOne(input: []const u8, options: Options) ![]const u8 {
     const d = r.read() catch |err| return switch (err) {
         error.ReaderError => "ERROR",
         error.EndOfFile => "EOF-ERROR",
-        error.OutOfMemory => err,
+        error.OutOfMemory, error.LispError => err,
     };
     const s = d orelse "NONE";
     return testing.allocator.dupe(u8, s);
@@ -780,7 +1046,7 @@ fn isStatic(s: []const u8) bool {
     return std.mem.eql(u8, s, "ERROR") or std.mem.eql(u8, s, "EOF-ERROR");
 }
 
-fn expectRead(cases: []const Case, options: Options) !void {
+fn expectRead(cases: []const TestCase, options: Options) !void {
     for (cases) |c| {
         const got = try readOne(c.input, options);
         defer if (!isStatic(got)) testing.allocator.free(got);

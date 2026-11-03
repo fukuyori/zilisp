@@ -10,11 +10,26 @@ const Value = rt_mod.Value;
 const Diagnostic = reader.Diagnostic;
 const SourceLoc = reader.SourceLoc;
 const Error = reader.Error;
+const Thread = @import("../runtime/thread.zig").Thread;
+const readtable = @import("readtable.zig");
 
 pub const ValueBuilder = struct {
     rt: *Runtime,
-    /// 真なら、パッケージ修飾のパッケージがなければ空のパッケージを作る（ネイティブの定数を起動時に読むとき。Phase 22）
+    /// 真なら、パッケージ修飾のパッケージがなければ空のパッケージを作る（ネイティブの定数を起動時に読むとき。Phase 22）。
+    /// このときは、印字の変数・*readtable* によらず標準の構文で読む（定数は標準の構文で書いてある）
     create_packages: bool = false,
+    /// reader macro・#. を呼ぶスレッド（なければ使えない。Phase 24）
+    th: ?*Thread = null,
+    /// 今の *readtable*（標準の構文なら NIL：Reader は標準の表で読む）
+    readtable: Value = Value.nil,
+    /// Source が読んでいるストリーム（reader macro に渡す）と、Source の先頭のストリームの中の位置
+    stream: Value = Value.nil,
+    stream_base: usize = 0,
+    /// ストリームが Latin-1（Source は UTF-8 にした写し）
+    latin1: bool = false,
+    /// #n= のラベル（((n . オブジェクト) …)。recursive の read は外側の表を使う）
+    labels: Value = Value.nil,
+    labels_ptr: ?*Value = null,
 
     pub const Datum = Value;
     /// 組み立て中のリスト（先頭と最後の cons）
@@ -23,6 +38,143 @@ pub const ValueBuilder = struct {
     fn fail(diag: *Diagnostic, loc: SourceLoc, message: []const u8) Error {
         diag.* = .{ .loc = loc, .message = message };
         return error.ReaderError;
+    }
+
+    /// read のたびに、Options を今の値にする（*read-base*・*read-default-float-format*・*read-suppress*・*readtable*。Phase 24）
+    pub fn beginRead(b: *ValueBuilder, opts: *reader.Options) void {
+        if (b.labels_ptr == null) b.labels = Value.nil;
+        if (b.create_packages) {
+            b.readtable = Value.nil;
+            return;
+        }
+        const rt = b.rt;
+        const tv = readtable.current(rt);
+        opts.case = readtable.caseOf(tv);
+        b.readtable = if (readtable.ptr(tv).header.flags & readtable.Table.standard_flag != 0) Value.nil else tv;
+        const base = rt.symbolPtr(rt.syms.@"*read-base*").value;
+        if (base.isFixnum() and base.asFixnum() >= 2 and base.asFixnum() <= 36) opts.read_base = @intCast(base.asFixnum());
+        const ff = rt.symbolPtr(rt.syms.@"*read-default-float-format*").value;
+        opts.default_float = if (ff == rt.syms.@"double-float" or ff == rt.syms.@"long-float") .double else .single;
+        const sup = rt.symbolPtr(rt.syms.@"*read-suppress*").value;
+        opts.suppress = sup != Value.nil and sup != Value.unbound;
+    }
+
+    /// 標準でない readtable で読むか（Reader が read の始めに聞く）
+    pub fn customSyntax(b: *ValueBuilder) bool {
+        return b.readtable != Value.nil;
+    }
+
+    pub fn charInfo(b: *ValueBuilder, cp: u21) ?reader.CharInfo {
+        if (b.readtable == Value.nil) return null;
+        return readtable.charInfo(b.rt, b.readtable, cp);
+    }
+
+    pub fn dispatchInfo(b: *ValueBuilder, disp: u21, sub: u21) ?reader.Macro {
+        if (b.readtable == Value.nil) return null;
+        return readtable.dispatchInfo(b.rt, b.readtable, disp, sub);
+    }
+
+    /// Source の位置 → ストリームの位置
+    fn toStreamPos(b: *ValueBuilder, src: *reader.Source, pos: usize) usize {
+        if (!b.latin1) return b.stream_base + pos;
+        var n: usize = 0;
+        for (src.text[0..pos]) |c| if (c & 0xC0 != 0x80) {
+            n += 1;
+        };
+        return b.stream_base + n;
+    }
+
+    /// ストリームの位置 → Source の位置
+    fn fromStreamPos(b: *ValueBuilder, src: *reader.Source, pos: usize) usize {
+        const rel = pos -| b.stream_base;
+        if (!b.latin1) return @min(rel, src.text.len);
+        var chars: usize = 0;
+        var i: usize = 0;
+        while (i < src.text.len and chars < rel) : (i += 1) {
+            if (src.text[i] & 0xC0 != 0x80) chars += 1;
+        }
+        while (i < src.text.len and src.text[i] & 0xC0 == 0x80) i += 1;
+        return i;
+    }
+
+    /// ユーザー定義の reader macro を呼ぶ（Phase 24）。(関数 ストリーム 文字) か、dispatch なら (関数 ストリーム 文字 引数)。
+    /// ストリームの位置を Source の位置に合わせてから呼び、呼んだ後の位置まで Source を進める。値がなければ null
+    pub fn callMacro(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, f_raw: u64, cp: u21, arg: ?usize, dispatch: bool) Error!?Value {
+        const th = b.th orelse return fail(diag, loc, "ここではユーザー定義の reader macro を使えません");
+        const streams = @import("../primitives/streams.zig");
+        if (b.stream == Value.nil) {
+            // テキストを読んでいる（load・read-from-string）：同じテキストの文字列の入力ストリームを作る
+            b.stream = streams.makeStringInputBytes(th, src.text) orelse return error.LispError;
+            b.stream_base = 0;
+            b.latin1 = false;
+        }
+        const s = b.stream;
+        streams.setReadPosition(s, b.toStreamPos(src, src.pos));
+        var argv: [3]Value = .{ s, Value.fromChar(cp), if (arg) |n| Value.fromFixnum(@intCast(n)) else Value.nil };
+        const saved = th.read_builder;
+        th.read_builder = b;
+        defer th.read_builder = saved;
+        th.mv_count = 1;
+        const r = th.call(Value.fromRaw(f_raw), argv[0..if (dispatch) 3 else 2]);
+        if (r == Value.unwind) return error.LispError;
+        const count = th.mv_count;
+        // 標準入力は読み足すとバッファが動くので、Source のテキストを取り直す
+        if (!b.latin1) if (streams.readBuffer(s)) |buf| {
+            src.text = buf[@min(b.stream_base, buf.len)..];
+        };
+        src.seekTo(b.fromStreamPos(src, streams.readPosition(s)));
+        if (count == 0) return null;
+        return r;
+    }
+
+    /// #.：*read-eval* が真ならフォームを評価する（偽なら reader-error。CLHS 2.4.8.6）
+    pub fn readEval(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, form: Value) Error!Value {
+        const rt = b.rt;
+        if (rt.symbolPtr(rt.syms.@"*read-eval*").value == Value.nil) return fail(diag, loc, "*READ-EVAL* が偽なので #. は使えません");
+        const th = b.th orelse return fail(diag, loc, "ここでは #. を使えません");
+        const v = @import("../compiler/eval.zig").eval(th, form);
+        if (v == Value.unwind) return error.LispError;
+        return v;
+    }
+
+    fn labelsCell(b: *ValueBuilder) *Value {
+        return b.labels_ptr orelse &b.labels;
+    }
+
+    fn labelEntry(b: *ValueBuilder, n: usize) ?Value {
+        var x = b.labelsCell().*;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const e = Runtime.consPtr(x).car;
+            if (Runtime.consPtr(e).car == Value.fromFixnum(@intCast(n))) return e;
+        }
+        return null;
+    }
+
+    /// #n=：ラベルの仮の値（後で読んだオブジェクトに置き換える一意の cons）を登録する
+    pub fn labelDefine(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, n: usize) Error!Value {
+        if (n > std.math.maxInt(i32)) return fail(diag, loc, "#n= の数が大きすぎます");
+        if (b.labelEntry(n) != null) return fail(diag, loc, "同じ #n= のラベルが2回あります");
+        const rt = b.rt;
+        const ph = try rt.cons(Value.nil, Value.nil);
+        const e = try rt.cons(Value.fromFixnum(@intCast(n)), ph);
+        const cell = b.labelsCell();
+        cell.* = try rt.cons(e, cell.*);
+        return ph;
+    }
+
+    /// #n= の後のオブジェクトを読み終えた：仮の値への参照をオブジェクトに置き換える
+    pub fn labelFinish(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, n: usize, ph: Value, obj: Value) Error!Value {
+        if (obj == ph) return fail(diag, loc, "#n= の直後に同じ #n# は置けません");
+        const e = b.labelEntry(n).?;
+        Runtime.consPtr(e).cdr = obj;
+        try patch(b.rt, obj, ph, obj);
+        return obj;
+    }
+
+    /// #n#
+    pub fn labelRef(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, n: usize) Error!Value {
+        const e = b.labelEntry(n) orelse return fail(diag, loc, "#n# のラベルが定義されていません");
+        return Runtime.consPtr(e).cdr;
     }
 
     pub fn integer(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, negative: bool, digits: []const u8, radix: u8) Error!Value {
@@ -186,6 +338,34 @@ pub const ValueBuilder = struct {
         return b.rt.makeVectorFromList(list.head, list.count);
     }
 };
+
+/// obj の中（cons・単純ベクタ・配列の要素）の ph を val に置き換える。循環していてもよい（一度通ったものは見ない）
+fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
+    const gpa = rt.gpa;
+    var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
+    defer seen.deinit(gpa);
+    var stack: std.ArrayList(Value) = .empty;
+    defer stack.deinit(gpa);
+    try stack.append(gpa, obj);
+    while (stack.pop()) |x| {
+        if (!(x.isCons() or (x.isOther() and (Runtime.kindOf(x) == .simple_vector or Runtime.kindOf(x) == .array)))) continue;
+        const g = try seen.getOrPut(gpa, x.raw());
+        if (g.found_existing) continue;
+        if (x.isCons()) {
+            const c = Runtime.consPtr(x);
+            if (c.car == ph) c.car = val else try stack.append(gpa, c.car);
+            if (c.cdr == ph) c.cdr = val else try stack.append(gpa, c.cdr);
+        } else if (Runtime.kindOf(x) == .simple_vector) {
+            for (Runtime.vectorPtr(x).items()) |*it| {
+                if (it.* == ph) it.* = val else try stack.append(gpa, it.*);
+            }
+        } else {
+            const object = @import("../values/object.zig");
+            const a: *object.Array = @ptrCast(@alignCast(x.pointer()));
+            if (Runtime.kindOf(a.data) == .simple_vector) try stack.append(gpa, a.data);
+        }
+    }
+}
 
 /// テキストから全てのデータを読み、読んだ順のリスト（Lisp の値）で返す（試験用）。
 /// 読んでいる間は、それまでに読んだデータを明示的なルートに登録しておく（Zig のヒープには置かない：§3.5）。

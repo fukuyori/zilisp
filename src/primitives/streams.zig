@@ -51,6 +51,8 @@ pub const StreamState = struct {
     /// ファイルの出力で、次に書き出す位置
     file_offset: u64 = 0,
     at_line_start: bool = true,
+    /// 出力の今の桁（行の先頭からの文字数。format の ~T が使う。Phase 24）
+    column: usize = 0,
     latin1: bool = false,
     /// 文字列の入力ストリームの、元の文字列の中での開始位置（file-position が返す）
     char_base: usize = 0,
@@ -420,6 +422,37 @@ pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
         else => {},
     }
     st.at_line_start = bytes[bytes.len - 1] == '\n';
+    if (std.mem.lastIndexOfScalar(u8, bytes, '\n')) |i| st.column = charCount(bytes[i + 1 ..]) else st.column += charCount(bytes);
+    return true;
+}
+
+/// 出力のストリームの今の桁（broadcast は最初のストリームの桁。わからなければ null。format の ~T）
+pub fn columnOf(th: *Thread, stream: Value) ?usize {
+    const s = resolveOutStream(th, stream) orelse return null;
+    if (kindOf(s) == .broadcast) {
+        const x = ptr(s).ref;
+        if (!x.isCons()) return null;
+        return columnOf(th, Runtime.consPtr(x).car);
+    }
+    const st = stateOf(s) orelse return null;
+    return st.column;
+}
+
+/// 文字列の出力ストリームを作る（format が使う）
+pub fn makeStringOutput(th: *Thread) ?Value {
+    return makeStream(th, .string_output, SF.output | SF.open, Value.nil, true);
+}
+
+/// 文字列の出力ストリームに溜まったバイト列（UTF-8）を取り出して空にする（format が使う）
+pub fn takeStringOutput(th: *Thread, s: Value, out: *std.ArrayList(u8)) bool {
+    const st = stateOf(s) orelse return true;
+    out.appendSlice(th.rt.gpa, st.out.items) catch {
+        _ = th.outOfMemory();
+        return false;
+    };
+    st.out.clearRetainingCapacity();
+    st.at_line_start = true;
+    st.column = 0;
     return true;
 }
 
@@ -950,10 +983,25 @@ pub fn writeSequence(th: *Thread, args: []const Value) Value {
 // ---------------------------------------------------------------------------
 // read・read-from-string
 
+/// Reader で行うこと：read・組み込みのマクロの働き（Lisp から呼ばれた標準のマクロ関数）・read-delimited-list
+const ReadOp = union(enum) {
+    read,
+    builtin: struct { k: reader.Builtin, cp: u21, arg: ?usize },
+    delimited: u21,
+};
+
 /// st の位置から1つ読む。読めなければ（終わり）null を eof に入れる
 fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *bool) Value {
+    return readOp(th, s, null, st, preserve, false, .read, eof);
+}
+
+/// st の位置から op を行う。stream_obj は st を持つストリーム（reader macro に渡す。read-from-string なら null）。
+/// recursive なら、外側の read の #n= の表を使う（CLHS read の recursive-p）
+fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve: bool, recursive: bool, op: ReadOp, eof: *bool) Value {
     const rt = th.rt;
     while (true) {
+        // 読み始めの位置（reader macro がストリームの位置を動かすので、読んだ後は「始め + 読んだ長さ」にする）
+        const start_pos = st.pos;
         const raw = st.input()[st.pos..];
         // Latin-1 の入力は UTF-8 にしてから読む（1 文字が 1 バイトなので、読んだ文字の数だけ元の位置を進める。
         // Codex のレビュー P23 #3）
@@ -968,10 +1016,18 @@ fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *
         }
         const text = if (st.latin1) converted.items else raw;
         var src = reader.Source.init(text, 0);
-        var b: vb.ValueBuilder = .{ .rt = rt };
+        var b: vb.ValueBuilder = .{ .rt = rt, .th = th, .stream = stream_obj orelse Value.nil, .stream_base = st.pos, .latin1 = st.latin1 };
+        if (recursive) if (th.read_builder) |outer| {
+            b.labels_ptr = outer.labels_ptr orelse &outer.labels;
+        };
         var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{ .preserve_whitespace = preserve });
         defer r.deinit();
-        const form = r.read() catch |err| switch (err) {
+        const result = switch (op) {
+            .read => r.read(),
+            .builtin => |x| r.readBuiltin(x.k, x.cp, x.arg),
+            .delimited => |cp| if (r.readDelimitedList(cp)) |v| @as(?Value, v) else |e| e,
+        };
+        const form = result catch |err| switch (err) {
             error.OutOfMemory => return oom(th),
             error.EndOfFile => {
                 // 標準入力なら読み足して読み直す
@@ -979,17 +1035,29 @@ fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *
                 return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", s, Value.unbound);
             },
             error.ReaderError => return th.signal(.reader_error, r.diagnostic.message, s, Value.unbound),
+            error.LispError => return Value.unwind,
         };
+        if (op != .read) {
+            // 読んだところまで位置を進める（reader macro がストリームを読み進めた分は Source に反映してある）
+            st.pos = start_pos + if (st.latin1) charCount(text[0..src.pos]) else src.pos;
+            st.last_len = 0;
+            if (form == null) {
+                th.mv_count = 0;
+                return Value.nil;
+            }
+            th.mv_count = 1;
+            return form.?;
+        }
         if (form == null) {
             if (fillStdin(th, st)) continue;
-            st.pos += if (st.latin1) charCount(text[0..src.pos]) else src.pos;
+            st.pos = start_pos + if (st.latin1) charCount(text[0..src.pos]) else src.pos;
             eof.* = true;
             return Value.nil;
         }
         var consumed = src.pos;
         // 読んだ後ろの空白を1つ読み進める（トークンの後ろは Reader が読み進めている。SBCL 2.6.7 と同じ）
         if (!preserve and consumed > 0 and consumed < text.len and !isWhitespace(text[consumed - 1]) and isWhitespace(text[consumed])) consumed += 1;
-        st.pos += if (st.latin1) charCount(text[0..consumed]) else consumed;
+        st.pos = start_pos + if (st.latin1) charCount(text[0..consumed]) else consumed;
         st.last_len = 0;
         return form.?;
     }
@@ -1000,7 +1068,8 @@ fn readImpl(th: *Thread, args: []const Value, preserve: bool) Value {
     if (!checkCharStream(th, s)) return Value.unwind;
     const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
     var eof = false;
-    const v = readFromState(th, s, st, preserve, &eof);
+    const recursive = if (optArg(args, 3)) |x| x != Value.nil else false;
+    const v = readOp(th, s, s, st, preserve, recursive, .read, &eof);
     if (v == Value.unwind) return v;
     if (eof) return eofResult(th, s, optArg(args, 1), optArg(args, 2));
     th.mv_count = 1;
@@ -1013,6 +1082,61 @@ pub fn read(th: *Thread, args: []const Value) Value {
 
 pub fn readPreservingWhitespace(th: *Thread, args: []const Value) Value {
     return readImpl(th, args, true);
+}
+
+/// (read-delimited-list char &optional stream recursive-p)（Phase 24）
+pub fn readDelimitedList(th: *Thread, args: []const Value) Value {
+    if (!args[0].isChar()) return th.typeError(args[0], cl(th, "CHARACTER"));
+    const s = inputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return th.signal(.end_of_file, "ストリームの終わりです", s, Value.unbound);
+    var eof = false;
+    const recursive = if (optArg(args, 2)) |x| x != Value.nil else false;
+    return readOp(th, s, s, st, false, recursive, .{ .delimited = args[0].asChar() }, &eof);
+}
+
+/// 標準のマクロ文字の関数（zl-sys::%READ-LIST など）の本体：(関数 stream char [arg])（Phase 24）
+pub fn readBuiltin(th: *Thread, args: []const Value, k: reader.Builtin) Value {
+    const s = inputDesignator(th, args[0]) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    if (!args[1].isChar()) return th.typeError(args[1], cl(th, "CHARACTER"));
+    const st = stateOf(s) orelse return th.signal(.end_of_file, "ストリームの終わりです", s, Value.unbound);
+    const arg: ?usize = if (args.len > 2 and args[2].isFixnum() and args[2].asFixnum() >= 0) @intCast(args[2].asFixnum()) else null;
+    var eof = false;
+    // reader macro の中から呼ばれた標準の関数は、外側の read の #n= の表を使う
+    return readOp(th, s, s, st, false, th.read_builder != null, .{ .builtin = .{ .k = k, .cp = args[1].asChar(), .arg = arg } }, &eof);
+}
+
+/// 入力のストリームの今の位置を pos にする（ValueBuilder が reader macro を呼ぶ前。Phase 24）
+pub fn setReadPosition(s: Value, pos: usize) void {
+    const st = stateOf(s) orelse return;
+    st.pos = @min(pos, st.input().len);
+    st.last_len = 0;
+}
+
+pub fn readPosition(s: Value) usize {
+    const st = stateOf(s) orelse return 0;
+    return st.pos;
+}
+
+/// 入力のストリームのバッファ（UTF-8 か Latin-1 のバイト列）
+pub fn readBuffer(s: Value) ?[]const u8 {
+    const st = stateOf(s) orelse return null;
+    return st.input();
+}
+
+/// バイト列（UTF-8）を写した文字列の入力ストリーム（ValueBuilder が、テキストを読んでいるときの reader macro に渡す）
+pub fn makeStringInputBytes(th: *Thread, bytes: []const u8) ?Value {
+    const text = th.rt.gpa.dupe(u8, bytes) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    const s = makeStream(th, .string_input, SF.input | SF.open, Value.nil, true) orelse {
+        th.rt.gpa.free(text);
+        return null;
+    };
+    stateOf(s).?.in_buf = text;
+    return s;
 }
 
 /// 文字列の [start, end) の UTF-8
@@ -1105,6 +1229,7 @@ pub fn getOutputStreamString(th: *Thread, args: []const Value) Value {
     const v = th.rt.makeString(st.out.items) catch return oom(th);
     st.out.clearRetainingCapacity();
     st.at_line_start = true;
+    st.column = 0;
     return v;
 }
 

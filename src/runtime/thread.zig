@@ -155,6 +155,8 @@ pub const Thread = struct {
     out: *std.Io.Writer,
     /// Zig の関数から関数を呼んでいる入れ子の深さ（Thread.call で数える）
     native_depth: u32 = 0,
+    /// reader macro を呼んでいる間の、外側の read の ValueBuilder（recursive-p の read が #n= の表を共有する。Phase 24）
+    read_builder: ?*@import("../reader/value_builder.zig").ValueBuilder = null,
     /// 動的束縛のスタック（§6.5）
     bindings: []Binding,
     binding_depth: usize = 0,

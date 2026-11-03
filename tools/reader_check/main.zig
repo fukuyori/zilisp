@@ -27,6 +27,11 @@ const NullBuilder = struct {
     pub fn listPush(_: *NullBuilder, _: *void, _: void) reader.Error!void {}
     pub fn listEnd(_: *NullBuilder, _: *void, _: ?void) reader.Error!void {}
     pub fn vectorEnd(_: *NullBuilder, _: *void) reader.Error!void {}
+    // #. と #n= #n#（Phase 24）：構文として読めるかだけを確かめる
+    pub fn readEval(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: void) reader.Error!void {}
+    pub fn labelDefine(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: usize) reader.Error!void {}
+    pub fn labelFinish(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: usize, _: void, _: void) reader.Error!void {}
+    pub fn labelRef(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: usize) reader.Error!void {}
 };
 
 pub fn main(init: std.process.Init) !u8 {

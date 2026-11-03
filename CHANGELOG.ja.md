@@ -65,6 +65,16 @@
   `format` の `~A`・`~S`・REPL が印字する値に効く。`write`・`write-to-string` は、すべてのキーワードを受け取る。印字と
   読み取りの変数の初期値は SBCL 2.6.7 と同じ（`*print-pretty*` は pretty printer まで NIL）。言語試験 `printer.lisp`
   （SBCL 2.6.7 と同じ出力）
+- Phase 24（P24b）：pretty printer 以外のすべての指示子の `format`（SBCL 2.6.7 と同じ）：`~A ~S ~W ~C`、`~D ~B ~O ~X ~R ~P`、
+  `~F ~E ~G ~$`（SBCL の `flonum-to-string` を移植したので丸めも同じ）、`~% ~& ~| ~~ ~T`、`~* ~? ~( ~) ~[ ~; ~] ~{ ~} ~^`、
+  `~< ~>` の左右揃え、`~/名前/`。指示子の引数（`v`・`#`・`'文字`）と修飾子。`formatter` と関数の制御。教材のブロックの一致は
+  467 から 478 に。言語試験 `format.lisp`
+- Phase 24（P24c）：Reader の拡張。readtable（`*readtable*`・`copy-readtable`・`readtablep`・`readtable-case` とその `setf`）、
+  ユーザー定義の reader macro（`set-macro-character`・`get-macro-character`・`make-dispatch-macro-character`・
+  `set-dispatch-macro-character`・`get-dispatch-macro-character`・`set-syntax-from-char`・`read-delimited-list`）、
+  `*read-eval*` に従う `#.`、`#n=` と `#n#`（循環も）、読み取りと印字の `readtable-case`、すべての read に効く
+  `*read-base*`・`*read-default-float-format*`・`*read-suppress*`、`with-standard-io-syntax`。ネイティブのプログラムは
+  循環する定数を保つ。言語試験 `readtable.lisp`
 
 ### Fixed
 - 基数 8 と 32 で印字する bignum の桁が誤っていた（Zig 0.17.0 の `toStringAlloc`。2 進の桁から作るようにした）

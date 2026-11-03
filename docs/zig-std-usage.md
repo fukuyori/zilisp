@@ -29,6 +29,8 @@ When Zig is updated, redo these checks (`docs/version-update-checklist.md` §3).
 | Big integers | `std.math.big.int.Managed` (`initSet`, `add`, `toConst`). `Mutable` and `Const` also exist | `probe.zig` | The design that keeps the limb array on the managed heap (detailed design §1.3) is realized by specifying the limbs of `Mutable` / `Const` (details to be checked in Phase 20) |
 | Hash functions | `std.hash.Wyhash.hash(seed, bytes)`, `std.hash.Crc32.hash(bytes)` | `probe.zig` | |
 | UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Used at the Windows API boundary |
+| Unicode character classes and case | **Not in std** (`std.unicode` only converts encodings; `std.ascii` handles ASCII in u8 only). Confirmed 2026-11-03 | Public functions of `lib/std/unicode.zig`; `lib/std/ascii.zig` lines 104 and 195 | Phase 21.5 generates tables from the UCD (`tools/gen_unicode/main.zig`, `src/unicode/`) |
+| Formatting Zig source (the same as zig fmt) | `std.zig.Ast.parse(gpa, source_z, .{})` builds the tree (check `tree.errors`), then `tree.renderAlloc(gpa)` | `lib/std/zig/Ast.zig` lines 149 and 220 | Used to write the generated tables in the same form as `zig fmt` (`tools/gen_unicode/main.zig`) |
 | Path of the executable | `std.process.executablePath(io, buf)`, `std.process.executablePathAlloc(io, gpa)` | `lib/std/process.zig` lines 742 and 769 | |
 | Child processes | `std.process.Child` | `lib/std/process.zig` line 19 | Usage to be checked in Phase 12 (invoking `zig`) |
 | Dynamic libraries | `std.DynLib` (`lib/std/dynamic_library.zig`) | `lib/std/dynamic_library.zig` line 14 | Usage to be checked in Phase 39 |

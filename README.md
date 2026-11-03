@@ -53,7 +53,8 @@ Implemented after 0.2.0 (in `main`, not yet released):
   `equalp` and `equalp` hash tables
 - Sequence functions (`find`, `position`, `remove-if`, `substitute`, `sort`, `subseq`, `search`,
   `concatenate`, `map`, `coerce`, ...), list and set functions (`member`, `assoc`, `union`, `pushnew`, ...),
-  and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...)
+  and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...); character classes
+  and case follow Unicode 15.0.0, as in SBCL 2.6.7
 
 Not yet implemented (planned for later releases): the full `format`, complex numbers, streams and files, packages
 (`defpackage`, `in-package`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
@@ -149,3 +150,6 @@ Changes are listed in [CHANGELOG.md](CHANGELOG.md) ([日本語](CHANGELOG.ja.md)
 ## License
 
 [MIT](LICENSE) — Copyright (c) 2026 fukuyori
+
+The character tables are generated from the Unicode Character Database (`data/unicode/`), which is distributed under the
+[Unicode License v3](data/unicode/LICENSE.txt). The distribution packages include it as `LICENSE-UNICODE.txt`.

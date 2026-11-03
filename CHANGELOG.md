@@ -35,6 +35,13 @@
   `iteration-cases.lisp` (matches natively too). No iteration curriculum block (Level 6) fails only on Zilisp any more. Matching
   curriculum blocks went from 244 to 347
 - English versions of the detailed design (`docs/Zilisp_Detailed_Design_v0.2.md`) and of the Zig 0.17.0 notes (`docs/zig-std-usage.md`; the Japanese version moves to `docs/zig-std-usage.ja.md`)
+- Phase 21.5: Unicode 15.0.0 (the version used by SBCL 2.6.7) for the character classes and case of `alpha-char-p`,
+  `alphanumericp`, `upper-case-p`, `lower-case-p`, `both-case-p`, `char-upcase`, `char-downcase`, `digit-char-p`,
+  `char-equal`, `char-lessp`, the string case and comparison functions, `parse-integer` and `equalp`; the reader converts
+  non-ASCII lowercase letters to uppercase (`λx` reads as `ΛX`) and the printer puts such names in bars. The tables are
+  generated from the bundled UCD files (`data/unicode/`, Unicode License v3; `zig build gen-unicode`) and committed in
+  `src/unicode/tables.zig`; `zig build test` checks them and compares every code point with SBCL 2.6.7. The distribution
+  packages include the Unicode license as `LICENSE-UNICODE.txt`. Startup time 8.82 ms (ReleaseFast, `--eval nil`)
 
 ### Fixed
 - Codex review (Phase 21), 9 issues: `adjust-array` with `:fill-pointer` on an array without one did not signal an error

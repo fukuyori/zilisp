@@ -132,18 +132,20 @@ pub fn build(b: *std.Build) void {
     const extract_step = b.step("extract-samples", "Extract Lisp code blocks from the curriculum Markdown");
     extract_step.dependOn(&run_extract.step);
 
-    // 教材のブロックを Reader で読み、SBCL の結果と比べる：zig build reader-check -- .work/samples
-    const reader_mod = b.createModule(.{
-        .root_source_file = b.path("src/reader/reader.zig"),
+    // 処理系の本体を道具から使うためのモジュール（src/ を根にする。Reader は src/unicode/ の表も使う）
+    const zilisp_lib_host = b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
         .target = b.graph.host,
     });
+
+    // 教材のブロックを Reader で読み、SBCL の結果と比べる：zig build reader-check -- .work/samples
     const reader_check_exe = b.addExecutable(.{
         .name = "zilisp-reader-check",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tools/reader_check/main.zig"),
             .target = b.graph.host,
             .optimize = .Debug,
-            .imports = &.{.{ .name = "reader", .module = reader_mod }},
+            .imports = &.{.{ .name = "zilisp", .module = zilisp_lib_host }},
         }),
     });
     const run_reader_check = b.addRunArtifact(reader_check_exe);
@@ -152,12 +154,32 @@ pub fn build(b: *std.Build) void {
     const reader_check_step = b.step("reader-check", "Read curriculum blocks with the Zilisp reader and compare with SBCL");
     reader_check_step.dependOn(&run_reader_check.step);
 
-    // 道具の単体テストも test に含める
-    const zilisp_lib_host = b.createModule(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = b.graph.host,
+    // Unicode の文字の表（Phase 21.5。詳細設計 §11.2）：data/unicode/ の UCD から src/unicode/tables.zig を作る。
+    // 表はコミットしておく（ネイティブバックエンドが src/lib.zig を直接コンパイルするため、ビルドの途中で作る表は使えない）。
+    //   zig build gen-unicode    作り直す
+    //   zig build test           表が UCD から作ったものと同じかを確かめる（--check）
+    const gen_unicode_exe = b.addExecutable(.{
+        .name = "zilisp-gen-unicode",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/gen_unicode/main.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+        }),
     });
-    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tools/native_test/main.zig", "tools/eval_check/main.zig", "tests/bench/main.zig" }) |path| {
+    const ucd_args = [_][]const u8{ "data/unicode/UnicodeData.txt", "data/unicode/SpecialCasing.txt", "src/unicode/tables.zig" };
+    const run_gen_unicode = b.addRunArtifact(gen_unicode_exe);
+    run_gen_unicode.addArgs(&ucd_args);
+    run_gen_unicode.has_side_effects = true;
+    const gen_unicode_step = b.step("gen-unicode", "Generate src/unicode/tables.zig from the UCD in data/unicode");
+    gen_unicode_step.dependOn(&run_gen_unicode.step);
+    const check_unicode = b.addRunArtifact(gen_unicode_exe);
+    check_unicode.addArgs(&ucd_args);
+    check_unicode.addArg("--check");
+    check_unicode.has_side_effects = true;
+    test_step.dependOn(&check_unicode.step);
+
+    // 道具の単体テストも test に含める
+    for ([_][]const u8{ "tools/extract_samples/main.zig", "tools/lang_test/main.zig", "tools/native_test/main.zig", "tools/eval_check/main.zig", "tools/gen_unicode/main.zig", "tests/bench/main.zig" }) |path| {
         const t = b.addTest(.{ .root_module = b.createModule(.{
             .root_source_file = b.path(path),
             .target = b.graph.host,

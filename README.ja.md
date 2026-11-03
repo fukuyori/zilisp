@@ -46,7 +46,7 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - 多次元の配列・fill-pointer・adjustable な配列（`vector-push-extend`・`adjust-array`）、`equalp` と `equalp` のハッシュ表
 - 列の関数（`find`・`position`・`remove-if`・`substitute`・`sort`・`subseq`・`search`・`concatenate`・`map`・`coerce` など）、
   リスト・集合の関数（`member`・`assoc`・`union`・`pushnew` など）、文字・文字列の関数（`char-upcase`・`string<`・
-  `string-trim`・`parse-integer` など）
+  `string-trim`・`parse-integer` など）。文字の種類と大文字・小文字は、SBCL 2.6.7 と同じく Unicode 15.0.0 に従う
 
 未実装（後の版で実装する予定）：`format` の全体・
 複素数・ストリームとファイル・パッケージ（`defpackage`・`in-package`）・`defstruct`・CLOS・condition
@@ -139,3 +139,6 @@ zig build eval-check -Dsbcl=<sbcl のパス>
 ## ライセンス
 
 [MIT](LICENSE) — Copyright (c) 2026 fukuyori
+
+文字の表は Unicode 文字データベース（`data/unicode/`）から作っています。このデータは
+[Unicode License v3](data/unicode/LICENSE.txt) で配布されています。配布物には `LICENSE-UNICODE.txt` として入れています。

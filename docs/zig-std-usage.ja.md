@@ -29,6 +29,8 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | 多倍長整数 | `std.math.big.int.Managed`（`initSet`・`add`・`toConst`）。`Mutable`・`Const` もある | `probe.zig` | limb の配列を管理ヒープに置く設計（詳細設計 §1.3）は、`Mutable` / `Const` の limb 指定で実現する（Phase 20 で詳細を確認） |
 | ハッシュ関数 | `std.hash.Wyhash.hash(seed, bytes)`、`std.hash.Crc32.hash(bytes)` | `probe.zig` | |
 | UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Windows API の境界で使う |
+| Unicode の文字の種類・大文字小文字 | **std にはない**（`std.unicode` は符号化の変換だけ、`std.ascii` は u8 の ASCII だけ）。2026-11-03 に確認 | `lib/std/unicode.zig` の公開関数、`lib/std/ascii.zig` 104・195行目 | Phase 21.5 で UCD から表を生成する（`tools/gen_unicode/main.zig`、`src/unicode/`） |
+| Zig のソースの整形（zig fmt と同じ） | `std.zig.Ast.parse(gpa, source_z, .{})` で構文木を作り（`tree.errors` で誤りを確かめる）、`tree.renderAlloc(gpa)` | `lib/std/zig/Ast.zig` 149・220行目 | 生成した表を `zig fmt` と同じ形で書き出すのに使う（`tools/gen_unicode/main.zig`） |
 | 実行ファイルのパス | `std.process.executablePath(io, buf)`、`std.process.executablePathAlloc(io, gpa)` | `lib/std/process.zig` 742・769行目 | |
 | 子プロセス | `std.process.Child` | `lib/std/process.zig` 19行目 | 使い方は Phase 12（`zig` の呼び出し）で確認する |
 | 動的ライブラリ | `std.DynLib`（`lib/std/dynamic_library.zig`） | `lib/std/dynamic_library.zig` 14行目 | 使い方は Phase 39 で確認する |

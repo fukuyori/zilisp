@@ -32,6 +32,12 @@
   （GC stress でも実行）、言語試験 `iteration.lisp`（と gc-stress 版）・`iteration-cases.lisp`（ネイティブでも一致）。
   反復の教材（Level 6）は Zilisp だけがエラーのブロックが 0 に。教材のブロックの一致は 244 から 347 に
 - 詳細設計書の英語版（`docs/Zilisp_Detailed_Design_v0.2.md`）と、Zig 0.17.0 の照合結果の英語版（`docs/zig-std-usage.md`。日本語版は `docs/zig-std-usage.ja.md` に移した）
+- Phase 21.5：`alpha-char-p`・`alphanumericp`・`upper-case-p`・`lower-case-p`・`both-case-p`・`char-upcase`・`char-downcase`・
+  `digit-char-p`・`char-equal`・`char-lessp`、文字列の大文字・小文字と比較の関数、`parse-integer`、`equalp` の文字の種類と
+  大文字・小文字を、Unicode 15.0.0（SBCL 2.6.7 と同じ版）に従わせた。Reader は ASCII 以外の小文字も大文字にし（`λx` は `ΛX`）、
+  Printer はそのような名前を囲む。表は同梱した UCD のファイル（`data/unicode/`。Unicode License v3。`zig build gen-unicode`）から
+  作って `src/unicode/tables.zig` にコミットし、`zig build test` が、表が UCD と同じかと、全符号位置で SBCL 2.6.7 と同じかを
+  確かめる。配布物に Unicode のライセンスを `LICENSE-UNICODE.txt` として入れた。起動時間 8.82 ms（ReleaseFast、`--eval nil`）
 
 ### Fixed
 - Codex のレビュー（Phase 21）の指摘 9 件：fill-pointer のない配列に `:fill-pointer` を指定した `adjust-array` がエラーに

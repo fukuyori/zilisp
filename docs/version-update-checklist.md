@@ -44,3 +44,19 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
 | `docs/Zilisp_企画・基本設計書_v*.md` | Zig のバージョンに触れている箇所 |
 
 確認：`zig build test`、`zig build bench`、`scripts/build-release.ps1` がすべて成功すること。
+
+## 4. Unicode の版を変更するとき
+
+文字の種類と大文字・小文字の表（Phase 21.5。詳細設計 §11.2）は、比べる SBCL と同じ版の UCD から作る。
+
+| ファイル | 更新する箇所 |
+|---|---|
+| `data/unicode/UnicodeData.txt`・`data/unicode/SpecialCasing.txt` | 新しい版の UCD のファイル（unicode.org の `Public/<版>/ucd/`）。比べる SBCL の `tools-for-build/` のものと同じであることを確かめる |
+| `data/unicode/LICENSE.txt` | unicode.org の `license.txt` が変わっていれば更新する |
+| `tools/gen_unicode/main.zig` | 出力の `unicode_version` |
+| `src/unicode/tables.zig` | `zig build gen-unicode` で作り直す（手で編集しない） |
+| `src/unicode/testdata/sbcl-<版>-chars.txt` | 比べる SBCL で `sbcl --script tools/gen_unicode/sbcl-chars.lisp` を実行して作り直す（ファイル名を変えたら `src/unicode/unicode.zig` の試験も） |
+| `tests/language/eval/unicode.expected`・`tests/differential/impl-dependent.toml` | 結果が変わった箇所 |
+| `README.md`・`README.ja.md`、`CHANGELOG.md`・`CHANGELOG.ja.md`、詳細設計（英日） | Unicode の版 |
+
+確認：`zig build test`（表が UCD と同じか、全符号位置で SBCL と同じか）、`zig build lang-test`、`zig build native-test`。

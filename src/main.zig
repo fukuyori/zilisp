@@ -152,6 +152,7 @@ test {
     _ = version;
     _ = args_mod;
     _ = @import("reader/reader.zig");
+    _ = @import("unicode/unicode.zig");
     _ = @import("values/value.zig");
     _ = @import("runtime/heap.zig");
     _ = @import("runtime/runtime.zig");

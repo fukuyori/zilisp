@@ -9,8 +9,8 @@
 //!   string-capitalize・nstring-upcase・nstring-downcase・nstring-capitalize、string-trim・string-left-trim・
 //!   string-right-trim、make-string、parse-integer
 //!
-//! 大文字・小文字と、文字の種類（英字・数字）は ASCII の文字だけを対象にする（Reader の変換と同じ。
-//! SBCL 2.6.7 は Unicode の文字も対象にする：tests/differential/impl-dependent.toml の string-case-non-ascii）。
+//! 大文字・小文字と、文字の種類（英字・数字）は Unicode 15.0.0 に従う（Phase 21.5。src/unicode/unicode.zig。
+//! SBCL 2.6.7 と同じ。大文字でも小文字でもない4文字だけ違う：tests/differential/impl-dependent.toml）。
 //! 文字列の引数は、単純でない文字列（fill-pointer のあるものなど）も受け取り、有効な部分を使う。
 
 const std = @import("std");
@@ -21,6 +21,7 @@ const keyargs = @import("keyargs.zig");
 const arrays = @import("arrays.zig");
 const numbers = @import("numbers.zig");
 const most_positive_fixnum = @import("../values/value.zig").most_positive_fixnum;
+const unicode = @import("../unicode/unicode.zig");
 
 fn cl(th: *Thread, name: []const u8) Value {
     return (th.rt.findSymbol(th.rt.cl, name) orelse unreachable).symbol;
@@ -31,38 +32,21 @@ fn isSymbol(v: Value) bool {
 }
 
 // ---------------------------------------------------------------------------
-// 文字の種類（ASCII）
+// 文字の種類（Unicode 15.0.0。src/unicode/unicode.zig）
 
-fn isUpper(c: u21) bool {
-    return c >= 'A' and c <= 'Z';
-}
-fn isLower(c: u21) bool {
-    return c >= 'a' and c <= 'z';
-}
-fn isAlpha(c: u21) bool {
-    return isUpper(c) or isLower(c);
-}
-fn isDigit10(c: u21) bool {
-    return c >= '0' and c <= '9';
-}
-fn isAlnum(c: u21) bool {
-    return isAlpha(c) or isDigit10(c);
-}
-pub fn upcase(c: u21) u21 {
-    return if (isLower(c)) c - ('a' - 'A') else c;
-}
-pub fn downcase(c: u21) u21 {
-    return if (isUpper(c)) c + ('a' - 'A') else c;
-}
+const isUpper = unicode.isUpper;
+const isLower = unicode.isLower;
+const hasCase = unicode.hasCase;
+const isAlpha = unicode.isAlpha;
+const isAlnum = unicode.isAlnum;
+pub const upcase = unicode.upcase;
+pub const downcase = unicode.downcase;
 fn isWhitespace(c: u21) bool {
     return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C or c == 0x0B;
 }
 
 /// 数字の重み（基数 radix の数字でなければ null）
-fn digitWeight(c: u21, radix: u32) ?u32 {
-    const w: u32 = if (isDigit10(c)) c - '0' else if (isUpper(c)) c - 'A' + 10 else if (isLower(c)) c - 'a' + 10 else return null;
-    return if (w < radix) w else null;
-}
+const digitWeight = unicode.digitWeight;
 
 fn charArg(th: *Thread, v: Value) ?u21 {
     if (v.isChar()) return v.asChar();
@@ -144,7 +128,7 @@ fn isStandard(c: u21) bool {
 
 pub const upperCaseP = charPredicate(isUpper);
 pub const lowerCaseP = charPredicate(isLower);
-pub const bothCaseP = charPredicate(isAlpha);
+pub const bothCaseP = charPredicate(hasCase);
 pub const alphaCharP = charPredicate(isAlpha);
 pub const alphanumericp = charPredicate(isAlnum);
 pub const graphicCharP = charPredicate(isGraphic);

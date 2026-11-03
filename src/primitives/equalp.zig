@@ -4,7 +4,7 @@
 //!   - 配列は次元が同じで、要素がすべて equalp（ベクタは fill-pointer までの有効な部分を比べる。文字列も同じ規則）
 //!   - ハッシュ表は、比較の種類と項目の数が同じで、一方の各キーがもう一方にあり、値が equalp
 //!   - それ以外は eq
-//! 大文字・小文字の区別をなくすのは ASCII の文字だけ（string-upcase などと同じ。SBCL 2.6.7 は Unicode の文字も対象にする）。
+//! 大文字・小文字の区別は char-equal と同じ方法でなくす（char-downcase の値で比べる。Unicode 15.0.0：Phase 21.5）。
 
 const std = @import("std");
 const Value = @import("../values/value.zig").Value;
@@ -14,10 +14,9 @@ const numbers = @import("numbers.zig");
 const arrays = @import("arrays.zig");
 const hashtables = @import("hashtables.zig");
 
-/// 大文字・小文字を区別しないための文字（ASCII の大文字を小文字にする）
+/// 大文字・小文字を区別しないための文字（char-downcase の値。char-equal の文字は同じ値になる）
 pub fn foldChar(c: u21) u21 {
-    if (c >= 'A' and c <= 'Z') return c + ('a' - 'A');
-    return c;
+    return @import("../unicode/unicode.zig").downcase(c);
 }
 
 /// equalp。数の比較でメモリが足りなければ null（エラーを記録済み）

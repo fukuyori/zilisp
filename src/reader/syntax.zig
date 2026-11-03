@@ -26,12 +26,9 @@ pub fn syntaxType(cp: u21) SyntaxType {
     };
 }
 
-/// readtable-case が :upcase のときの変換。
-/// 標準の文字（ASCII）以外の大文字への変換は処理系依存であり（CLHS 13.1.4.3）、
-/// Zilisp は現時点では ASCII だけを変換する（SBCL は é → É のように変換する）。
-pub fn upcase(cp: u21) u21 {
-    return if (cp >= 'a' and cp <= 'z') cp - ('a' - 'A') else cp;
-}
+/// readtable-case が :upcase のときの変換（char-upcase と同じ。Unicode 15.0.0 に従う：Phase 21.5。
+/// SBCL 2.6.7 と同じく é → É、λ → Λ のように変換する）
+pub const upcase = @import("../unicode/unicode.zig").upcase;
 
 test "syntax types" {
     const std = @import("std");
@@ -42,5 +39,6 @@ test "syntax types" {
     try std.testing.expectEqual(SyntaxType.constituent, syntaxType(0x3000));
     try std.testing.expectEqual(SyntaxType.invalid, syntaxType(0x7F));
     try std.testing.expectEqual(@as(u21, 'A'), upcase('a'));
-    try std.testing.expectEqual(@as(u21, 'λ'), upcase('λ'));
+    try std.testing.expectEqual(@as(u21, 'Λ'), upcase('λ'));
+    try std.testing.expectEqual(@as(u21, 'あ'), upcase('あ'));
 }

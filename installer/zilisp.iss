@@ -57,6 +57,8 @@ Name: "addtopath"; Description: "PATH に Zilisp の bin ディレクトリを�
 [Files]
 Source: "{#SourceDir}\zilisp.exe"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "{#RepoDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+; 文字の表は Unicode の UCD から作るので、Unicode License v3 の表示を付ける
+Source: "{#RepoDir}\data\unicode\LICENSE.txt"; DestDir: "{app}"; DestName: "LICENSE-UNICODE.txt"; Flags: ignoreversion
 Source: "{#RepoDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\README.ja.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion

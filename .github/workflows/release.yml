@@ -73,6 +73,7 @@ jobs:
           mkdir -p "pkg/$dir/bin"
           cp out/bin/zilisp "pkg/$dir/bin/"
           cp LICENSE README.md README.ja.md CHANGELOG.md CHANGELOG.ja.md "pkg/$dir/"
+          cp data/unicode/LICENSE.txt "pkg/$dir/LICENSE-UNICODE.txt"
           tar -C pkg -czf "$dir.tar.gz" "$dir"
       - uses: actions/upload-artifact@v4
         with:

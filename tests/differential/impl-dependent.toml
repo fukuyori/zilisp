@@ -2,12 +2,28 @@
 # （詳細設計 §13.1）。根拠となる CLHS の節を必ず書く。
 
 [[items]]
-id = "reader-upcase-non-ascii"
-description = "readtable-case が :upcase のとき、ASCII 以外の文字（é、λ など）を大文字に変換するか"
-sbcl = "変換する（é → É、λ → Λ）"
-zilisp = "変換しない（Phase 03 時点。src/reader/syntax.zig の upcase）"
-clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）、23.1.2 Effect of Readtable Case on the Lisp Reader"
-since = "Phase 03"
+id = "char-case-titlecase"
+description = "大文字でも小文字でもないのに、大文字と小文字の対応を持つ4文字（U+01C5 ǅ、U+01C8 ǈ、U+01CB ǋ、U+01F2 ǲ。タイトルケース）の both-case-p・char-upcase・char-downcase・char-equal"
+sbcl = "大文字・小文字のある文字とする（both-case-p は T、(char-upcase ǅ) は Ǆ、(char-downcase ǅ) は ǆ。upper-case-p と lower-case-p は NIL。(char-equal ǅ ǆ) は T だが (char-equal ǆ ǅ) は NIL。(equalp #\ǅ #\ǆ) は T）"
+zilisp = "大文字・小文字のない文字とする（both-case-p は NIL、char-upcase・char-downcase はそのまま返す。Phase 21.5）。ほかの文字（全符号位置）は SBCL 2.6.7 と同じ（src/unicode/unicode.zig の試験）"
+clhs = "13.1.4.3 Characters With Case（大文字・小文字のある文字は大文字か小文字のどちらかで、反対の文字と1対1に対応する）、char-upcase（小文字でなければそのまま返す）"
+since = "Phase 21.5"
+
+[[items]]
+id = "reader-number-non-ascii-digits"
+description = "ASCII 以外の10進数字（U+0661 ١ など）だけからなるトークンを数として読むか"
+sbcl = "読む（(read-from-string \"١٢\") は 12）"
+zilisp = "読まない（シンボルになる）。digit-char-p と parse-integer は SBCL 2.6.7 と同じく数字とみなす（Phase 21.5）"
+clhs = "2.3.1 Numbers as Tokens、2.1.4.2 Constituent Traits（※標準の文字以外の構成文字の性質は処理系に任されると推測される。原文では未確認）"
+since = "Phase 21.5"
+
+[[items]]
+id = "reader-symbol-normalization"
+description = "シンボル名を読むときに Unicode の正規化（NFKC）を行うか"
+sbcl = "行う（readtable の normalization。例：ǅ は NFKC で D と ž の2文字になり、大文字にして DŽ。正規化で変わる文字を含む名前は |ǅ| のように囲んで印字する）"
+zilisp = "行わない（大文字への変換だけ。ǅ はそのまま読み、囲まずに印字する。Phase 21.5）"
+clhs = "2.1.4 Character Syntax Types、23.1.2 Effect of Readtable Case on the Lisp Reader（正規化は CLHS にない SBCL の拡張）"
+since = "Phase 21.5"
 
 [[items]]
 id = "reader-character-unicode-names"
@@ -32,14 +48,6 @@ sbcl = ":ANSI-CL、:SBCL、:WIN32 など"
 zilisp = ":ZILISP、:COMMON-LISP、:64-BIT、:IEEE-FLOATING-POINT、エンディアン、CPU（:X86-64 / :ARM64）、OS（:WINDOWS と :WIN32、:UNIX と :LINUX / :DARWIN）。完全な ANSI 準拠を表明しないため :ANSI-CL は入れない（src/reader/features.zig）"
 clhs = "1.5.2.1 Use of Implementation-Defined Language Features、*features*"
 since = "Phase 04"
-
-[[items]]
-id = "printer-non-ascii-symbol-escape"
-description = "ASCII 以外の小文字を含むシンボル名の印字（é など）"
-sbcl = "|é| のように囲む（SBCL の Reader は é を大文字に変換するため）"
-zilisp = "囲まない（Zilisp の Reader は ASCII だけを大文字に変換するので、é のまま読み戻せる）"
-clhs = "22.1.3.3.1 Package Prefixes for Symbols、13.1.4.3 Characters With Case"
-since = "Phase 05"
 
 [[items]]
 id = "printer-character-names"
@@ -104,22 +112,6 @@ sbcl = "C の数学ライブラリの結果（例：(exp 1d0) → 2.718281828459
 zilisp = "Zig の実装の結果（例：(exp 1d0) → 2.7182818284590455d0。誤差は 1 ulp 未満）"
 clhs = "※超越関数の浮動小数の結果の精度の規定はないと推測される（CLHS の原文では未確認）"
 since = "Phase 20"
-
-[[items]]
-id = "string-case-non-ascii"
-description = "string-upcase・string-downcase・string-capitalize・char-upcase・char-downcase が ASCII 以外の文字を変換するか。char-equal・string-equal・equalp が ASCII 以外の文字の大文字・小文字を区別しないか"
-sbcl = "変換する（例：(char-upcase (code-char 224)) は (code-char 192)。(char-equal (code-char 192) (code-char 224)) は T）"
-zilisp = "変換しない・区別する（Phase 19・21。Reader と同じ）"
-clhs = "13.1.4.3 Characters With Case（標準の文字以外の大文字小文字は処理系定義）"
-since = "Phase 19"
-
-[[items]]
-id = "char-class-non-ascii"
-description = "alpha-char-p・alphanumericp・upper-case-p・lower-case-p・both-case-p・digit-char-p が ASCII 以外の文字を英字・数字とみなすか"
-sbcl = "みなす（例：(alpha-char-p (code-char 12354)) は T、(digit-char-p (code-char 65297)) は 1、(upper-case-p (code-char 192)) は T）"
-zilisp = "みなさない（ASCII の英字・数字だけ。Phase 21）"
-clhs = "13.1.4 Character Categories（※標準の文字以外の分類は処理系に任されると推測される。原文では未確認）"
-since = "Phase 21"
 
 [[items]]
 id = "print-subnormal-float"

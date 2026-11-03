@@ -852,8 +852,12 @@ test "symbols (SBCL 2.6.7)" {
         .{ .input = "^", .expect = "sym:^" },
         .{ .input = "a#b", .expect = "sym:A#B" },
         .{ .input = "日本語", .expect = "sym:日本語" },
-        // ASCII 以外の大文字への変換は処理系依存。Zilisp は変換しない（SBCL は É にする）
-        .{ .input = "é", .expect = "sym:é" },
+        // ASCII 以外の文字も char-upcase で大文字にする（Unicode 15.0.0。SBCL 2.6.7 と同じ：Phase 21.5）
+        .{ .input = "é", .expect = "sym:É" },
+        .{ .input = "λx", .expect = "sym:ΛX" },
+        .{ .input = "\\λ", .expect = "sym:λ" },
+        .{ .input = "ǅ", .expect = "sym:ǅ" },
+        .{ .input = "straße", .expect = "sym:STRAßE" },
         .{ .input = "\\1", .expect = "sym:1" },
         .{ .input = "|42|", .expect = "sym:42" },
     }, .{});
@@ -1062,7 +1066,7 @@ test "sequence of data with locations" {
     var b: TestBuilder = .{ .arena = arena_state.allocator() };
     var r = Reader(TestBuilder).init(testing.allocator, &src, &b, .{});
     defer r.deinit();
-    const expected = [_][]const u8{ "sym:A", "sym:B", "sf:1.5", "int:42@10", "sym:λ" };
+    const expected = [_][]const u8{ "sym:A", "sym:B", "sf:1.5", "int:42@10", "sym:Λ" };
     for (expected) |e| try testing.expectEqualStrings(e, (try r.read()).?);
     try testing.expectEqual(@as(?[]const u8, null), try r.read());
     const locs = [_]SourceLoc{

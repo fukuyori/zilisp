@@ -10,7 +10,7 @@
 
 const std = @import("std");
 const Io = std.Io;
-const reader = @import("reader");
+const reader = @import("zilisp").reader;
 
 const NullBuilder = struct {
     pub const Datum = void;

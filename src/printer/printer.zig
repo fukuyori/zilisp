@@ -312,7 +312,7 @@ fn needsEscape(name: []const u8) bool {
     while (it.nextCodepoint()) |cp| {
         if (cp != '.') all_dots = false;
         if (cp > 0x7F) all_ascii = false;
-        // 読み取りで大文字に変わる文字（Zilisp の Reader は ASCII だけを変換する）
+        // 読み取りで大文字に変わる文字（Reader は char-upcase で変換する。Unicode の小文字も含む）
         if (syntax.upcase(cp) != cp) return true;
         switch (syntax.syntaxType(cp)) {
             .constituent => {},

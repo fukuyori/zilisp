@@ -1,0 +1,78 @@
+;; パス名（Phase 23）：読み方・namestring・merge-pathnames・ファイルの操作。期待値は SBCL 2.6.7 と同じ出力。
+;; 作業ディレクトリはリポジトリの直下。作るファイルは .zig-cache/lang-tmp/ の下。絶対パスは、作業ディレクトリからの
+;; 相対（enough-namestring）にして出力する
+(setq *print-pretty* nil)
+(defun parts (p) (let ((p (pathname p))) (list (pathname-device p) (pathname-directory p) (pathname-name p) (pathname-type p) (pathname-version p))))
+(defun rel (p) (if p (enough-namestring p *default-pathname-defaults*) p))
+
+;; 読み方
+(print (parts "foo.txt"))
+(print (parts "/tmp/a/b.lisp"))
+(print (parts "dir/sub/"))
+(print (parts "../x"))
+(print (parts ".emacs"))
+(print (parts "a."))
+(print (parts "*.lisp"))
+(print (parts "/tmp/**/*.txt"))
+(print (parts ""))
+(print (parts "./x"))
+(print (parts "a/./b"))
+(print (parts "a//b"))
+(print (parts "*.*"))
+(print (parts "/"))
+(print (parts "x.tar.gz"))
+(print (list #P"/tmp/a.txt" (format nil "~s" #P"/tmp/a.txt") (format nil "~a ~s" #P"/x/y.z" #P"/x/y.z")))
+
+;; namestring・make-pathname
+(print (namestring (make-pathname :directory '(:absolute "tmp" "x") :name "a" :type "txt")))
+(print (namestring (make-pathname :directory '(:relative "x") :name "a")))
+(print (namestring (make-pathname :name "a" :type "txt")))
+(print (make-pathname :name "a" :type "txt"))
+(print (namestring (make-pathname :directory '(:relative :up "a") :name "b")))
+(print (namestring (make-pathname :directory '(:absolute :wild-inferiors) :name :wild :type "txt")))
+(print (namestring (make-pathname :defaults "/tmp/a.txt" :type "bak")))
+(print (namestring (make-pathname :name "a" :type nil :defaults "/x/y.z")))
+(print (pathname-directory (make-pathname :directory "foo")))
+(print (pathname-directory (make-pathname :directory :wild)))
+(print (list (file-namestring "/tmp/a/b.txt") (directory-namestring "/tmp/a/b.txt") (file-namestring "/tmp/") (directory-namestring "b.txt")))
+(print (list (enough-namestring "/tmp/a/b.txt" "/tmp/") (enough-namestring "/tmp/a/b.txt" "/other/")))
+(print (list (pathname-name "/tmp/a/b.txt") (pathnamep #P"x") (pathnamep "x") (namestring "x/y.z")))
+(print (multiple-value-list (parse-namestring "a/b.c")))
+(print (namestring (pathname "/tmp/a b.txt")))
+
+;; merge-pathnames
+(print (namestring (merge-pathnames "a.txt" "/tmp/dir/")))
+(print (namestring (merge-pathnames "a.txt" "/tmp/dir/x.lisp")))
+(print (namestring (merge-pathnames "sub/a" "/tmp/dir/")))
+(print (namestring (merge-pathnames "/abs/a" "/tmp/dir/")))
+(print (namestring (merge-pathnames (make-pathname :type "bak") "/tmp/x.txt")))
+(print (namestring (merge-pathnames "../b.txt" "/tmp/dir/")))
+(print (merge-pathnames "a" "b.lisp"))
+(print (pathname-version (merge-pathnames "a" "b.lisp")))
+
+;; 比較
+(print (list (equal #P"/tmp/a" #P"/tmp/a") (equal (pathname "a.txt") (pathname "A.TXT")) (equalp (pathname "a.txt") (pathname "A.TXT"))))
+(print (let ((h (make-hash-table :test 'equal))) (setf (gethash #P"/a/b" h) 1) (gethash (pathname "/a/b") h)))
+(print (list (wild-pathname-p #P"*.lisp") (wild-pathname-p #P"/tmp/*/a") (wild-pathname-p #P"/tmp/a") (pathname-match-p "a.txt" "*.txt")))
+
+;; ファイルの操作
+(defvar *dir* ".zig-cache/lang-tmp/pathnames/")
+(ensure-directories-exist *dir*)
+(defun f (name) (concatenate 'string *dir* name))
+(dolist (n '("a.lisp" "b.lisp" "c.txt" "ren.txt" "ren2.txt" "sub/d.txt")) (when (probe-file (f n)) (delete-file (f n))))
+;; 2つ目の値（作ったか）は、前の実行でディレクトリが残っていると変わるので出さない（CL にディレクトリを消す関数はない）
+(print (ensure-directories-exist (f "sub/x.txt")))
+(dolist (n '("a.lisp" "b.lisp" "c.txt" "sub/d.txt")) (with-open-file (s (f n) :direction :output) (write-string n s)))
+(print (mapcar #'rel (directory (f "*.lisp"))))
+(print (mapcar #'rel (directory (f "*/"))))
+(print (mapcar #'rel (directory (f "**/*.txt"))))
+(print (directory (f "nope/*.x")))
+(print (list (rel (probe-file (f "a.lisp"))) (probe-file (f "nope")) (rel (probe-file *dir*)) (rel (truename (f "c.txt")))))
+(print (integerp (file-write-date (f "a.lisp"))))
+(with-open-file (s (f "ren.txt") :direction :output) (write-string "r" s))
+(print (mapcar #'rel (multiple-value-list (rename-file (f "ren.txt") "ren2"))))
+(print (list (probe-file (f "ren.txt")) (delete-file (f "ren2.txt")) (probe-file (f "ren2.txt"))))
+(print (with-open-file (s (make-pathname :name "a" :type "lisp" :defaults *dir*)) (read-line s)))
+(print (load (make-pathname :name "nope" :type "lisp" :defaults *dir*) :if-does-not-exist nil))
+(dolist (n '("a.lisp" "b.lisp" "c.txt" "sub/d.txt")) (delete-file (f n)))
+(print (directory (f "*.lisp")))

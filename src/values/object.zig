@@ -30,6 +30,10 @@ pub const ObjKind = enum(u8) {
     array,
     /// GC が中を走査しない数の配列（ハッシュ表のバケットの表・鎖・ハッシュ値。Phase 21.6）。Lisp からは見えない
     raw_vector,
+    /// ストリーム（Phase 23。src/primitives/streams.zig）
+    stream,
+    /// パス名（Phase 23。src/primitives/pathnames.zig）
+    pathname,
     _,
 };
 
@@ -171,6 +175,37 @@ pub const Package = extern struct {
 pub const ValueCell = extern struct {
     header: ObjHeader,
     value: Value,
+};
+
+/// ストリーム（Phase 23）。header.aux は種類（StreamKind）、header.flags は StreamFlags。
+/// 入出力のバッファやファイルのハンドルは Zig の側の状態（streams.zig の StreamState）に置き、state がそれを指す（なければ 0）。
+/// Lisp の値は ref に置く（GC が走査する）：synonym はシンボル、two-way は (入力 . 出力)、broadcast は出力のリスト、
+/// ファイルはパス名
+pub const Stream = extern struct {
+    header: ObjHeader,
+    ref: Value,
+    state: usize,
+};
+
+pub const StreamKind = enum(u16) { file, string_input, string_output, stdin, stdout, stderr, synonym, two_way, broadcast };
+
+pub const StreamFlags = struct {
+    pub const input: u8 = 1 << 0;
+    pub const output: u8 = 1 << 1;
+    /// 要素が (unsigned-byte 8)
+    pub const binary: u8 = 1 << 2;
+    pub const open: u8 = 1 << 3;
+};
+
+/// パス名（Phase 23。CLHS 19 章）。各欄は Lisp の値（NIL、文字列、:wild、:newest、ディレクトリのリストなど）
+pub const Pathname = extern struct {
+    header: ObjHeader,
+    host: Value,
+    device: Value,
+    directory: Value,
+    name: Value,
+    type: Value,
+    version: Value,
 };
 
 /// GC が中を走査しない数の配列。header.len は要素の数、header.aux は要素のバイト数（4 か 8）

@@ -1,5 +1,4 @@
-//! funcall・apply、印字（print・prin1・terpri）。
-//! 印字の出力先は th.out（*standard-output* の代わり。ストリームは Phase 23 で実装する）。
+//! funcall・apply、format（最小版）。印字の関数は streams.zig（Phase 23）。
 
 const std = @import("std");
 const Value = @import("../values/value.zig").Value;
@@ -39,57 +38,29 @@ fn writeFailed(th: *Thread) Value {
     return th.signal(.simple_error, "出力に失敗しました", Value.unbound, Value.unbound);
 }
 
-pub fn prin1(th: *Thread, args: []const Value) Value {
-    printer.prin1(th.rt, th.out, args[0]) catch return writeFailed(th);
-    th.line_start = false;
-    return args[0];
-}
-
-/// print：改行、prin1、空白（CLHS print）
-pub fn print(th: *Thread, args: []const Value) Value {
-    th.out.writeByte('\n') catch return writeFailed(th);
-    printer.prin1(th.rt, th.out, args[0]) catch return writeFailed(th);
-    th.out.writeByte(' ') catch return writeFailed(th);
-    th.line_start = false;
-    return args[0];
-}
-
-pub fn terpri(th: *Thread, args: []const Value) Value {
-    _ = args;
-    th.out.writeByte('\n') catch return writeFailed(th);
-    th.line_start = true;
-    return Value.nil;
-}
-
-/// (princ x)（Phase 19）
-pub fn princ(th: *Thread, args: []const Value) Value {
-    var buf: std.Io.Writer.Allocating = .init(th.rt.gpa);
-    defer buf.deinit();
-    printer.princ(th.rt, &buf.writer, args[0]) catch return writeFailed(th);
-    const text = buf.written();
-    th.out.writeAll(text) catch return writeFailed(th);
-    if (text.len > 0) th.line_start = text[text.len - 1] == '\n';
-    return args[0];
-}
-
 fn isString(v: Value) bool {
     return v.isOther() and Runtime.kindOf(v) == .string;
 }
 
 /// (format 出力先 制御文字列 引数...)（Phase 19 の最小版。全体は Phase 24）。
-/// 出力先は T（標準出力）と NIL（文字列を返す）。指示子は ~A ~S ~D ~% ~& ~~ と、~ に続く改行（後ろの空白を読み飛ばす）。
+/// 出力先は T（*standard-output*）、NIL（文字列を返す）、ストリーム（Phase 23）。指示子は ~A ~S ~D ~% ~& ~~ と、~ に続く改行（後ろの空白を読み飛ばす）。
 /// それ以外の指示子・引数（~5D、~:A など）は明示的なエラーにする（基本設計 §3.1：黙って別の値を返さない）
 pub fn format(th: *Thread, args: []const Value) Value {
     const dest = args[0];
     const control = args[1];
     if (!isString(control)) return th.typeError(control, (th.rt.findSymbol(th.rt.cl, "STRING") orelse unreachable).symbol);
-    if (dest != Value.nil and dest != th.rt.t)
-        return th.signal(.unimplemented, "FORMAT の出力先に T・NIL 以外を使うのは未実装です（ストリームは Phase 23 で実装予定）", dest, Value.unbound);
+    const streams = @import("streams.zig");
+    // 出力先：T は *standard-output*、NIL は文字列、ストリーム。fill-pointer のある文字列は未実装
+    const out_stream: ?Value = if (dest == Value.nil) null else if (dest == th.rt.t) (streams.outputDesignator(th, Value.nil) orelse return Value.unwind) else if (streams.isStream(dest)) dest else {
+        if (@import("arrays.zig").isStringLike(dest))
+            return th.signal(.unimplemented, "FORMAT の出力先に文字列を使うのは未実装です", dest, Value.unbound);
+        return th.typeError(dest, (th.rt.findSymbol(th.rt.cl, "STREAM") orelse unreachable).symbol);
+    };
     var buf: std.Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     const w = &buf.writer;
-    // 行の先頭にいるか（~& のため）。T なら標準出力の今の状態、NIL なら新しい文字列の先頭
-    var at_line_start = if (dest == th.rt.t) th.line_start else true;
+    // 行の先頭にいるか（~& のため）。ストリームならその今の状態、NIL なら新しい文字列の先頭
+    var at_line_start = if (out_stream) |os| streams.atLineStart(th, os) else true;
     const s = Runtime.stringPtr(control);
     const n = s.length();
     var next_arg: usize = 2;
@@ -141,9 +112,8 @@ pub fn format(th: *Thread, args: []const Value) Value {
             },
         }
     }
-    if (dest == Value.nil) return th.rt.makeString(buf.written()) catch th.outOfMemory();
-    th.out.writeAll(buf.written()) catch return writeFailed(th);
-    th.line_start = at_line_start;
+    const os = out_stream orelse return th.rt.makeString(buf.written()) catch th.outOfMemory();
+    if (!streams.emit(th, os, buf.written())) return Value.unwind;
     return Value.nil;
 }
 

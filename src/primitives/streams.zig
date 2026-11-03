@@ -1,0 +1,1207 @@
+//! ストリーム（Phase 23。CLHS 21 章。詳細設計 §2.4・§3.2）。
+//!
+//! - ストリームのオブジェクト（object.Stream）は GC のヒープに置き、Lisp の値は ref に持つ。入出力のバッファ・ファイルの
+//!   ハンドルなどは Zig の側の状態（StreamState。gpa で確保）に置き、Runtime.streams が一覧で持つ。オブジェクトが回収
+//!   されたら、GC が状態を閉じて解放する（finalizeDead。出力は書き出してから閉じる）。Runtime を破棄するときも同じ。
+//! - 入力は、どのストリームも UTF-8 のバイト列と位置で扱う（read-line・read-char・read が同じ位置を共有する）。
+//!   ファイルと文字列の入力ストリームは、開いたときに全体を読む。標準入力は、必要になった分だけ読み足す。
+//!   Windows では、文字の入力で CR LF を1つの改行として読む（SBCL 2.6.7 と同じ。出力は LF だけを書く）。
+//! - 出力は、いったんバイト列にしてから、ストリームの種類に応じて書く（emit）。ファイルはバッファに溜めて、
+//!   64 KiB を超えたとき・finish-output・close で書き出す。
+//! - 標準のストリーム：*standard-output*（th.out に書く）、*standard-input*、*error-output*、*terminal-io*（two-way）、
+//!   *query-io*・*debug-io*（*terminal-io* の synonym）、*trace-output*（*standard-output* の synonym）。
+
+const std = @import("std");
+const builtin = @import("builtin");
+const Io = std.Io;
+const Value = @import("../values/value.zig").Value;
+const object = @import("../values/object.zig");
+const StreamKind = object.StreamKind;
+const SF = object.StreamFlags;
+const Thread = @import("../runtime/thread.zig").Thread;
+const Runtime = @import("../runtime/runtime.zig").Runtime;
+const printer = @import("../printer/printer.zig");
+const reader = @import("../reader/reader.zig");
+const vb = @import("../reader/value_builder.zig");
+const arrays = @import("arrays.zig");
+const keyargs = @import("keyargs.zig");
+const pathnames = @import("pathnames.zig");
+
+const windows = builtin.os.tag == .windows;
+/// ファイルの出力をまとめて書き出す大きさ
+const flush_threshold = 64 * 1024;
+
+pub const StreamState = struct {
+    /// ストリームのオブジェクトのアドレス（GC で生きているかを調べる）
+    owner: usize,
+    kind: StreamKind,
+    /// 入力のバイト列（ファイル・文字列の入力。gpa で確保）と、読む位置
+    in_buf: []u8 = &.{},
+    /// 標準入力が読み足すバイト列（in_buf の代わりに使う）
+    in_list: std.ArrayList(u8) = .empty,
+    pos: usize = 0,
+    /// 最後に read-char で読んだ文字のバイト数（unread-char が戻る）
+    last_len: usize = 0,
+    stdin_eof: bool = false,
+    /// 出力のバイト列（文字列の出力ストリームは全体、ファイルはまだ書き出していない分）
+    out: std.ArrayList(u8) = .empty,
+    /// 標準出力の書き先（th.out）
+    writer: ?*Io.Writer = null,
+    file: ?Io.File = null,
+    /// ファイルの出力で、次に書き出す位置
+    file_offset: u64 = 0,
+    at_line_start: bool = true,
+    latin1: bool = false,
+    /// 文字列の入力ストリームの、元の文字列の中での開始位置（file-position が返す）
+    char_base: usize = 0,
+
+    fn input(st: *StreamState) []const u8 {
+        return if (st.kind == .stdin) st.in_list.items else st.in_buf;
+    }
+};
+
+pub fn isStream(v: Value) bool {
+    return v.isOther() and Runtime.kindOf(v) == .stream;
+}
+
+pub fn ptr(v: Value) *object.Stream {
+    return @ptrCast(@alignCast(v.pointer()));
+}
+
+pub fn kindOf(v: Value) StreamKind {
+    return @fromBackingInt(@intCast(ptr(v).header.aux));
+}
+
+fn stateOf(v: Value) ?*StreamState {
+    const s = ptr(v).state;
+    return if (s == 0) null else @ptrFromInt(s);
+}
+
+fn flags(v: Value) u8 {
+    return ptr(v).header.flags;
+}
+
+fn cl(th: *Thread, name: []const u8) Value {
+    return (th.rt.findSymbol(th.rt.cl, name) orelse unreachable).symbol;
+}
+
+fn kw(th: *Thread, name: []const u8) ?Value {
+    return th.rt.internKeyword(name) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+}
+
+fn oom(th: *Thread) Value {
+    return th.outOfMemory();
+}
+
+/// ストリームのオブジェクトを作る（state を持つなら一覧に登録する）
+fn makeStream(th: *Thread, kind: StreamKind, fl: u8, ref: Value, with_state: bool) ?Value {
+    const rt = th.rt;
+    const obj = rt.heap.create(object.Stream, 0) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    obj.* = .{ .header = .{ .kind = .stream, .flags = fl, .aux = @backingInt(kind) }, .ref = ref, .state = 0 };
+    const v = Value.fromPointer(obj, .other);
+    if (with_state) {
+        rt.streams.ensureUnusedCapacity(rt.gpa, 1) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+        const st = rt.gpa.create(StreamState) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+        st.* = .{ .owner = @intFromPtr(obj), .kind = kind };
+        obj.state = @intFromPtr(st);
+        rt.streams.appendAssumeCapacity(st);
+    }
+    return v;
+}
+
+/// 状態を閉じる（出力を書き出し、ファイルを閉じ、バッファを解放する）。状態そのものは解放しない
+fn closeState(rt: *Runtime, st: *StreamState) void {
+    if (st.file) |f| {
+        if (rt.io) |io| {
+            if (st.out.items.len > 0) f.writePositionalAll(io, st.out.items, st.file_offset) catch {};
+            f.close(io);
+        }
+        st.file = null;
+    }
+    st.out.clearAndFree(rt.gpa);
+    if (st.kind != .stdin) {
+        rt.gpa.free(st.in_buf);
+        st.in_buf = &.{};
+    }
+    st.in_list.clearAndFree(rt.gpa);
+}
+
+/// GC のマークの後：回収されるストリームの状態を閉じて解放する（gc.zig が呼ぶ）
+pub fn finalizeDead(rt: *Runtime) void {
+    var i: usize = 0;
+    while (i < rt.streams.items.len) {
+        const st = rt.streams.items[i];
+        const alive = if (rt.heap.findObject(st.owner)) |ref| @import("../runtime/heap.zig").Heap.isMarked(ref) else false;
+        if (alive) {
+            i += 1;
+            continue;
+        }
+        closeState(rt, st);
+        rt.gpa.destroy(st);
+        _ = rt.streams.swapRemove(i);
+    }
+}
+
+/// Runtime を破棄するとき：すべてのストリームを閉じる（ファイルの出力を書き出す）
+pub fn closeAll(rt: *Runtime) void {
+    for (rt.streams.items) |st| {
+        closeState(rt, st);
+        rt.gpa.destroy(st);
+    }
+    rt.streams.deinit(rt.gpa);
+}
+
+/// スクリプトとして実行しているとき、エラーを表示せずに正常に終えるか：標準のストリーム（標準入力・標準出力・
+/// 標準エラー出力）の end-of-file か、書けない（broken pipe）とき（SBCL 2.6.7 の --script の process-script と同じ）
+pub fn isQuietScriptExit(th: *Thread) bool {
+    const k = th.err.kind;
+    if (k != .end_of_file and k != .stream_error) return false;
+    const d = th.err.datum;
+    if (!isStream(d)) return false;
+    return switch (kindOf(d)) {
+        .stdin => k == .end_of_file,
+        .stdout, .stderr => k == .stream_error,
+        else => false,
+    };
+}
+
+/// 標準出力のストリームに溜まったものを書き出す（エラーの表示の前など）
+pub fn flushStandard(th: *Thread) void {
+    th.out.flush() catch {};
+}
+
+// ---------------------------------------------------------------------------
+// 標準のストリーム（Thread.create が呼ぶ）
+
+pub fn installStandardStreams(th: *Thread) bool {
+    const rt = th.rt;
+    const out = makeStream(th, .stdout, SF.output | SF.open, Value.nil, true) orelse return false;
+    stateOf(out).?.writer = th.out;
+    const in = makeStream(th, .stdin, SF.input | SF.open, Value.nil, true) orelse return false;
+    const err = makeStream(th, .stderr, SF.output | SF.open, Value.nil, true) orelse return false;
+    const pair = rt.cons(in, out) catch return false;
+    const tio = makeStream(th, .two_way, SF.input | SF.output | SF.open, pair, false) orelse return false;
+    const syn_tio = makeStream(th, .synonym, SF.input | SF.output | SF.open, rt.syms.@"*terminal-io*", false) orelse return false;
+    const syn_out = makeStream(th, .synonym, SF.output | SF.open, rt.syms.@"*standard-output*", false) orelse return false;
+    rt.symbolPtr(rt.syms.@"*standard-output*").value = out;
+    rt.symbolPtr(rt.syms.@"*standard-input*").value = in;
+    rt.symbolPtr(rt.syms.@"*error-output*").value = err;
+    rt.symbolPtr(rt.syms.@"*terminal-io*").value = tio;
+    rt.symbolPtr(rt.syms.@"*query-io*").value = syn_tio;
+    rt.symbolPtr(rt.syms.@"*debug-io*").value = syn_tio;
+    rt.symbolPtr(rt.syms.@"*trace-output*").value = syn_out;
+    rt.symbolPtr(rt.syms.@"*default-pathname-defaults*").value = pathnames.initialDefaults(rt) catch return false;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// ストリーム指定子
+
+fn streamDesignatorError(th: *Thread, v: Value) ?Value {
+    _ = th.typeError(v, cl(th, "STREAM"));
+    return null;
+}
+
+fn closedError(th: *Thread, v: Value) ?Value {
+    _ = th.signal(.stream_error, "閉じたストリームです", v, Value.unbound);
+    return null;
+}
+
+/// synonym・two-way をたどって、実際に書くストリームにする
+fn resolveOutStream(th: *Thread, v0: Value) ?Value {
+    var v = v0;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        if (!isStream(v)) return streamDesignatorError(th, v);
+        switch (kindOf(v)) {
+            .synonym => v = th.rt.symbolPtr(ptr(v).ref).value,
+            .two_way => v = Runtime.consPtr(ptr(v).ref).cdr,
+            else => {
+                // 向きの違うストリームは type-error（SBCL 2.6.7 と同じ）
+                if (flags(v) & SF.output == 0) return streamDesignatorError(th, v);
+                if (flags(v) & SF.open == 0) return closedError(th, v);
+                return v;
+            },
+        }
+    }
+    _ = th.signal(.stream_error, "synonym ストリームが循環しています", v0, Value.unbound);
+    return null;
+}
+
+fn resolveInStream(th: *Thread, v0: Value) ?Value {
+    var v = v0;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        if (!isStream(v)) return streamDesignatorError(th, v);
+        switch (kindOf(v)) {
+            .synonym => v = th.rt.symbolPtr(ptr(v).ref).value,
+            .two_way => v = Runtime.consPtr(ptr(v).ref).car,
+            else => {
+                if (flags(v) & SF.input == 0) return streamDesignatorError(th, v);
+                if (flags(v) & SF.open == 0) return closedError(th, v);
+                return v;
+            },
+        }
+    }
+    _ = th.signal(.stream_error, "synonym ストリームが循環しています", v0, Value.unbound);
+    return null;
+}
+
+/// 出力のストリーム指定子（NIL は *standard-output*、T は *terminal-io*）
+pub fn outputDesignator(th: *Thread, v: ?Value) ?Value {
+    const rt = th.rt;
+    const d = v orelse Value.nil;
+    const s = if (d == Value.nil) rt.symbolPtr(rt.syms.@"*standard-output*").value else if (d == rt.t) rt.symbolPtr(rt.syms.@"*terminal-io*").value else d;
+    if (!isStream(s)) return streamDesignatorError(th, s);
+    return s;
+}
+
+/// 入力のストリーム指定子（NIL は *standard-input*、T は *terminal-io*）
+pub fn inputDesignator(th: *Thread, v: ?Value) ?Value {
+    const rt = th.rt;
+    const d = v orelse Value.nil;
+    const s = if (d == Value.nil) rt.symbolPtr(rt.syms.@"*standard-input*").value else if (d == rt.t) rt.symbolPtr(rt.syms.@"*terminal-io*").value else d;
+    if (!isStream(s)) return streamDesignatorError(th, s);
+    return resolveInStream(th, s);
+}
+
+// ---------------------------------------------------------------------------
+// 出力
+
+fn flushFile(th: *Thread, st: *StreamState) bool {
+    const f = st.file orelse return true;
+    if (st.out.items.len == 0) return true;
+    const io = th.rt.io orelse return true;
+    f.writePositionalAll(io, st.out.items, st.file_offset) catch {
+        _ = th.signal(.file_error, "ファイルに書けません", Value.unbound, Value.unbound);
+        return false;
+    };
+    st.file_offset += st.out.items.len;
+    st.out.clearRetainingCapacity();
+    return true;
+}
+
+/// バイト列を出力のストリーム（指定子を解決したもの）に書く
+pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
+    const s = resolveOutStream(th, stream) orelse return false;
+    switch (kindOf(s)) {
+        .broadcast => {
+            var x = ptr(s).ref;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!emit(th, Runtime.consPtr(x).car, bytes)) return false;
+            return true;
+        },
+        else => {},
+    }
+    const st = stateOf(s) orelse return true;
+    if (bytes.len == 0) return true;
+    switch (st.kind) {
+        .stdout => (st.writer orelse th.out).writeAll(bytes) catch {
+            _ = th.signal(.stream_error, "標準出力に書けません", s, Value.unbound);
+            return false;
+        },
+        .stderr => {
+            th.out.flush() catch {};
+            if (th.rt.io) |io| Io.File.stderr().writeStreamingAll(io, bytes) catch {};
+        },
+        .string_output => st.out.appendSlice(th.rt.gpa, bytes) catch {
+            _ = th.outOfMemory();
+            return false;
+        },
+        .file => {
+            if (st.latin1) {
+                // UTF-8 を Latin-1 にする（U+0100 以上は ?）
+                var view = std.unicode.Utf8View.initUnchecked(bytes);
+                var it = view.iterator();
+                while (it.nextCodepoint()) |cp| st.out.append(th.rt.gpa, if (cp < 256) @intCast(cp) else '?') catch {
+                    _ = th.outOfMemory();
+                    return false;
+                };
+            } else st.out.appendSlice(th.rt.gpa, bytes) catch {
+                _ = th.outOfMemory();
+                return false;
+            };
+            if (st.out.items.len >= flush_threshold and !flushFile(th, st)) return false;
+        },
+        else => {},
+    }
+    st.at_line_start = bytes[bytes.len - 1] == '\n';
+    return true;
+}
+
+/// 出力のストリームが行の先頭にいるか（fresh-line・~&）
+pub fn atLineStart(th: *Thread, stream: Value) bool {
+    const s = resolveOutStream(th, stream) orelse return true;
+    if (kindOf(s) == .broadcast) {
+        var x = ptr(s).ref;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!atLineStart(th, Runtime.consPtr(x).car)) return false;
+        return true;
+    }
+    const st = stateOf(s) orelse return true;
+    return st.at_line_start;
+}
+
+fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: bool) bool {
+    var buf: Io.Writer.Allocating = .init(th.rt.gpa);
+    defer buf.deinit();
+    printer.write(th.rt, &buf.writer, v, escape) catch {
+        _ = th.outOfMemory();
+        return false;
+    };
+    return emit(th, stream, buf.written());
+}
+
+/// (write-string 文字列 &optional ストリーム &key start end) などで使う：文字列の [start, end) を UTF-8 で書く
+fn emitString(th: *Thread, stream: Value, str: Value, start: usize, end: usize) bool {
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(th.rt.gpa);
+    const view = arrays.vectorView(str).?;
+    const s = Runtime.stringPtr(view.data);
+    for (start..end) |i| {
+        var b: [4]u8 = undefined;
+        const n = std.unicode.utf8Encode(s.charAt(i), &b) catch unreachable;
+        buf.appendSlice(th.rt.gpa, b[0..n]) catch {
+            _ = th.outOfMemory();
+            return false;
+        };
+    }
+    return emit(th, stream, buf.items);
+}
+
+fn optArg(args: []const Value, i: usize) ?Value {
+    return if (args.len > i) args[i] else null;
+}
+
+pub fn print(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!emit(th, s, "\n") or !emitPrinted(th, s, args[0], true) or !emit(th, s, " ")) return Value.unwind;
+    th.mv_count = 1;
+    return args[0];
+}
+
+pub fn prin1(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!emitPrinted(th, s, args[0], true)) return Value.unwind;
+    th.mv_count = 1;
+    return args[0];
+}
+
+pub fn princ(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!emitPrinted(th, s, args[0], false)) return Value.unwind;
+    th.mv_count = 1;
+    return args[0];
+}
+
+/// (pprint x &optional stream)：改行と prin1（pretty printer は未実装なので、1行に書く）
+pub fn pprint(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!emit(th, s, "\n") or !emitPrinted(th, s, args[0], true)) return Value.unwind;
+    th.mv_count = 0;
+    return Value.nil;
+}
+
+pub fn terpri(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (!emit(th, s, "\n")) return Value.unwind;
+    return Value.nil;
+}
+
+pub fn freshLine(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (atLineStart(th, s)) return Value.nil;
+    if (!emit(th, s, "\n")) return Value.unwind;
+    return th.rt.t;
+}
+
+pub fn writeChar(th: *Thread, args: []const Value) Value {
+    if (!args[0].isChar()) return th.typeError(args[0], cl(th, "CHARACTER"));
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    var b: [4]u8 = undefined;
+    const n = std.unicode.utf8Encode(args[0].asChar(), &b) catch unreachable;
+    if (!emit(th, s, b[0..n])) return Value.unwind;
+    return args[0];
+}
+
+fn stringBounds(th: *Thread, str: Value, rest: []const Value) ?[2]usize {
+    var kv: [2]?Value = .{ null, null };
+    if (rest.len > 0 and !keyargs.parse(th, rest, &.{ "START", "END" }, &kv)) return null;
+    return @import("strings.zig").bounds(th, kv[0], kv[1], arrays.vectorView(str).?.len);
+}
+
+fn writeStringImpl(th: *Thread, args: []const Value, newline: bool) Value {
+    const str = args[0];
+    if (!arrays.isStringLike(str)) return th.typeError(str, cl(th, "STRING"));
+    const s = outputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    const b = stringBounds(th, str, if (args.len > 2) args[2..] else &.{}) orelse return Value.unwind;
+    if (!emitString(th, s, str, b[0], b[1])) return Value.unwind;
+    if (newline and !emit(th, s, "\n")) return Value.unwind;
+    return str;
+}
+
+pub fn writeString(th: *Thread, args: []const Value) Value {
+    return writeStringImpl(th, args, false);
+}
+
+pub fn writeLine(th: *Thread, args: []const Value) Value {
+    return writeStringImpl(th, args, true);
+}
+
+/// finish-output・force-output：ファイルなら書き出す。clear-output：何もしない
+pub fn finishOutput(th: *Thread, args: []const Value) Value {
+    const s0 = outputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    const s = resolveOutStream(th, s0) orelse return Value.unwind;
+    if (stateOf(s)) |st| {
+        if (st.kind == .file and !flushFile(th, st)) return Value.unwind;
+        if (st.kind == .stdout) (st.writer orelse th.out).flush() catch {};
+    }
+    return Value.nil;
+}
+
+pub fn clearOutput(th: *Thread, args: []const Value) Value {
+    _ = outputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    return Value.nil;
+}
+
+/// (write オブジェクト &key stream escape)：ほかの印字の変数のキーワードは未実装（エラー）
+pub fn write(th: *Thread, args: []const Value) Value {
+    var kv: [2]?Value = .{ null, null };
+    const rest = args[1..];
+    // :stream・:escape 以外のキーワードは未実装
+    var i: usize = 0;
+    while (i + 1 < rest.len) : (i += 2) {
+        const k = rest[i];
+        if (k != (kw(th, "STREAM") orelse return Value.unwind) and k != (kw(th, "ESCAPE") orelse return Value.unwind))
+            return th.signal(.unimplemented, "WRITE の :stream・:escape 以外のキーワードは未実装です", k, Value.unbound);
+    }
+    if (!keyargs.parse(th, rest, &.{ "STREAM", "ESCAPE" }, &kv)) return Value.unwind;
+    const s = outputDesignator(th, kv[0]) orelse return Value.unwind;
+    const escape = if (kv[1]) |e| e != Value.nil else true;
+    if (!emitPrinted(th, s, args[0], escape)) return Value.unwind;
+    th.mv_count = 1;
+    return args[0];
+}
+
+fn toString(th: *Thread, v: Value, escape: bool) Value {
+    var buf: Io.Writer.Allocating = .init(th.rt.gpa);
+    defer buf.deinit();
+    printer.write(th.rt, &buf.writer, v, escape) catch return oom(th);
+    return th.rt.makeString(buf.written()) catch oom(th);
+}
+
+pub fn prin1ToString(th: *Thread, args: []const Value) Value {
+    return toString(th, args[0], true);
+}
+
+pub fn princToString(th: *Thread, args: []const Value) Value {
+    return toString(th, args[0], false);
+}
+
+pub fn writeToString(th: *Thread, args: []const Value) Value {
+    var kv: [1]?Value = .{null};
+    var i: usize = 1;
+    while (i + 1 < args.len) : (i += 2) {
+        if (args[i] != (kw(th, "ESCAPE") orelse return Value.unwind))
+            return th.signal(.unimplemented, "WRITE-TO-STRING の :escape 以外のキーワードは未実装です", args[i], Value.unbound);
+    }
+    if (!keyargs.parse(th, args[1..], &.{"ESCAPE"}, &kv)) return Value.unwind;
+    return toString(th, args[0], if (kv[0]) |e| e != Value.nil else true);
+}
+
+// ---------------------------------------------------------------------------
+// 入力
+
+/// 標準入力から読み足す（読めたら真）
+fn fillStdin(th: *Thread, st: *StreamState) bool {
+    if (st.kind != .stdin or st.stdin_eof) return false;
+    const io = th.rt.io orelse {
+        st.stdin_eof = true;
+        return false;
+    };
+    th.out.flush() catch {};
+    var buf: [4096]u8 = undefined;
+    const n = Io.File.stdin().readStreaming(io, &.{&buf}) catch 0;
+    if (n == 0) {
+        st.stdin_eof = true;
+        return false;
+    }
+    st.in_list.appendSlice(th.rt.gpa, buf[0..n]) catch return false;
+    return true;
+}
+
+/// 位置の文字を読む（null は終わり）。進めたバイト数を len に入れる
+fn decodeAt(th: *Thread, st: *StreamState, len: *usize) ?u21 {
+    while (st.pos >= st.input().len) if (!fillStdin(th, st)) return null;
+    const in = st.input();
+    const b0 = in[st.pos];
+    if (st.latin1) {
+        len.* = 1;
+        return b0;
+    }
+    const n = std.unicode.utf8ByteSequenceLength(b0) catch {
+        len.* = 1;
+        return 0xFFFD;
+    };
+    while (st.pos + n > st.input().len) if (!fillStdin(th, st)) {
+        len.* = 1;
+        return 0xFFFD;
+    };
+    const cp = std.unicode.utf8Decode(st.input()[st.pos..][0..n]) catch {
+        len.* = 1;
+        return 0xFFFD;
+    };
+    len.* = n;
+    // Windows の文字の入力では、CR LF を1つの改行として読む（SBCL 2.6.7 と同じ）
+    if (windows and cp == '\r' and st.kind == .file) {
+        if (st.pos + 1 < st.input().len and st.input()[st.pos + 1] == '\n') {
+            len.* = 2;
+            return '\n';
+        }
+    }
+    return cp;
+}
+
+fn readCharRaw(th: *Thread, st: *StreamState) ?u21 {
+    var n: usize = 0;
+    const c = decodeAt(th, st, &n) orelse return null;
+    st.pos += n;
+    st.last_len = n;
+    return c;
+}
+
+fn checkCharStream(th: *Thread, s: Value) bool {
+    if (flags(s) & SF.binary != 0) {
+        _ = th.typeError(s, cl(th, "CHARACTER"));
+        return false;
+    }
+    return true;
+}
+
+fn eofResult(th: *Thread, s: Value, eof_error: ?Value, eof_value: ?Value) Value {
+    if (eof_error == null or eof_error.? != Value.nil)
+        return th.signal(.end_of_file, "ストリームの終わりです", s, Value.unbound);
+    return eof_value orelse Value.nil;
+}
+
+/// (read-char &optional stream eof-error-p eof-value recursive-p)
+pub fn readChar(th: *Thread, args: []const Value) Value {
+    const s = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    const c = readCharRaw(th, st) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    return Value.fromChar(c);
+}
+
+/// (unread-char 文字 &optional stream)：最後に読んだ文字を戻す
+pub fn unreadChar(th: *Thread, args: []const Value) Value {
+    if (!args[0].isChar()) return th.typeError(args[0], cl(th, "CHARACTER"));
+    const s = inputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    const st = stateOf(s) orelse return Value.nil;
+    if (st.last_len == 0 or st.pos < st.last_len) return th.signal(.simple_error, "UNREAD-CHAR の前に READ-CHAR がありません", s, Value.unbound);
+    st.pos -= st.last_len;
+    st.last_len = 0;
+    return Value.nil;
+}
+
+fn isWhitespace(c: u21) bool {
+    return c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == 0x0C or c == 0x0B;
+}
+
+/// (peek-char &optional peek-type stream eof-error-p eof-value recursive-p)
+pub fn peekChar(th: *Thread, args: []const Value) Value {
+    const peek_type = optArg(args, 0) orelse Value.nil;
+    const s = inputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 2), optArg(args, 3));
+    while (true) {
+        var n: usize = 0;
+        const c = decodeAt(th, st, &n) orelse return eofResult(th, s, optArg(args, 2), optArg(args, 3));
+        const stop = if (peek_type == Value.nil) true else if (peek_type == th.rt.t) !isWhitespace(c) else if (peek_type.isChar()) c == peek_type.asChar() else return th.typeError(peek_type, cl(th, "CHARACTER"));
+        if (stop) return Value.fromChar(c);
+        st.pos += n;
+    }
+}
+
+/// (read-line &optional stream eof-error-p eof-value recursive-p)：行と、改行で終わらなかったか
+pub fn readLine(th: *Thread, args: []const Value) Value {
+    const rt = th.rt;
+    const s = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    var line: std.ArrayList(u8) = .empty;
+    defer line.deinit(rt.gpa);
+    var any = false;
+    while (true) {
+        const c = readCharRaw(th, st) orelse break;
+        any = true;
+        if (c == '\n') {
+            th.mv[1] = Value.nil;
+            th.mv_count = 2;
+            return rt.makeString(line.items) catch oom(th);
+        }
+        var b: [4]u8 = undefined;
+        const n = std.unicode.utf8Encode(c, &b) catch unreachable;
+        line.appendSlice(rt.gpa, b[0..n]) catch return oom(th);
+    }
+    if (!any) {
+        const r = eofResult(th, s, optArg(args, 1), optArg(args, 2));
+        th.mv[1] = rt.t;
+        th.mv_count = 2;
+        return r;
+    }
+    th.mv[1] = rt.t;
+    th.mv_count = 2;
+    return rt.makeString(line.items) catch oom(th);
+}
+
+/// (listen &optional stream)：すぐに読める文字があるか
+pub fn listen(th: *Thread, args: []const Value) Value {
+    const s = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    const st = stateOf(s) orelse return Value.nil;
+    return th.rt.boolean(st.pos < st.input().len);
+}
+
+pub fn clearInput(th: *Thread, args: []const Value) Value {
+    _ = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    return Value.nil;
+}
+
+fn checkBinaryStream(th: *Thread, s: Value) bool {
+    if (flags(s) & SF.binary == 0) {
+        _ = th.typeError(s, cl(th, "INTEGER"));
+        return false;
+    }
+    return true;
+}
+
+/// (read-byte stream &optional eof-error-p eof-value)
+pub fn readByte(th: *Thread, args: []const Value) Value {
+    const s = inputDesignator(th, args[0]) orelse return Value.unwind;
+    if (!checkBinaryStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    if (st.pos >= st.input().len) return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    const b = st.input()[st.pos];
+    st.pos += 1;
+    return Value.fromFixnum(b);
+}
+
+/// (write-byte 整数 stream)
+pub fn writeByte(th: *Thread, args: []const Value) Value {
+    const s0 = outputDesignator(th, args[1]) orelse return Value.unwind;
+    const s = resolveOutStream(th, s0) orelse return Value.unwind;
+    if (!checkBinaryStream(th, s)) return Value.unwind;
+    const v = args[0];
+    if (!v.isFixnum() or v.asFixnum() < 0 or v.asFixnum() > 255) return th.typeError(v, cl(th, "INTEGER"));
+    const st = stateOf(s) orelse return v;
+    st.out.append(th.rt.gpa, @intCast(v.asFixnum())) catch return oom(th);
+    if (st.out.items.len >= flush_threshold and !flushFile(th, st)) return Value.unwind;
+    return v;
+}
+
+/// (read-sequence 列 stream &key start end)：読んだ最後の位置
+pub fn readSequence(th: *Thread, args: []const Value) Value {
+    const seq = args[0];
+    const s = inputDesignator(th, args[1]) orelse return Value.unwind;
+    var kv: [2]?Value = .{ null, null };
+    if (args.len > 2 and !keyargs.parse(th, args[2..], &.{ "START", "END" }, &kv)) return Value.unwind;
+    const view = arrays.vectorView(seq) orelse return th.signal(.unimplemented, "READ-SEQUENCE にベクタ以外の列を使うのは未実装です", seq, Value.unbound);
+    const b = @import("strings.zig").bounds(th, kv[0], kv[1], view.len) orelse return Value.unwind;
+    const st = stateOf(s) orelse return Value.fromFixnum(@intCast(b[0]));
+    const binary = flags(s) & SF.binary != 0;
+    var i = b[0];
+    while (i < b[1]) : (i += 1) {
+        const item = if (binary) blk: {
+            if (st.pos >= st.input().len) break;
+            const byte = st.input()[st.pos];
+            st.pos += 1;
+            break :blk Value.fromFixnum(byte);
+        } else Value.fromChar(readCharRaw(th, st) orelse break);
+        if (arrays.storageSet(th, view.data, i, item) == Value.unwind) return Value.unwind;
+    }
+    return Value.fromFixnum(@intCast(i));
+}
+
+/// (write-sequence 列 stream &key start end)：列を返す
+pub fn writeSequence(th: *Thread, args: []const Value) Value {
+    const seq = args[0];
+    const s0 = outputDesignator(th, args[1]) orelse return Value.unwind;
+    const s = resolveOutStream(th, s0) orelse return Value.unwind;
+    var kv: [2]?Value = .{ null, null };
+    if (args.len > 2 and !keyargs.parse(th, args[2..], &.{ "START", "END" }, &kv)) return Value.unwind;
+    const view = arrays.vectorView(seq) orelse return th.signal(.unimplemented, "WRITE-SEQUENCE にベクタ以外の列を使うのは未実装です", seq, Value.unbound);
+    const b = @import("strings.zig").bounds(th, kv[0], kv[1], view.len) orelse return Value.unwind;
+    if (flags(s) & SF.binary != 0) {
+        for (b[0]..b[1]) |i| if (writeByte(th, &.{ arrays.storageGet(view.data, i), s }) == Value.unwind) return Value.unwind;
+        return seq;
+    }
+    if (arrays.isStringLike(seq)) {
+        if (!emitString(th, s, seq, b[0], b[1])) return Value.unwind;
+        return seq;
+    }
+    for (b[0]..b[1]) |i| if (writeChar(th, &.{ arrays.storageGet(view.data, i), s }) == Value.unwind) return Value.unwind;
+    return seq;
+}
+
+// ---------------------------------------------------------------------------
+// read・read-from-string
+
+/// st の位置から1つ読む。読めなければ（終わり）null を eof に入れる
+fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *bool) Value {
+    const rt = th.rt;
+    while (true) {
+        const text = st.input()[st.pos..];
+        var src = reader.Source.init(text, 0);
+        var b: vb.ValueBuilder = .{ .rt = rt };
+        var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{ .preserve_whitespace = preserve });
+        defer r.deinit();
+        const form = r.read() catch |err| switch (err) {
+            error.OutOfMemory => return oom(th),
+            error.EndOfFile => {
+                // 標準入力なら読み足して読み直す
+                if (fillStdin(th, st)) continue;
+                return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", s, Value.unbound);
+            },
+            error.ReaderError => return th.signal(.reader_error, r.diagnostic.message, s, Value.unbound),
+        };
+        if (form == null) {
+            if (fillStdin(th, st)) continue;
+            st.pos += src.pos;
+            eof.* = true;
+            return Value.nil;
+        }
+        var consumed = src.pos;
+        // 読んだ後ろの空白を1つ読み進める（トークンの後ろは Reader が読み進めている。SBCL 2.6.7 と同じ）
+        if (!preserve and consumed > 0 and consumed < text.len and !isWhitespace(text[consumed - 1]) and isWhitespace(text[consumed])) consumed += 1;
+        st.pos += consumed;
+        st.last_len = 0;
+        return form.?;
+    }
+}
+
+fn readImpl(th: *Thread, args: []const Value, preserve: bool) Value {
+    const s = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    var eof = false;
+    const v = readFromState(th, s, st, preserve, &eof);
+    if (v == Value.unwind) return v;
+    if (eof) return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    th.mv_count = 1;
+    return v;
+}
+
+pub fn read(th: *Thread, args: []const Value) Value {
+    return readImpl(th, args, false);
+}
+
+pub fn readPreservingWhitespace(th: *Thread, args: []const Value) Value {
+    return readImpl(th, args, true);
+}
+
+/// 文字列の [start, end) の UTF-8
+fn substringUtf8(th: *Thread, str: Value, start: usize, end: usize) ?[]u8 {
+    var buf: std.ArrayList(u8) = .empty;
+    const view = arrays.vectorView(str).?;
+    const s = Runtime.stringPtr(view.data);
+    for (start..end) |i| {
+        var b: [4]u8 = undefined;
+        const n = std.unicode.utf8Encode(s.charAt(i), &b) catch unreachable;
+        buf.appendSlice(th.rt.gpa, b[0..n]) catch {
+            buf.deinit(th.rt.gpa);
+            _ = th.outOfMemory();
+            return null;
+        };
+    }
+    return buf.toOwnedSlice(th.rt.gpa) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+}
+
+fn charCount(bytes: []const u8) usize {
+    var n: usize = 0;
+    for (bytes) |b| if (b & 0xC0 != 0x80) {
+        n += 1;
+    };
+    return n;
+}
+
+/// (read-from-string 文字列 &optional eof-error-p eof-value &key start end preserve-whitespace)：オブジェクトと次の位置
+pub fn readFromString(th: *Thread, args: []const Value) Value {
+    const str = args[0];
+    if (!arrays.isStringLike(str)) return th.typeError(str, cl(th, "STRING"));
+    const eof_error = optArg(args, 1);
+    const eof_value = optArg(args, 2);
+    var kv: [3]?Value = .{ null, null, null };
+    if (args.len > 3 and !keyargs.parse(th, args[3..], &.{ "START", "END", "PRESERVE-WHITESPACE" }, &kv)) return Value.unwind;
+    const b = @import("strings.zig").bounds(th, kv[0], kv[1], arrays.vectorView(str).?.len) orelse return Value.unwind;
+    const preserve = if (kv[2]) |p| p != Value.nil else false;
+    const text = substringUtf8(th, str, b[0], b[1]) orelse return Value.unwind;
+    var st: StreamState = .{ .owner = 0, .kind = .string_input, .in_buf = text };
+    defer th.rt.gpa.free(text);
+    var eof = false;
+    const v = readFromState(th, str, &st, preserve, &eof);
+    if (v == Value.unwind) return v;
+    const index = Value.fromFixnum(@intCast(b[0] + charCount(text[0..st.pos])));
+    if (eof) {
+        const r = eofResult(th, str, eof_error, eof_value);
+        if (r == Value.unwind) return r;
+        th.mv[1] = index;
+        th.mv_count = 2;
+        return r;
+    }
+    th.mv[1] = index;
+    th.mv_count = 2;
+    return v;
+}
+
+// ---------------------------------------------------------------------------
+// 文字列のストリーム・合成のストリーム
+
+/// (make-string-input-stream 文字列 &optional start end)
+pub fn makeStringInputStream(th: *Thread, args: []const Value) Value {
+    const str = args[0];
+    if (!arrays.isStringLike(str)) return th.typeError(str, cl(th, "STRING"));
+    const b = @import("strings.zig").bounds(th, optArg(args, 1), optArg(args, 2), arrays.vectorView(str).?.len) orelse return Value.unwind;
+    const text = substringUtf8(th, str, b[0], b[1]) orelse return Value.unwind;
+    const s = makeStream(th, .string_input, SF.input | SF.open, Value.nil, true) orelse {
+        th.rt.gpa.free(text);
+        return Value.unwind;
+    };
+    stateOf(s).?.in_buf = text;
+    stateOf(s).?.char_base = b[0];
+    return s;
+}
+
+/// (make-string-output-stream &key element-type)
+pub fn makeStringOutputStream(th: *Thread, args: []const Value) Value {
+    var kv: [1]?Value = .{null};
+    if (!keyargs.parse(th, args, &.{"ELEMENT-TYPE"}, &kv)) return Value.unwind;
+    return makeStream(th, .string_output, SF.output | SF.open, Value.nil, true) orelse Value.unwind;
+}
+
+/// (get-output-stream-string stream)：溜まった文字列を返して、空にする
+pub fn getOutputStreamString(th: *Thread, args: []const Value) Value {
+    const s = args[0];
+    if (!isStream(s) or kindOf(s) != .string_output) return th.typeError(s, cl(th, "STRING-STREAM"));
+    const st = stateOf(s) orelse return th.rt.makeString("") catch oom(th);
+    const v = th.rt.makeString(st.out.items) catch return oom(th);
+    st.out.clearRetainingCapacity();
+    st.at_line_start = true;
+    return v;
+}
+
+/// (make-broadcast-stream &rest streams)
+pub fn makeBroadcastStream(th: *Thread, args: []const Value) Value {
+    var list = Value.nil;
+    var i = args.len;
+    while (i > 0) {
+        i -= 1;
+        if (!isStream(args[i])) return th.typeError(args[i], cl(th, "STREAM"));
+        list = th.rt.cons(args[i], list) catch return oom(th);
+    }
+    return makeStream(th, .broadcast, SF.output | SF.open, list, false) orelse Value.unwind;
+}
+
+/// (make-two-way-stream 入力 出力)
+pub fn makeTwoWayStream(th: *Thread, args: []const Value) Value {
+    for (args) |a| if (!isStream(a)) return th.typeError(a, cl(th, "STREAM"));
+    const pair = th.rt.cons(args[0], args[1]) catch return oom(th);
+    return makeStream(th, .two_way, SF.input | SF.output | SF.open, pair, false) orelse Value.unwind;
+}
+
+/// (make-synonym-stream シンボル)
+pub fn makeSynonymStream(th: *Thread, args: []const Value) Value {
+    const sym = args[0];
+    if (!(sym.isOther() and Runtime.kindOf(sym) == .symbol)) return th.typeError(sym, th.rt.syms.symbol);
+    return makeStream(th, .synonym, SF.input | SF.output | SF.open, sym, false) orelse Value.unwind;
+}
+
+fn checkKind(th: *Thread, v: Value, kind: StreamKind, type_name: []const u8) bool {
+    if (isStream(v) and kindOf(v) == kind) return true;
+    _ = th.typeError(v, cl(th, type_name));
+    return false;
+}
+
+pub fn twoWayStreamInputStream(th: *Thread, args: []const Value) Value {
+    if (!checkKind(th, args[0], .two_way, "TWO-WAY-STREAM")) return Value.unwind;
+    return Runtime.consPtr(ptr(args[0]).ref).car;
+}
+
+pub fn twoWayStreamOutputStream(th: *Thread, args: []const Value) Value {
+    if (!checkKind(th, args[0], .two_way, "TWO-WAY-STREAM")) return Value.unwind;
+    return Runtime.consPtr(ptr(args[0]).ref).cdr;
+}
+
+pub fn synonymStreamSymbol(th: *Thread, args: []const Value) Value {
+    if (!checkKind(th, args[0], .synonym, "SYNONYM-STREAM")) return Value.unwind;
+    return ptr(args[0]).ref;
+}
+
+pub fn broadcastStreamStreams(th: *Thread, args: []const Value) Value {
+    if (!checkKind(th, args[0], .broadcast, "BROADCAST-STREAM")) return Value.unwind;
+    var items: std.ArrayList(Value) = .empty;
+    defer items.deinit(th.rt.gpa);
+    var x = ptr(args[0]).ref;
+    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) items.append(th.rt.gpa, Runtime.consPtr(x).car) catch return oom(th);
+    var list = Value.nil;
+    var i = items.items.len;
+    while (i > 0) {
+        i -= 1;
+        list = th.rt.cons(items.items[i], list) catch return oom(th);
+    }
+    return list;
+}
+
+// ---------------------------------------------------------------------------
+// ストリームの問い合わせ
+
+fn streamArg(th: *Thread, v: Value) ?Value {
+    if (isStream(v)) return v;
+    _ = th.typeError(v, cl(th, "STREAM"));
+    return null;
+}
+
+pub fn streamp(th: *Thread, args: []const Value) Value {
+    return th.rt.boolean(isStream(args[0]));
+}
+
+pub fn inputStreamP(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(flags(s) & SF.input != 0);
+}
+
+pub fn outputStreamP(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(flags(s) & SF.output != 0);
+}
+
+pub fn openStreamP(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    return th.rt.boolean(flags(s) & SF.open != 0);
+}
+
+pub fn interactiveStreamP(th: *Thread, args: []const Value) Value {
+    _ = streamArg(th, args[0]) orelse return Value.unwind;
+    return Value.nil;
+}
+
+pub fn streamElementType(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const rt = th.rt;
+    if (flags(s) & SF.binary == 0) return cl(th, "CHARACTER");
+    const tail = rt.cons(Value.fromFixnum(8), Value.nil) catch return oom(th);
+    return rt.cons(cl(th, "UNSIGNED-BYTE"), tail) catch oom(th);
+}
+
+/// (close stream &key abort)：閉じて T（SBCL 2.6.7 は、閉じたストリームを閉じても T）
+pub fn close(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    var kv: [1]?Value = .{null};
+    if (!keyargs.parse(th, args[1..], &.{"ABORT"}, &kv)) return Value.unwind;
+    if (flags(s) & SF.open == 0) return th.rt.t;
+    switch (kindOf(s)) {
+        // 標準のストリームは閉じない（SBCL も *standard-output* などを閉じると後が使えなくなる）
+        .stdout, .stderr, .stdin => return th.rt.t,
+        else => {},
+    }
+    if (stateOf(s)) |st| {
+        if (st.kind == .file) {
+            const ok = flushFile(th, st);
+            if (st.file) |f| if (th.rt.io) |io| f.close(io);
+            st.file = null;
+            th.rt.gpa.free(st.in_buf);
+            st.in_buf = &.{};
+            if (!ok) return Value.unwind;
+        }
+    }
+    ptr(s).header.flags &= ~SF.open;
+    return th.rt.t;
+}
+
+/// (file-length stream)：ファイルの大きさ（バイト）
+pub fn fileLength(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    if (kindOf(s) != .file) return th.typeError(s, cl(th, "FILE-STREAM"));
+    const st = stateOf(s) orelse return Value.nil;
+    if (flags(s) & SF.output != 0) return Value.fromFixnum(@intCast(st.file_offset + st.out.items.len));
+    return Value.fromFixnum(@intCast(st.in_buf.len));
+}
+
+/// (file-position stream &optional 位置)：今の位置（ファイルはバイト、文字列は文字）。位置を指定すれば移して T
+pub fn filePosition(th: *Thread, args: []const Value) Value {
+    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const st = stateOf(s) orelse return Value.nil;
+    if (args.len < 2) {
+        return switch (st.kind) {
+            .file => Value.fromFixnum(@intCast(if (flags(s) & SF.output != 0) st.file_offset + st.out.items.len else st.pos)),
+            .string_input => Value.fromFixnum(@intCast(st.char_base + charCount(st.in_buf[0..st.pos]))),
+            .string_output => Value.fromFixnum(@intCast(charCount(st.out.items))),
+            else => Value.nil,
+        };
+    }
+    const p = args[1];
+    const start = kw(th, "START") orelse return Value.unwind;
+    const end_kw = kw(th, "END") orelse return Value.unwind;
+    if (st.kind == .file and flags(s) & SF.input != 0) {
+        const n: usize = if (p == start) 0 else if (p == end_kw) st.in_buf.len else if (p.isFixnum() and p.asFixnum() >= 0) @intCast(p.asFixnum()) else return th.typeError(p, th.rt.syms.integer);
+        if (n > st.in_buf.len) return Value.nil;
+        st.pos = n;
+        st.last_len = 0;
+        return th.rt.t;
+    }
+    if (st.kind == .file) {
+        if (!flushFile(th, st)) return Value.unwind;
+        const len = if (th.rt.io) |io| (if (st.file) |f| f.length(io) catch st.file_offset else st.file_offset) else st.file_offset;
+        const n: u64 = if (p == start) 0 else if (p == end_kw) len else if (p.isFixnum() and p.asFixnum() >= 0) @intCast(p.asFixnum()) else return th.typeError(p, th.rt.syms.integer);
+        st.file_offset = n;
+        return th.rt.t;
+    }
+    return th.signal(.unimplemented, "このストリームの位置を変えるのは未実装です", s, Value.unbound);
+}
+
+// ---------------------------------------------------------------------------
+// open
+
+const Direction = enum { input, output, probe };
+
+/// (open ファイル &key direction element-type if-exists if-does-not-exist external-format)
+pub fn open(th: *Thread, args: []const Value) Value {
+    const rt = th.rt;
+    var kv: [5]?Value = .{ null, null, null, null, null };
+    if (!keyargs.parse(th, args[1..], &.{ "DIRECTION", "ELEMENT-TYPE", "IF-EXISTS", "IF-DOES-NOT-EXIST", "EXTERNAL-FORMAT" }, &kv)) return Value.unwind;
+    const p = pathnames.designator(th, args[0]) orelse return Value.unwind;
+    const name = pathnames.osName(th, p) orelse return Value.unwind;
+    defer rt.gpa.free(name);
+    const io = rt.io orelse return th.signal(.unimplemented, "この環境ではファイルを開けません", args[0], Value.unbound);
+
+    const dir: Direction = if (kv[0]) |d| blk: {
+        if (d == (kw(th, "INPUT") orelse return Value.unwind)) break :blk .input;
+        if (d == (kw(th, "OUTPUT") orelse return Value.unwind)) break :blk .output;
+        if (d == (kw(th, "PROBE") orelse return Value.unwind)) break :blk .probe;
+        if (d == (kw(th, "IO") orelse return Value.unwind)) return th.signal(.unimplemented, "OPEN の :direction :io は未実装です", d, Value.unbound);
+        return th.typeError(d, cl(th, "KEYWORD"));
+    } else .input;
+    // 要素の型：文字か (unsigned-byte 8)
+    var binary = false;
+    if (kv[1]) |et| {
+        const is_char = et == cl(th, "CHARACTER") or et == cl(th, "BASE-CHAR") or et == (kw(th, "DEFAULT") orelse return Value.unwind);
+        const is_ub8 = et == cl(th, "UNSIGNED-BYTE") or (et.isCons() and Runtime.consPtr(et).car == cl(th, "UNSIGNED-BYTE") and
+            Runtime.consPtr(et).cdr.isCons() and Runtime.consPtr(Runtime.consPtr(et).cdr).car == Value.fromFixnum(8) and Runtime.consPtr(Runtime.consPtr(et).cdr).cdr == Value.nil);
+        if (is_ub8) binary = true else if (!is_char) return th.signal(.unimplemented, "OPEN の :element-type は character か (unsigned-byte 8) だけです", et, Value.unbound);
+    }
+    var latin1 = false;
+    if (kv[4]) |ef| {
+        const names_utf8 = [_][]const u8{ "DEFAULT", "UTF-8", "UTF8" };
+        const names_latin1 = [_][]const u8{ "LATIN-1", "LATIN1", "ISO-8859-1" };
+        var ok = false;
+        for (names_utf8) |n| if (ef == (kw(th, n) orelse return Value.unwind)) {
+            ok = true;
+        };
+        for (names_latin1) |n| if (ef == (kw(th, n) orelse return Value.unwind)) {
+            ok = true;
+            latin1 = true;
+        };
+        if (!ok) return th.signal(.unimplemented, "OPEN の :external-format は :utf-8 か :latin-1 だけです", ef, Value.unbound);
+    }
+    const exists = if (Io.Dir.cwd().statFile(io, name, .{})) |st| st.kind != .directory else |_| false;
+
+    switch (dir) {
+        .probe, .input => {
+            if (!exists) {
+                const ide = kv[3] orelse (if (dir == .probe) Value.nil else (kw(th, "ERROR") orelse return Value.unwind));
+                if (ide == Value.nil) return Value.nil;
+                if (ide == (kw(th, "CREATE") orelse return Value.unwind)) {
+                    const f = Io.Dir.cwd().createFile(io, name, .{}) catch return th.signal(.file_error, "ファイルを作れません", args[0], Value.unbound);
+                    f.close(io);
+                } else return th.signal(.file_error, "ファイルがありません", args[0], Value.unbound);
+            }
+            if (dir == .probe) {
+                const s = makeStream(th, .file, SF.input | (if (binary) SF.binary else 0), p, false) orelse return Value.unwind;
+                return s;
+            }
+            const text = Io.Dir.cwd().readFileAlloc(io, name, rt.gpa, .limited(1 << 31)) catch |err| switch (err) {
+                error.OutOfMemory => return oom(th),
+                else => return th.signal(.file_error, "ファイルを読めません", args[0], Value.unbound),
+            };
+            const s = makeStream(th, .file, SF.input | SF.open | (if (binary) SF.binary else 0), p, true) orelse {
+                rt.gpa.free(text);
+                return Value.unwind;
+            };
+            const st = stateOf(s).?;
+            st.in_buf = text;
+            st.latin1 = latin1;
+            return s;
+        },
+        .output => {
+            const supersede = kw(th, "SUPERSEDE") orelse return Value.unwind;
+            const append = kw(th, "APPEND") orelse return Value.unwind;
+            const overwrite = kw(th, "OVERWRITE") orelse return Value.unwind;
+            const err_kw = kw(th, "ERROR") orelse return Value.unwind;
+            const if_exists = kv[2] orelse err_kw;
+            var offset: u64 = 0;
+            var truncate = true;
+            if (exists) {
+                if (if_exists == Value.nil) return Value.nil;
+                if (if_exists == err_kw or if_exists == (kw(th, "NEW-VERSION") orelse return Value.unwind))
+                    return th.signal(.file_error, "ファイルが既にあります", args[0], Value.unbound);
+                if (if_exists == append or if_exists == overwrite) {
+                    truncate = false;
+                } else if (if_exists != supersede and if_exists != (kw(th, "RENAME") orelse return Value.unwind) and if_exists != (kw(th, "RENAME-AND-DELETE") orelse return Value.unwind)) {
+                    return th.typeError(if_exists, cl(th, "KEYWORD"));
+                }
+            } else {
+                const default_ide = if (if_exists == append or if_exists == overwrite) err_kw else (kw(th, "CREATE") orelse return Value.unwind);
+                const ide = kv[3] orelse default_ide;
+                if (ide == Value.nil) return Value.nil;
+                if (ide != (kw(th, "CREATE") orelse return Value.unwind)) return th.signal(.file_error, "ファイルがありません", args[0], Value.unbound);
+            }
+            const f = Io.Dir.cwd().createFile(io, name, .{ .truncate = truncate }) catch return th.signal(.file_error, "ファイルを開けません", args[0], Value.unbound);
+            if (exists and if_exists == append) offset = f.length(io) catch 0;
+            const s = makeStream(th, .file, SF.output | SF.open | (if (binary) SF.binary else 0), p, true) orelse {
+                f.close(io);
+                return Value.unwind;
+            };
+            const st = stateOf(s).?;
+            st.file = f;
+            st.file_offset = offset;
+            st.latin1 = latin1;
+            return s;
+        },
+    }
+}
+
+/// ストリームの印字（#<...>。SBCL 2.6.7 に近い形）
+pub fn printStream(rt: *Runtime, w: *Io.Writer, v: Value) Io.Writer.Error!void {
+    const addr = v.raw() & ~@as(u64, 7);
+    switch (kindOf(v)) {
+        .file => {
+            try w.writeAll("#<FILE-STREAM for \"");
+            if (pathnames.isPathname(ptr(v).ref)) try pathnames.writeNamestring(rt, w, ptr(v).ref);
+            try w.print("\" {{{X}}}>", .{addr});
+        },
+        .string_input => try w.print("#<STRING-INPUT-STREAM {{{X}}}>", .{addr}),
+        .string_output => try w.print("#<STRING-OUTPUT-STREAM {{{X}}}>", .{addr}),
+        .stdin => try w.print("#<FD-STREAM for \"standard input\" {{{X}}}>", .{addr}),
+        .stdout => try w.print("#<FD-STREAM for \"standard output\" {{{X}}}>", .{addr}),
+        .stderr => try w.print("#<FD-STREAM for \"standard error\" {{{X}}}>", .{addr}),
+        .synonym => {
+            try w.writeAll("#<SYNONYM-STREAM :SYMBOL ");
+            try printer.prin1(rt, w, ptr(v).ref);
+            try w.print(" {{{X}}}>", .{addr});
+        },
+        .two_way => try w.print("#<TWO-WAY-STREAM {{{X}}}>", .{addr}),
+        .broadcast => try w.print("#<BROADCAST-STREAM {{{X}}}>", .{addr}),
+    }
+}

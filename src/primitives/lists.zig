@@ -131,6 +131,9 @@ pub fn vector(th: *Thread, args: []const Value) Value {
 
 /// equal：eql か、cons なら car と cdr が equal、文字列なら同じ文字の並び（CLHS equal）
 pub fn equal2(a: Value, b: Value) bool {
+    // パス名は欄ごとに equal（Phase 23。CLHS equal）
+    if (a.isOther() and b.isOther() and Runtime.kindOf(a) == .pathname and Runtime.kindOf(b) == .pathname)
+        return @import("pathnames.zig").equalPathnames(a, b);
     var x = a;
     var y = b;
     while (true) {

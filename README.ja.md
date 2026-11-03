@@ -50,10 +50,12 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `string-trim`・`parse-integer` など）。文字の種類と大文字・小文字は、SBCL 2.6.7 と同じく Unicode 15.0.0 に従う
 
 - パッケージ：`defpackage`・`in-package`・`export`・`use-package`・`intern`・`find-symbol` などのパッケージの関数、名前の衝突の検出、
-  文字列で指定したファイルの `load`
+  `load`
+- ストリームとファイル：`with-open-file`・`read-line`・`read`・`write-line`、文字列のストリーム（`with-output-to-string`・
+  `read-from-string` など）、バイナリの入出力、パス名（`#P`・`merge-pathnames`・`probe-file`・`directory` など）
 
-未実装（後の版で実装する予定）：`format` の全体・
-複素数・ストリームとファイル（パス名・`with-open-file`）・`defstruct`・CLOS・condition
+未実装（後の版で実装する予定）：`format` の全体・pretty printer・
+複素数・`defstruct`・CLOS・condition
 （`handler-case`・restart）。
 
 ## インストール

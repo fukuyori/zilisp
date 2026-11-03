@@ -56,6 +56,17 @@
   with package prefixes relative to `*package*`; native programs write constants as "package::name". Curriculum blocks
   went from 421 to 429 matches. Startup time 9.08 ms
 
+- Phase 23: streams and pathnames. Standard streams (`*standard-output*`, `*standard-input*`, `*error-output*`,
+  `*terminal-io*`, ...), file streams (`open`, `close`, `with-open-file`, character and `(unsigned-byte 8)` elements,
+  UTF-8 and Latin-1), string streams (`with-output-to-string`, `with-input-from-string`, `read-from-string`,
+  `prin1-to-string`, ...), broadcast, two-way and synonym streams, the reading and writing functions (`read-line`,
+  `read-char`, `read`, `read-byte`, `read-sequence`, `write-string`, `write-line`, `write-byte`, `fresh-line`, ...), and
+  output functions and `format` that take a stream. Pathnames (`#P`, `make-pathname`, `merge-pathnames`, `namestring`,
+  `probe-file`, `truename`, `directory`, `ensure-directories-exist`, `delete-file`, `rename-file`, `file-write-date`,
+  `*default-pathname-defaults*`) parsed as SBCL 2.6.7 does. The GC closes streams that are collected. Scripts end
+  quietly on end-of-file on standard input, as SBCL's `--script` does. Curriculum blocks went from 429 to 467
+  matches. Startup time 9.47 ms
+
 ### Fixed
 - Codex review (Phase 22), 6 issues: native programs registered packages while reading their constants at startup, so
   `find-package` saw them before `defpackage` and a `make-package` run both at compile time and at run time failed;

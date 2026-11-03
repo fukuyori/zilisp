@@ -28,7 +28,7 @@ seq	id	outcome	detail
 00029	chapters/05-Level 3.md#L30	zilisp-error	未実装の関数：EVAL
 00030	chapters/05-Level 3.md#L48	zilisp-error	未実装の関数：EVAL
 00031	chapters/05-Level 3.md#L67	zilisp-error	未実装の関数：EVAL
-00032	chapters/05-Level 3.md#L85	zilisp-error	未実装の関数：READ
+00032	chapters/05-Level 3.md#L85	match	
 00033	chapters/05-Level 3.md#L135	match	
 00034	chapters/05-Level 3.md#L142	match	
 00035	chapters/05-Level 3.md#L160	match	
@@ -81,7 +81,7 @@ seq	id	outcome	detail
 00082	chapters/05-Level 3.md#L925	match	
 00083	chapters/05-Level 3.md#L941	both-error	
 00084	chapters/05-Level 3.md#L962	match	
-00085	chapters/05-Level 3.md#L972	zilisp-error	未実装の関数：PPRINT
+00085	chapters/05-Level 3.md#L972	match	
 00086	chapters/05-Level 3.md#L994	both-error	
 00087	chapters/05-Level 3.md#L1034	match	
 00088	chapters/06-Level 4.md#L69	match	
@@ -296,40 +296,40 @@ seq	id	outcome	detail
 00304	chapters/13-Level 9.md#L224	zilisp-error	未実装："~["
 00305	chapters/13-Level 9.md#L233	zilisp-error	未実装："~:"
 00306	chapters/13-Level 9.md#L243	zilisp-error	未実装："~{"
-00307	chapters/13-Level 9.md#L263	zilisp-error	未実装の関数：READ
-00308	chapters/13-Level 9.md#L279	zilisp-error	未実装の関数：READ-LINE
-00309	chapters/13-Level 9.md#L291	zilisp-error	未実装の関数：READ-CHAR
+00307	chapters/13-Level 9.md#L263	match	
+00308	chapters/13-Level 9.md#L279	match	
+00309	chapters/13-Level 9.md#L291	match	
 00310	chapters/13-Level 9.md#L301	match	
 00311	chapters/13-Level 9.md#L350	both-error	
 00312	chapters/13-Level 9.md#L368	both-error	
 00313	chapters/13-Level 9.md#L393	both-error	
 00314	chapters/13-Level 9.md#L410	both-error	
 00315	chapters/13-Level 9.md#L421	both-error	
-00316	chapters/13-Level 9.md#L440	zilisp-error	未実装：WITH-OPEN-FILE
-00317	chapters/13-Level 9.md#L469	zilisp-error	未実装：WITH-OPEN-FILE
-00318	chapters/13-Level 9.md#L494	zilisp-error	未実装：WITH-OPEN-FILE
+00316	chapters/13-Level 9.md#L440	match	
+00317	chapters/13-Level 9.md#L469	match	
+00318	chapters/13-Level 9.md#L494	match	
 00319	chapters/13-Level 9.md#L519	both-error	
-00320	chapters/13-Level 9.md#L538	zilisp-error	未実装：WITH-OPEN-FILE
-00321	chapters/13-Level 9.md#L580	zilisp-error	未実装の関数：MAKE-PATHNAME
+00320	chapters/13-Level 9.md#L538	match	
+00321	chapters/13-Level 9.md#L580	match	
 00323	chapters/13-Level 9.md#L604	both-error	
-00324	chapters/13-Level 9.md#L625	zilisp-error	READER-ERROR
-00325	chapters/13-Level 9.md#L642	zilisp-error	未実装の関数：MERGE-PATHNAMES
-00326	chapters/13-Level 9.md#L651	zilisp-error	未実装の関数：PROBE-FILE
-00327	chapters/13-Level 9.md#L667	zilisp-error	未実装の関数：DIRECTORY
-00328	chapters/13-Level 9.md#L684	zilisp-error	未実装：WITH-OPEN-FILE
+00324	chapters/13-Level 9.md#L625	match	
+00325	chapters/13-Level 9.md#L642	match	
+00326	chapters/13-Level 9.md#L651	match	
+00327	chapters/13-Level 9.md#L667	match	
+00328	chapters/13-Level 9.md#L684	match	
 00329	chapters/13-Level 9.md#L706	both-error	
-00330	chapters/13-Level 9.md#L728	zilisp-error	未実装：WITH-OPEN-FILE
+00330	chapters/13-Level 9.md#L728	match	
 00331	chapters/13-Level 9.md#L741	both-error	
-00332	chapters/13-Level 9.md#L758	zilisp-error	未実装：WITH-OPEN-FILE
+00332	chapters/13-Level 9.md#L758	match	
 00333	chapters/13-Level 9.md#L790	both-error	
-00334	chapters/13-Level 9.md#L801	zilisp-error	未実装：WITH-OPEN-FILE
+00334	chapters/13-Level 9.md#L801	match	
 00335	chapters/13-Level 9.md#L817	both-error	
 00336	chapters/13-Level 9.md#L847	zilisp-error	未実装："~5"
 00337	chapters/13-Level 9.md#L858	both-error	
-00338	chapters/13-Level 9.md#L864	zilisp-error	未実装：WITH-OPEN-FILE
-00339	chapters/13-Level 9.md#L888	zilisp-error	未実装：WITH-OPEN-FILE
-00340	chapters/13-Level 9.md#L912	zilisp-error	未実装：WITH-OPEN-FILE
-00341	chapters/13-Level 9.md#L936	zilisp-error	未実装：WITH-OPEN-FILE
+00338	chapters/13-Level 9.md#L864	match	
+00339	chapters/13-Level 9.md#L888	match	
+00340	chapters/13-Level 9.md#L912	match	
+00341	chapters/13-Level 9.md#L936	match	
 00342	chapters/13-Level 9.md#L966	both-error	
 00343	chapters/13-Level 9.md#L1033	both-error	
 00344	chapters/13-Level 9.md#L1044	both-error	
@@ -536,7 +536,7 @@ seq	id	outcome	detail
 00560	chapters/20-Level 15.md#L690	both-error	
 00561	chapters/20-Level 15.md#L700	match	
 00562	chapters/20-Level 15.md#L711	both-error	
-00563	chapters/20-Level 15.md#L747	zilisp-error	未実装：WITH-OPEN-FILE
+00563	chapters/20-Level 15.md#L747	match	
 00564	chapters/20-Level 15.md#L791	both-error	
 00565	chapters/20-Level 15.md#L798	match	
 00566	chapters/20-Level 15.md#L822	both-error	
@@ -592,7 +592,7 @@ seq	id	outcome	detail
 00620	chapters/24-Level 18-A.md#L211	both-error	
 00621	chapters/24-Level 18-A.md#L291	match	
 00622	chapters/24-Level 18-A.md#L311	both-error	
-00623	chapters/24-Level 18-A.md#L329	zilisp-error	未実装：WITH-OPEN-FILE
+00623	chapters/24-Level 18-A.md#L329	match	
 00624	chapters/24-Level 18-A.md#L345	both-error	
 00625	chapters/24-Level 18-A.md#L391	both-error	
 00626	chapters/24-Level 18-A.md#L434	match	
@@ -607,20 +607,20 @@ seq	id	outcome	detail
 00635	chapters/24-Level 18-A.md#L608	zilisp-error	未実装："~{"
 00636	chapters/24-Level 18-A.md#L624	match	
 00637	chapters/24-Level 18-A.md#L639	both-error	
-00638	chapters/24-Level 18-A.md#L647	zilisp-error	未実装：WITH-OPEN-FILE
+00638	chapters/24-Level 18-A.md#L647	match	
 00639	chapters/24-Level 18-A.md#L667	both-error	
 00640	chapters/24-Level 18-A.md#L741	match	
 00641	chapters/24-Level 18-A.md#L791	both-error	
-00642	chapters/24-Level 18-A.md#L813	zilisp-error	未実装：WITH-OUTPUT-TO-STRING
+00642	chapters/24-Level 18-A.md#L813	match	
 00643	chapters/24-Level 18-A.md#L836	both-error	
 00644	chapters/24-Level 18-A.md#L866	both-error	
 00645	chapters/24-Level 18-A.md#L886	both-error	
-00646	chapters/24-Level 18-A.md#L915	zilisp-error	未実装：WITH-OPEN-FILE
+00646	chapters/24-Level 18-A.md#L915	match	
 00647	chapters/24-Level 18-A.md#L1002	match	
 00648	chapters/24-Level 18-A.md#L1037	both-error	
 00649	chapters/24-Level 18-A.md#L1057	match	
 00650	chapters/24-Level 18-A.md#L1089	both-error	
-00651	chapters/24-Level 18-A.md#L1112	zilisp-error	未実装：WITH-OPEN-FILE
+00651	chapters/24-Level 18-A.md#L1112	match	
 00652	chapters/25-Level 18-B.md#L77	match	
 00653	chapters/25-Level 18-B.md#L89	match	
 00654	chapters/25-Level 18-B.md#L102	both-error	
@@ -644,20 +644,20 @@ seq	id	outcome	detail
 00672	chapters/25-Level 18-B.md#L850	both-error	
 00673	chapters/25-Level 18-B.md#L874	match	
 00674	chapters/25-Level 18-B.md#L885	both-error	
-00675	chapters/25-Level 18-B.md#L955	zilisp-error	未実装：WITH-OUTPUT-TO-STRING
+00675	chapters/25-Level 18-B.md#L955	match	
 00676	chapters/25-Level 18-B.md#L985	both-error	
 00677	chapters/25-Level 18-B.md#L1008	zilisp-error	未実装：TYPECASE
 00678	chapters/25-Level 18-B.md#L1049	both-error	
 00679	chapters/25-Level 18-B.md#L1123	match	
 00680	chapters/25-Level 18-B.md#L1148	both-error	
-00681	chapters/25-Level 18-B.md#L1173	zilisp-error	未実装：WITH-OUTPUT-TO-STRING
+00681	chapters/25-Level 18-B.md#L1173	match	
 00682	chapters/25-Level 18-B.md#L1202	both-error	
 00683	chapters/25-Level 18-B.md#L1249	match	
 00684	chapters/25-Level 18-B.md#L1279	both-error	
 00686	chapters/25-Level 18-B.md#L1391	both-error	
 00687	chapters/25-Level 18-B.md#L1411	match	
 00688	chapters/25-Level 18-B.md#L1443	both-error	
-00689	chapters/25-Level 18-B.md#L1475	zilisp-error	未実装：WITH-OPEN-FILE
+00689	chapters/25-Level 18-B.md#L1475	match	
 00690	chapters/25-Level 18-B.md#L1541	match	
 00691	chapters/25-Level 18-B.md#L1558	both-error	
 00692	chapters/25-Level 18-B.md#L1633	match	
@@ -718,10 +718,10 @@ seq	id	outcome	detail
 00800	chapters/27-Level 19.md#L642	match	
 00801	chapters/27-Level 19.md#L678	both-error	
 00802	chapters/27-Level 19.md#L709	match	
-00803	chapters/27-Level 19.md#L754	zilisp-error	未実装：WITH-OPEN-FILE
+00803	chapters/27-Level 19.md#L754	match	
 00805	chapters/27-Level 19.md#L817	match	
 00806	chapters/27-Level 19.md#L854	both-error	
-00807	chapters/27-Level 19.md#L896	zilisp-error	未実装：WITH-OPEN-FILE
+00807	chapters/27-Level 19.md#L896	match	
 00808	chapters/27-Level 19.md#L941	both-error	
 00809	chapters/27-Level 19.md#L966	zilisp-error	未実装：DEFSTRUCT
 00810	chapters/27-Level 19.md#L1202	both-error	
@@ -896,9 +896,9 @@ seq	id	outcome	detail
 01035	chapters/37-Level 23-B.md#L970	match	
 01036	chapters/37-Level 23-B.md#L985	match	
 01037	chapters/37-Level 23-B.md#L994	match	
-01038	chapters/37-Level 23-B.md#L1022	zilisp-error	未実装：WITH-OUTPUT-TO-STRING
-01039	chapters/37-Level 23-B.md#L1042	zilisp-error	未実装：WITH-OPEN-FILE
-01040	chapters/37-Level 23-B.md#L1059	zilisp-error	未実装：WITH-OPEN-FILE
+01038	chapters/37-Level 23-B.md#L1022	match	
+01039	chapters/37-Level 23-B.md#L1042	match	
+01040	chapters/37-Level 23-B.md#L1059	match	
 01041	chapters/37-Level 23-B.md#L1078	both-error	
 01042	chapters/37-Level 23-B.md#L1101	match	
 01043	chapters/37-Level 23-B.md#L1172	zilisp-error	未実装：DEFSTRUCT
@@ -922,7 +922,7 @@ seq	id	outcome	detail
 01068	chapters/39-Level 24-B.md#L327	match	
 01069	chapters/39-Level 24-B.md#L360	match	
 01070	chapters/39-Level 24-B.md#L416	match	
-01071	chapters/39-Level 24-B.md#L452	zilisp-error	未実装：WITH-OPEN-FILE
+01071	chapters/39-Level 24-B.md#L452	match	
 01072	chapters/39-Level 24-B.md#L516	match	
 01073	chapters/39-Level 24-B.md#L532	match	
 01074	chapters/39-Level 24-B.md#L649	match	
@@ -941,7 +941,7 @@ seq	id	outcome	detail
 01091	chapters/42-Level 26.md#L324	zilisp-error	未実装：DEFSTRUCT
 01093	chapters/42-Level 26.md#L413	match	
 01094	chapters/42-Level 26.md#L451	match	
-01095	chapters/42-Level 26.md#L481	zilisp-error	未実装：WITH-OPEN-FILE
+01095	chapters/42-Level 26.md#L481	match	
 01096	chapters/42-Level 26.md#L529	match	
 01097	chapters/42-Level 26.md#L566	zilisp-error	未実装：HANDLER-CASE
 01098	chapters/42-Level 26.md#L606	match	

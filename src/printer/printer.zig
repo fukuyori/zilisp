@@ -67,6 +67,21 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
             // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
             return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
         },
+        .stream => return @import("../primitives/streams.zig").printStream(rt, w, v),
+        .pathname => {
+            const pathnames = @import("../primitives/pathnames.zig");
+            if (!escape) return pathnames.writeNamestring(rt, w, v);
+            // #P"..."（" と \ はエスケープする）
+            var buf: Writer.Allocating = .init(rt.gpa);
+            defer buf.deinit();
+            pathnames.writeNamestring(rt, &buf.writer, v) catch return error.WriteFailed;
+            try w.writeAll("#P\"");
+            for (buf.written()) |c| {
+                if (c == '"' or c == '\\') try w.writeByte('\\');
+                try w.writeByte(c);
+            }
+            return w.writeByte('"');
+        },
         // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
         .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
     }

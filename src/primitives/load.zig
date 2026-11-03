@@ -1,6 +1,6 @@
 //! load（Phase 22。CLHS load）：ファイルのフォームを順に読んで評価する。
 //!
-//! - ファイルの指定は文字列（パス名は Phase 23）。相対パスは、今の作業ディレクトリから探す。
+//! - ファイルの指定はパス名指定子（文字列・パス名・ファイルストリーム）。*default-pathname-defaults* と併合する（Phase 23）。
 //! - 読み込みの間、*package* をその時点の値に束縛する（ファイルの中の in-package は、読み込みが終われば元に戻る）。
 //! - フォームは1つ読むごとに評価する（後のフォームの読み方を、in-package などが変えるため）。
 //! - :if-does-not-exist が NIL なら、ファイルがなければ NIL を返す。:verbose・:print を真にするのは未実装（エラー）。
@@ -30,18 +30,11 @@ pub fn load(th: *Thread, args: []const Value) Value {
     if (kv[3]) |ef| if (ef != (rt.internKeyword("DEFAULT") catch return th.outOfMemory()) and ef != (rt.internKeyword("UTF-8") catch return th.outOfMemory()))
         return th.signal(.unimplemented, "LOAD の :external-format は :default か :utf-8 だけです", ef, Value.unbound);
     const spec = args[0];
-    if (!arrays.isStringLike(spec)) return th.typeError(spec, cl(th, "STRING"));
-    const view = arrays.vectorView(spec).?;
-    var path: std.ArrayList(u8) = .empty;
-    defer path.deinit(rt.gpa);
-    const s = Runtime.stringPtr(view.data);
-    for (0..view.len) |i| {
-        var b: [4]u8 = undefined;
-        const n = std.unicode.utf8Encode(s.charAt(i), &b) catch unreachable;
-        path.appendSlice(rt.gpa, b[0..n]) catch return th.outOfMemory();
-    }
+    // パス名指定子（文字列・パス名・ファイルストリーム。Phase 23）。*default-pathname-defaults* と併合する
+    const path = @import("pathnames.zig").osName(th, spec) orelse return Value.unwind;
+    defer rt.gpa.free(path);
     const io = rt.io orelse return th.signal(.unimplemented, "この環境では LOAD でファイルを読めません", spec, Value.unbound);
-    const text = Io.Dir.cwd().readFileAlloc(io, path.items, rt.gpa, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+    const text = Io.Dir.cwd().readFileAlloc(io, path, rt.gpa, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
         error.FileNotFound => {
             if (kv[2]) |ide| if (ide == Value.nil) return Value.nil;
             return th.signal(.file_error, "ファイルがありません", spec, Value.unbound);

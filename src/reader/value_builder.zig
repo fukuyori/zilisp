@@ -136,6 +136,15 @@ pub const ValueBuilder = struct {
         return Value.nil;
     }
 
+    /// #P"..."：文字列をパス名にする（Phase 23）
+    pub fn pathname(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, obj: Value) Error!Value {
+        const pathnames = @import("../primitives/pathnames.zig");
+        if (!(obj.isOther() and Runtime.kindOf(obj) == .string)) return fail(diag, loc, "#P の後には文字列が必要です");
+        const text = try pathnames.stringUtf8(b.rt.gpa, obj);
+        defer b.rt.gpa.free(text);
+        return pathnames.parse(b.rt, text);
+    }
+
     pub fn string(b: *ValueBuilder, loc: SourceLoc, utf8: []const u8) Error!Value {
         _ = loc;
         return b.rt.makeString(utf8);

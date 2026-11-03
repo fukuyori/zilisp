@@ -1,0 +1,53 @@
+
+:OK 
+("abc" "x1" "42" ("end" T) :EOF) 
+"+tail" 
+("abc" "x1" "42" "end+tail") 
+(#\a #\b #\b #\b 2 18) 
+NIL 
+NIL 
+(NIL T) 
+(T T NIL CHARACTER NIL "t1" "txt") 
+"new" 
+"new" 
+T 
+(T NIL) 
+((A B "c" 1.5) :K SYM :EOF :EOF) 
+((A B "c" 1.5) :K SYM) 
+(0 1 255 128 :EOF 4 (UNSIGNED-BYTE 8)) 
+(4 #(0 1 255 128 9 9)) 
+(3 26085 10) 
+(26085 3) 
+"ab
+1 2" 
+"x
+Y " 
+(12 (A B) "c" :E) 
+("line1" "line2" :E) 
+((1 2) 6) 
+(ABC 6) 
+(:NONE 0) 
+(DEF 7) 
+("\"a\"" "a" "X" "q") 
+("ab" "") 
+(#\e #\l :E) 
+(T NIL) 
+:OK 
+"a
+b" 
+"q\"q\"" 
+"xx" 
+"in" 
+(T T T T) 
+(#\x #\x) 
+(#\, #\, "def") 
+"el" 
+(2 "xy-") xyzw
+
+
+(NIL NIL NIL NIL NIL NIL) 
+a
+b
+c
+
+NIL 

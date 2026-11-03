@@ -96,6 +96,8 @@ pub const ErrorKind = enum {
     floating_point_invalid_operation,
     storage_condition,
     parse_error,
+    /// ストリームの誤り（閉じたストリームなど。Phase 23）
+    stream_error,
     /// ファイルを読めない（Phase 22 の load）
     file_error,
     /// 読み取りの誤り・ファイルの途中でフォームが終わっている（Phase 22 の load）
@@ -118,6 +120,7 @@ pub const ErrorKind = enum {
             .floating_point_invalid_operation => "FLOATING-POINT-INVALID-OPERATION",
             .storage_condition => "STORAGE-CONDITION",
             .parse_error => "PARSE-ERROR",
+            .stream_error => "STREAM-ERROR",
             .file_error => "FILE-ERROR",
             .reader_error => "READER-ERROR",
             .end_of_file => "END-OF-FILE",
@@ -145,10 +148,8 @@ pub const Thread = struct {
     fault: Fault = .none,
     err: LispError = .{},
     vm: vm_mod.Vm,
-    /// *standard-output*（Phase 23 でストリームにする）
+    /// 標準出力の書き先（*standard-output* の初めの値のストリームが書く。Phase 23）
     out: *std.Io.Writer,
-    /// out に最後に書いたのが改行か（行の先頭にいるか。format の ~& が使う。Phase 19）
-    line_start: bool = true,
     /// Zig の関数から関数を呼んでいる入れ子の深さ（Thread.call で数える）
     native_depth: u32 = 0,
     /// 動的束縛のスタック（§6.5）
@@ -206,6 +207,8 @@ pub const Thread = struct {
         rt.thread = th;
         errdefer rt.thread = null;
         errdefer th.saved_errors.deinit(rt.gpa);
+        // 標準のストリームと *default-pathname-defaults*（Phase 23）
+        if (!@import("../primitives/streams.zig").installStandardStreams(th)) return error.OutOfMemory;
         // 標準ライブラリ（Lisp で書いた標準マクロなど）を読み込む（§11.1 の 7）
         try @import("../compiler/boot.zig").load(th);
         return th;

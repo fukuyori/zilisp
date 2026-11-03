@@ -58,6 +58,54 @@ clhs = "*package*（値はパッケージでなければならない。そうで
 since = "Phase 22"
 
 [[items]]
+id = "pathname-host"
+description = "パス名の host（pathname-host の値）"
+sbcl = "host のオブジェクト（Windows では #<SB-IMPL::WIN32-HOST>）"
+zilisp = "いつも NIL（Phase 23）"
+clhs = "19.2.2.1.1 The Pathname Host Component（host の表し方は処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "pathname-wild-pattern"
+description = "名前・型の途中にある * や ?（a*b.l?sp など）の表し方"
+sbcl = "SB-IMPL::PATTERN のオブジェクト"
+zilisp = "文字列のまま持つ（wild-pathname-p・pathname-match-p・directory は照合する。Phase 23）"
+clhs = "19.2.2.2.2 :WILD as a Component Value（:wild 以外のワイルドカードの表し方は処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "pathname-name-with-dot"
+description = "名前に . を含むパス名（(make-pathname :name \"a.b\")）の印字"
+sbcl = "#P\"a^.b\"（読み戻せるように . をエスケープする）"
+zilisp = "#P\"a.b\"（読み戻すと名前 a、型 b になる。Phase 23）"
+clhs = "19.1.2 Parsing Namestrings Into Pathnames（namestring の書き方は処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "stream-printing-and-types"
+description = "ストリームの印字と型の名前"
+sbcl = "#<SB-SYS:FD-STREAM for \"file ...\" {...}>、型は SB-IMPL::STRING-OUTPUT-STREAM など"
+zilisp = "#<FILE-STREAM for \"...\" {...}>、#<STRING-OUTPUT-STREAM {...}> など（type-of・typep は未実装。Phase 23）"
+clhs = "22.1.3.13 Printing Other Objects（#<...> の内容は処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "close-abort"
+description = "(close stream :abort t)（with-open-file をエラーで抜けたときなど）で、書いていたファイルをどうするか"
+sbcl = "新しく作ったファイルを消す・:supersede なら元のファイルに戻す"
+zilisp = "閉じるだけ（それまでに書いた内容が残る。Phase 23）"
+clhs = "close（:abort が真なら、ストリームを作った副作用を元に戻そうと「試みる」。どこまで戻すかは処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "standard-stream-structure"
+description = "*terminal-io*・*query-io*・*debug-io*・*trace-output* などの作り"
+sbcl = "fd-stream と synonym・two-way ストリームの組み合わせ（--script では *terminal-io* などを束縛し直す）"
+zilisp = "*terminal-io* は *standard-input* と *standard-output* の two-way、*query-io*・*debug-io* は *terminal-io* の synonym、*trace-output* は *standard-output* の synonym（Phase 23）"
+clhs = "21.1.2 Stream Variables（それぞれのストリームの作りは処理系定義）"
+since = "Phase 23"
+
+[[items]]
 id = "reader-character-unicode-names"
 description = "#\\ の後の Unicode の文字名（#\\GREEK_SMALL_LETTER_LAMDA など）"
 sbcl = "読める"

@@ -57,10 +57,12 @@ Implemented after 0.2.0 (in `main`, not yet released):
   and case follow Unicode 15.0.0, as in SBCL 2.6.7
 
 - Packages: `defpackage`, `in-package`, `export`, `use-package`, `intern`, `find-symbol` and the other package
-  functions, name-conflict detection, and `load` for files named by strings
+  functions, name-conflict detection, and `load`
+- Streams and files: `with-open-file`, `read-line`, `read`, `write-line`, string streams (`with-output-to-string`,
+  `read-from-string`, ...), binary I/O, and pathnames (`#P`, `merge-pathnames`, `probe-file`, `directory`, ...)
 
-Not yet implemented (planned for later releases): the full `format`, complex numbers, streams and files (pathnames,
-`with-open-file`), `defstruct`, CLOS, and the condition system (`handler-case`, restarts).
+Not yet implemented (planned for later releases): the full `format`, the pretty printer, complex numbers, `defstruct`,
+CLOS, and the condition system (`handler-case`, restarts).
 
 Error messages are currently written in Japanese.
 

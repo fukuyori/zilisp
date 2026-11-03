@@ -1,0 +1,55 @@
+
+(NIL NIL "foo" "txt" :NEWEST) 
+(NIL (:ABSOLUTE "tmp" "a") "b" "lisp" :NEWEST) 
+(NIL (:RELATIVE "dir" "sub") NIL NIL NIL) 
+(NIL (:RELATIVE :UP) "x" NIL :NEWEST) 
+(NIL NIL ".emacs" NIL :NEWEST) 
+(NIL NIL "a" "" :NEWEST) 
+(NIL NIL :WILD "lisp" :NEWEST) 
+(NIL (:ABSOLUTE "tmp" :WILD-INFERIORS) :WILD "txt" :NEWEST) 
+(NIL NIL NIL NIL NIL) 
+(NIL (:RELATIVE ".") "x" NIL :NEWEST) 
+(NIL (:RELATIVE "a" ".") "b" NIL :NEWEST) 
+(NIL (:RELATIVE "a") "b" NIL :NEWEST) 
+(NIL NIL :WILD :WILD :NEWEST) 
+(NIL (:ABSOLUTE) NIL NIL NIL) 
+(NIL NIL "x.tar" "gz" :NEWEST) 
+(#P"/tmp/a.txt" "#P\"/tmp/a.txt\"" "/x/y.z #P\"/x/y.z\"") 
+"/tmp/x/a.txt" 
+"x/a" 
+"a.txt" 
+#P"a.txt" 
+"../a/b" 
+"/**/*.txt" 
+"/tmp/a.bak" 
+"/x/a" 
+(:ABSOLUTE "foo") 
+(:ABSOLUTE :WILD-INFERIORS) 
+("b.txt" "/tmp/a/" "" "") 
+("a/b.txt" "/tmp/a/b.txt") 
+("b" T NIL "x/y.z") 
+(#P"a/b.c" 5) 
+"/tmp/a b.txt" 
+"/tmp/dir/a.txt" 
+"/tmp/dir/a.txt" 
+"/tmp/dir/sub/a" 
+"/abs/a" 
+"/tmp/x.bak" 
+"/tmp/dir/../b.txt" 
+#P"a.lisp" 
+:NEWEST 
+(T NIL NIL) 
+1 
+(T T NIL T) 
+".zig-cache/lang-tmp/pathnames/sub/x.txt" 
+(".zig-cache/lang-tmp/pathnames/a.lisp" ".zig-cache/lang-tmp/pathnames/b.lisp") 
+(".zig-cache/lang-tmp/pathnames/sub/") 
+(".zig-cache/lang-tmp/pathnames/c.txt" ".zig-cache/lang-tmp/pathnames/sub/d.txt") 
+NIL 
+(".zig-cache/lang-tmp/pathnames/a.lisp" NIL ".zig-cache/lang-tmp/pathnames/" ".zig-cache/lang-tmp/pathnames/c.txt") 
+T 
+(".zig-cache/lang-tmp/pathnames/ren2.txt" ".zig-cache/lang-tmp/pathnames/ren.txt" ".zig-cache/lang-tmp/pathnames/ren2.txt") 
+(NIL T NIL) 
+"a.lisp" 
+NIL 
+NIL 

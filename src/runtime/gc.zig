@@ -115,6 +115,19 @@ const Marker = struct {
                     m.markValue(r.numerator);
                     m.markValue(r.denominator);
                 },
+                .stream => {
+                    const st: *object.Stream = @ptrFromInt(e);
+                    m.markValue(st.ref);
+                },
+                .pathname => {
+                    const p: *object.Pathname = @ptrFromInt(e);
+                    m.markValue(p.host);
+                    m.markValue(p.device);
+                    m.markValue(p.directory);
+                    m.markValue(p.name);
+                    m.markValue(p.type);
+                    m.markValue(p.version);
+                },
                 // raw_vector は数だけを持つ（中を走査しない）
                 .string, .double_float, .package, .bignum, .raw_vector => {},
                 _ => {},
@@ -392,6 +405,8 @@ pub fn collect(rt: *Runtime) void {
     scanStack(&m, stackTop(rt));
 
     m.drain();
+    // 回収されるストリームの状態を閉じて解放する（ファイルの出力は書き出してから閉じる。§3.2）
+    @import("../primitives/streams.zig").finalizeDead(rt);
     h.afterMark(m.live_bytes, m.live_objects);
 
     h.stats.collections += 1;

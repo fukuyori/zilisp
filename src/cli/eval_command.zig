@@ -23,6 +23,8 @@ pub const Session = struct {
     rt: *Runtime,
     th: *Thread,
     options: Options,
+    /// ファイルをスクリプトとして実行している（標準入力の終わりなどで、エラーを表示せずに終える。Phase 23）
+    script: bool = false,
 
     pub fn create(gpa: std.mem.Allocator, io: ?Io, options: Options, out: *Io.Writer) error{OutOfMemory}!Session {
         const rt = try Runtime.create(gpa);
@@ -81,6 +83,12 @@ fn evalText(
         } orelse break;
         const loc = r.start_loc orelse src.loc();
         const value = eval_mod.eval(s.th, form);
+        if (value == Value.unwind and s.script and @import("../primitives/streams.zig").isQuietScriptExit(s.th)) {
+            // 標準入力の終わり・書けない標準出力：表示せずに正常に終える（SBCL 2.6.7 の --script と同じ）
+            s.th.clearError();
+            consumed.* = text.len;
+            return .ok;
+        }
         if (value == Value.unwind) {
             try stdout.flush();
             try stderr.print("{s}:{d}:{d}: ", .{ name, loc.line, loc.col });
@@ -124,6 +132,7 @@ pub fn runScript(gpa: std.mem.Allocator, io: Io, options: Options, path: []const
         return .failed;
     };
     defer s.destroy(stderr);
+    s.script = true;
     var consumed: usize = 0;
     return switch (try evalText(&s, gpa, text, path, false, &consumed, stdout, stderr)) {
         .ok => .ok,

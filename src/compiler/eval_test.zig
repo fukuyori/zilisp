@@ -1814,3 +1814,49 @@ test "package errors like SBCL 2.6.7 (Phase 22)" {
     e.rt.symbolPtr(e.rt.package_sym).value = e.rt.cl_user.obj;
     try expectValue(&e, "(package-name *package*)", "\"COMMON-LISP-USER\"");
 }
+
+test "stream and pathname errors like SBCL 2.6.7 (Phase 23)" {
+    // ファイルを扱うので、Runtime に io を設定してから Thread を作る
+    var e: Env = undefined;
+    e.rt = try Runtime.create(testing.allocator);
+    defer e.rt.destroy();
+    e.rt.io = testing.io;
+    e.out = .init(testing.allocator);
+    defer e.out.deinit();
+    e.th = try Thread.create(e.rt, &e.out.writer, .{});
+    defer e.th.destroy();
+    try expectValue(&e,
+        \\(progn (ensure-directories-exist ".zig-cache/unit-tmp/p23/")
+        \\  (with-open-file (s ".zig-cache/unit-tmp/p23/a.txt" :direction :output :if-exists :supersede) (write-line "x" s))
+        \\  (with-open-file (s ".zig-cache/unit-tmp/p23/b.bin" :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+        \\    (write-byte 1 s))
+        \\  t)
+    , "T");
+    // SBCL 2.6.7：file-exists・file-does-not-exist・simple-file-error・delete-file-error は file-error の一種
+    try expectError(&e, "(open \".zig-cache/unit-tmp/p23/a.txt\" :direction :output)", .file_error);
+    try expectError(&e, "(open \".zig-cache/unit-tmp/p23/nope.txt\")", .file_error);
+    try expectError(&e, "(truename \".zig-cache/unit-tmp/p23/nope.txt\")", .file_error);
+    try expectError(&e, "(delete-file \".zig-cache/unit-tmp/p23/nope.txt\")", .file_error);
+    // closed-stream-error は stream-error の一種
+    try expectError(&e, "(let ((s (open \".zig-cache/unit-tmp/p23/a.txt\"))) (close s) (read-line s))", .stream_error);
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/a.txt\") (read-line s) (read-line s))", .end_of_file);
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/a.txt\") (read s) (read s))", .end_of_file);
+    try expectError(&e, "(read-from-string \"\")", .end_of_file);
+    try expectError(&e, "(read-from-string \"(1 2\")", .end_of_file);
+    // 文字のストリームにバイト、バイトのストリームに文字（SBCL 2.6.7 は simple-type-error）
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/a.txt\") (read-byte s))", .type_error);
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/b.bin\" :element-type '(unsigned-byte 8)) (read-char s))", .type_error);
+    try expectError(&e, "(pathname 'foo)", .type_error);
+    try expectError(&e, "(write-string 1)", .type_error);
+    try expectError(&e, "(read-char 1)", .type_error);
+    try expectError(&e, "(format 1 \"x\")", .type_error);
+    try expectError(&e, "(get-output-stream-string (make-string-input-stream \"x\"))", .type_error);
+    // 向きの違うストリーム（SBCL 2.6.7 は simple-type-error）
+    try expectError(&e, "(read-char (make-string-output-stream))", .type_error);
+    try expectError(&e, "(write-char #\\a (make-string-input-stream \"x\"))", .type_error);
+    // 未実装（黙って別の動作をしない）
+    try expectError(&e, "(open \".zig-cache/unit-tmp/p23/a.txt\" :direction :io)", .unimplemented);
+    try expectError(&e, "(open \".zig-cache/unit-tmp/p23/a.txt\" :element-type 'fixnum)", .unimplemented);
+    try expectError(&e, "(with-output-to-string (s (make-string 3)) (write-string \"x\" s))", .unimplemented);
+    try expectValue(&e, "(progn (delete-file \".zig-cache/unit-tmp/p23/a.txt\") (delete-file \".zig-cache/unit-tmp/p23/b.bin\"))", "T");
+}

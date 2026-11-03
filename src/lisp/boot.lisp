@@ -1133,3 +1133,46 @@
 ;; (do-all-symbols (変数 &optional 結果) 本体...)：すべてのパッケージにあるシンボル（同じシンボルが何度も現れてよい）
 (defmacro do-all-symbols ((var &optional result) &body body)
   `(dolist (,var (zl-sys::%all-package-symbols) ,result) ,@body))
+
+;;; ---------------------------------------------------------------------------
+;;; Phase 23：ストリーム（CLHS 21 章。関数は src/primitives/streams.zig）
+
+;; (with-open-file (変数 ファイル オプション...) 本体...)：抜けるときに閉じる（エラー・脱出で抜けたら :abort t）
+(defmacro with-open-file ((var filespec &rest options) &body body)
+  (let ((abortp (gensym "ABORTP")))
+    `(let ((,var (open ,filespec ,@options)) (,abortp t))
+       ,@(zl-sys::%body-declarations body)
+       (unwind-protect
+            (multiple-value-prog1 (progn ,@(zl-sys::%body-forms body)) (setq ,abortp nil))
+         (when ,var (close ,var :abort ,abortp))))))
+
+;; (with-open-stream (変数 ストリーム) 本体...)
+(defmacro with-open-stream ((var stream) &body body)
+  (let ((abortp (gensym "ABORTP")))
+    `(let ((,var ,stream) (,abortp t))
+       ,@(zl-sys::%body-declarations body)
+       (unwind-protect
+            (multiple-value-prog1 (progn ,@(zl-sys::%body-forms body)) (setq ,abortp nil))
+         (when ,var (close ,var :abort ,abortp))))))
+
+;; (with-output-to-string (変数 &optional 文字列 &key element-type) 本体...)：書いた文字列を返す。
+;; 文字列（fill-pointer のある文字列に書き足す形）は未実装
+(defmacro with-output-to-string ((var &optional string &key element-type) &body body)
+  (declare (ignore element-type))
+  (when string
+    (zl-sys::%unimplemented-error "WITH-OUTPUT-TO-STRING に文字列を渡すのは未実装です" string))
+  `(let ((,var (make-string-output-stream)))
+     ,@(zl-sys::%body-declarations body)
+     (unwind-protect
+          (progn ,@(zl-sys::%body-forms body) (get-output-stream-string ,var))
+       (close ,var))))
+
+;; (with-input-from-string (変数 文字列 &key start end index) 本体...)：:index は未実装
+(defmacro with-input-from-string ((var string &key (start 0) end index) &body body)
+  (when index
+    (zl-sys::%unimplemented-error "WITH-INPUT-FROM-STRING の :index は未実装です" index))
+  `(let ((,var (make-string-input-stream ,string ,start ,end)))
+     ,@(zl-sys::%body-declarations body)
+     (unwind-protect
+          (progn ,@(zl-sys::%body-forms body))
+       (close ,var))))

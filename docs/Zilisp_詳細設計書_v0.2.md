@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記27） | 2026-11-03 | Phase 23：ストリームとパス名（§2.4、§11.2。標準のストリーム、ファイル・文字列のストリーム、#P、ファイルの操作、GC による閉じ忘れたストリームの後始末） |
 | 0.2（追記26） | 2026-11-03 | Phase 22：パッケージ（§8.2。`*package*`、パッケージの関数、defpackage・in-package、名前の衝突、load、ネイティブの定数の修飾）。シャドウイングシンボルの持ち方の変更 |
 | 0.2（追記25） | 2026-11-03 | Phase 21.6：ハッシュ表を SBCL 2.6.7 の並べ方に置き換え（§2.6。maphash の順序、枠の数の決め方、flat の表）。GC の走査しない配列 `raw_vector`（§2.4） |
 | 0.2（追記24） | 2026-11-03 | Phase 21.5：Unicode 15.0.0 の文字の種類と大文字・小文字（§11.2。表の生成器と、全符号位置での SBCL 2.6.7 との比較）。§2.6 の equalp の大文字・小文字 |
@@ -238,8 +239,8 @@ pub const ObjHeader = packed struct(u64) {
 | `class` / `layout` | other | §10 | `class` / （内部） |
 | `generic_function` | function | §10 | `generic-function` |
 | `method` | other | §10 | `method` |
-| `stream` | other | 種別、OS ハンドル／文字列バッファ、エンコーディング | `stream` |
-| `pathname` | other | host、device、directory、name、type、version | `pathname` |
+| `stream` | other | 種別、Lisp の値（ref）、Zig の側の状態（OS ハンドル・入出力のバッファ・エンコーディング。Phase 23） | `stream` |
+| `pathname` | other | host、device、directory、name、type、version（Phase 23） | `pathname` |
 | `environment` | other | コンパイラの環境（動的エクステントのみ有効） | `&environment` の値 |
 | `foreign_pointer` | other | アドレス、所有フラグ | （拡張） |
 | `random_state` / `readtable` | other | | `random-state` / `readtable` |
@@ -1241,6 +1242,7 @@ instance                      rack
 | P21.5 | 949 | 8.82 ms | 1.79 MB |
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
+| P23 | 1061 | 9.47 ms | 1.97 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1286,6 +1288,20 @@ instance                      rack
 - **残る違い**（`tests/differential/impl-dependent.toml`）：`char-case-titlecase`（上の4文字）、`reader-symbol-normalization`（SBCL の Reader はシンボル名を NFKC で正規化する）、`reader-number-non-ascii-digits`（SBCL の Reader は `١٢` を 12 と読む。Zilisp はシンボル）、文字の名前（`reader-character-unicode-names`・`printer-character-names`。範囲の外）。Unicode に関する3項目（`reader-upcase-non-ascii`・`string-case-non-ascii`・`char-class-non-ascii`）と `printer-non-ascii-symbol-escape` は、違いがなくなったので外した。
 - **試験**：全符号位置（0〜#x10FFFF）で、SBCL 2.6.7 の9つの結果（`alpha-char-p`・`alphanumericp`・`upper-case-p`・`lower-case-p`・`both-case-p`・`graphic-char-p`・基数 36 の `digit-char-p`・`char-upcase`・`char-downcase`）と比べる（`src/unicode/testdata/sbcl-2.6.7-chars.txt`。同じ結果が続く範囲ごとに 1 行、3,409 行。`tools/gen_unicode/sbcl-chars.lisp` を SBCL 2.6.7 で実行して作る）。大文字・小文字の往復（CLHS 13.1.4.3）。Reader の試験。言語試験 `unicode.lisp`（SBCL 2.6.7 と同じ出力。違う3行は注釈で記録）。
 - 結果：教材のブロックの一致は 421 のまま（出力の違い 0）。起動時間は 8.82 ms（P21 は 8.80 ms。表は実行ファイルに埋め込む定数で、起動時の処理は増えない。実行ファイルは 1.72 MB から 1.79 MB に）。
+
+**Phase 23 の実装（ストリーム・パス名）**
+- **ストリーム**（`src/primitives/streams.zig`。オブジェクトは `object.Stream`）：種類は file・string-input・string-output・stdin・stdout・stderr・synonym・two-way・broadcast。Lisp の値（synonym のシンボル、two-way の組、broadcast のリスト、ファイルのパス名）はオブジェクトの `ref` に置き、GC が走査する。入出力のバッファとファイルのハンドルは Zig の側の状態（`StreamState`。gpa で確保）に置き、`Runtime.streams` が一覧で持つ。**GC は、回収されるストリームの状態を閉じて解放する**（ファイルの出力は書き出してから閉じる。§3.2 の「閉じ忘れたファイルは GC のときに閉じる」）。Runtime を破棄するときも、すべて書き出して閉じる。
+- **入力**：どの入力ストリームも、UTF-8 のバイト列と位置で扱う（`read-line`・`read-char`・`read` が同じ位置を共有する）。ファイルと文字列の入力ストリームは、開いたときに全体を読む。標準入力は必要になった分だけ読み足す。Windows では、文字の入力で CR LF を1つの改行として読む（SBCL 2.6.7 と同じ。出力は LF だけ）。`file-position`・`file-length` はバイトで数える（文字列のストリームは文字）。`read` は、読んだ後ろの空白を1つ読み進める（SBCL と同じ）。
+- **出力**：出力の関数は、いったんバイト列にしてから書く（`emit`）。ファイルは 64 KiB を超えたとき・`finish-output`・`close` で書き出す。ストリームごとに「行の先頭にいるか」を持ち、`fresh-line` と `format` の `~&` が使う。`print`・`prin1`・`princ`・`terpri`・`format` は出力先のストリームを受け取る（それまでは `th.out` に直接書いていた）。
+- **標準のストリーム**（`Thread.create` が作る）：`*standard-output*`（`th.out` に書く）、`*standard-input*`、`*error-output*`（書く前に標準出力を書き出す）、`*terminal-io*`（two-way）、`*query-io*`・`*debug-io*`（`*terminal-io*` の synonym）、`*trace-output*`（`*standard-output*` の synonym）。
+- **関数**：`open`（`:direction` は `:input`・`:output`・`:probe`。`:io` は未実装。`:element-type` は文字か `(unsigned-byte 8)`。`:if-exists` の既定は SBCL と同じくエラー。`:supersede`・`:append`・`:overwrite`・`:rename`・NIL。`:external-format` は `:utf-8`・`:latin-1`）・`close`・`with-open-file`・`with-open-stream`、`read-char`・`peek-char`・`unread-char`・`read-char-no-hang`・`read-line`（2つ目の値も）・`read-byte`・`read-sequence`・`listen`・`clear-input`・`read`・`read-preserving-whitespace`・`read-from-string`（2つ目の値は次の位置）、`write-char`・`write-string`・`write-line`・`write-byte`・`write-sequence`・`terpri`・`fresh-line`・`finish-output`・`force-output`・`clear-output`、`print`・`prin1`・`princ`・`pprint`（pretty printer は未実装なので1行に書く）・`write`（`:stream`・`:escape` だけ）・`prin1-to-string`・`princ-to-string`・`write-to-string`、`make-string-input-stream`・`make-string-output-stream`・`get-output-stream-string`・`with-output-to-string`・`with-input-from-string`・`make-broadcast-stream`・`make-two-way-stream`・`make-synonym-stream` と、その中身を返す関数、`streamp`・`input-stream-p`・`output-stream-p`・`open-stream-p`・`interactive-stream-p`・`stream-element-type`・`file-length`・`file-position`。
+- **パス名**（`src/primitives/pathnames.zig`。オブジェクトは `object.Pathname`）：欄は host（いつも NIL）・device（Windows のドライブ名）・directory・name・type・version。読み方と namestring は SBCL 2.6.7 と同じ（区切りは `/`、Windows では `\` も読む。`*` は `:wild`、`**` は `:wild-inferiors`、`..` は `:up`、`.emacs` は名前、名前があれば version は `:newest`）。`#P"..."` の読み取りと印字。関数は `pathname`・`pathnamep`・`pathname-host` などの欄・`make-pathname`・`merge-pathnames`（相対のディレクトリを既定のディレクトリの後ろに足す。`:up` は残す）・`namestring`・`file-namestring`・`directory-namestring`・`host-namestring`・`enough-namestring`・`parse-namestring`・`wild-pathname-p`・`pathname-match-p`・`probe-file`・`truename`・`directory`（`*`・`?`・`**` で照合し、名前の順に返す）・`ensure-directories-exist`・`delete-file`・`rename-file`・`file-write-date`。`*default-pathname-defaults*` は起動時の作業ディレクトリ。ファイルを開くときなどは、それと併合してから OS に渡す。`equal`・`equal` のハッシュ表は、パス名を欄ごとに比べる。`load` もパス名指定子を受け取る。
+- **スクリプトの終わり方**：ファイルを実行しているとき（`zilisp FILE`・ネイティブのプログラム）、標準入力の end-of-file と、標準出力に書けない（broken pipe）ときは、エラーを表示せずに正常に終える（SBCL 2.6.7 の `--script` の process-script と同じ）。
+- **エラーの種類**：`stream-error`（閉じたストリーム）を加えた。ファイルの誤りは `file-error`、ストリームの終わりは `end-of-file`、向きや要素の型の違うストリームは type-error（どれも SBCL と同じ種類）。
+- **修正**：パス名を読むときに、ディレクトリの要素の文字列を Zig の配列にためていたため、次の確保で GC が起きると回収されることがあった（GC stress で発見。すぐに Lisp のリストにつなぐようにした）。
+- **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：パス名の host、名前の途中の `*` の表し方（SBCL は pattern のオブジェクト）、ストリームの印字と型の名前、`close` の `:abort`（SBCL は新しいファイルを消す・元に戻す。Zilisp は閉じるだけ）、`*query-io*` などの作り。
+- **試験**：言語試験 `streams.lisp`（ファイルの読み書き、バイナリ、UTF-8、文字列のストリーム、合成のストリーム、標準出力）と `pathnames.lisp`（読み方、namestring、merge-pathnames、比較、ファイルの操作）。どちらも SBCL 2.6.7 と同じ出力で、GC stress の版とネイティブでも同じ。エラーの種類の単体テスト（file-error・stream-error・end-of-file・type-error・未実装）。
+- 結果：教材のブロックの一致は 429 から 467 に。Level 9 は 7 から 27 に一致が増え（標準入力を読む 3 つは、上の「スクリプトの終わり方」で SBCL と同じになった。eval-check は標準入力を与えない）、Zilisp だけがエラーで残るのは `format` の指示子（Phase 24）の 7 つ。**Level 17 の本体のコード（`text-tools`）は、`handler-case`（Phase 25）と `format` の `~8D` などの指示子（Phase 24）も使うので、Phase 23 の範囲では動かない**。`handler-case` を外した写しで、`format` の指示子に当たるまでの入出力が SBCL と同じであることを確かめた。起動時間は 9.47 ms。
 
 ### 11.3 標準ライブラリのビルド
 

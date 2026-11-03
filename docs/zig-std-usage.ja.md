@@ -30,6 +30,8 @@ Zig を更新したときは、この照合をやり直す（`docs/version-updat
 | ハッシュ関数 | `std.hash.Wyhash.hash(seed, bytes)`、`std.hash.Crc32.hash(bytes)` | `probe.zig` | |
 | UTF-16 | `std.unicode.utf8ToUtf16LeAllocZ(gpa, s)` | `probe.zig` | Windows API の境界で使う |
 | Unicode の文字の種類・大文字小文字 | **std にはない**（`std.unicode` は符号化の変換だけ、`std.ascii` は u8 の ASCII だけ）。2026-11-03 に確認 | `lib/std/unicode.zig` の公開関数、`lib/std/ascii.zig` 104・195行目 | Phase 21.5 で UCD から表を生成する（`tools/gen_unicode/main.zig`、`src/unicode/`） |
+| ファイルの読み書き（Phase 23） | `Io.Dir.cwd().openFile(io, path, .{})`・`createFile(io, path, .{ .truncate = bool })`・`readFileAlloc(io, path, gpa, .limited(n))`・`statFile(io, path, .{})`（`.kind`・`.size`・`.mtime`）・`realPathFileAlloc(io, path, gpa)`（`[:0]u8` を返す。解放も `[:0]u8` のままで行う）・`deleteFile`・`rename(old_dir, old, new_dir, new, io)`・`createDirPath`・`openDir(..., .{ .iterate = true })` と `iterate().next(io)`。`File.writePositionalAll(io, bytes, offset)`・`readStreaming(io, &.{buf})`・`length(io)`・`writeStreamingAll(io, bytes)` | `lib/std/Io/Dir.zig`・`lib/std/Io/File.zig` | `src/primitives/streams.zig`・`pathnames.zig`。`realPathFileAlloc` の値を `[]u8` にして解放すると、確保した長さと違うと DebugAllocator が止める（2026-11-03 に確認） |
+| 試験の中の Io | `std.testing.io`（`std.Io.Threaded`） | `lib/std/testing.zig` 23〜24行目 | ファイルを扱う単体テストで、Runtime に設定する |
 | Zig のソースの整形（zig fmt と同じ） | `std.zig.Ast.parse(gpa, source_z, .{})` で構文木を作り（`tree.errors` で誤りを確かめる）、`tree.renderAlloc(gpa)` | `lib/std/zig/Ast.zig` 149・220行目 | 生成した表を `zig fmt` と同じ形で書き出すのに使う（`tools/gen_unicode/main.zig`） |
 | 実行ファイルのパス | `std.process.executablePath(io, buf)`、`std.process.executablePathAlloc(io, gpa)` | `lib/std/process.zig` 742・769行目 | |
 | 子プロセス | `std.process.Child` | `lib/std/process.zig` 19行目 | 使い方は Phase 12（`zig` の呼び出し）で確認する |

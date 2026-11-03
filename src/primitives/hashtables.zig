@@ -74,6 +74,13 @@ pub fn hashEqual(v: Value, depth: u32) u64 {
         for (0..view.len) |i| h = (h ^ s.charAt(i)) *% 0x100000001b3;
         return mix(h);
     }
+    // パス名は欄ごと（equal と同じく欄を比べるので。Phase 23）
+    if (v.isOther() and Runtime.kindOf(v) == .pathname) {
+        const p: *const object.Pathname = @ptrCast(@alignCast(v.pointer()));
+        var h: u64 = 0x50415448;
+        for ([_]Value{ p.device, p.directory, p.name, p.type, p.version }) |x| h = mix(h *% 31 +% hashEqual(x, 4));
+        return h;
+    }
     return hashEql(v);
 }
 

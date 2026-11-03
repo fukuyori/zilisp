@@ -21,7 +21,7 @@
 //!
 //! Phase 04 の範囲：quote、文字列、リスト（ドット対を含む）、#'、#(、#\、#:、#b #o #x #nR、
 //! backquote（zl-sys:quasiquote / unquote / unquote-splicing / unquote-nsplicing）、#+ / #-（*read-suppress*）。
-//! #P（Phase 23）、#S（Phase 26）、#C（Phase 20）、#A（Phase 21）、#. #= ##（Phase 24）は「未実装」の reader-error にする。
+//! #S（Phase 26）、#C（Phase 20）、#A（Phase 21）、#. #= ##（Phase 24）は「未実装」の reader-error にする。
 
 const std = @import("std");
 pub const source = @import("source.zig");
@@ -337,7 +337,16 @@ pub fn Reader(comptime Builder: type) type {
                     }
                     return null;
                 },
-                'P', 'S', 'C', 'A', '.', '=', '#' => {
+                'P', 'p' => {
+                    // #P"..."：続く文字列をパス名にする（Phase 23）
+                    if (self.suppress) {
+                        _ = try self.readRequired(loc, "#P の後");
+                        return try self.builder.nil(loc);
+                    }
+                    const obj = try self.readRequired(loc, "#P の後");
+                    return try self.builder.pathname(&self.diagnostic, loc, obj);
+                },
+                'S', 'C', 'A', '.', '=', '#' => {
                     if (self.suppress) {
                         // #n= は値を返さず、続くオブジェクトがそのまま読み飛ばしの対象になる
                         // （SBCL 2.6.7：#+nosuch #1=(a b) c → C）。## は NIL を返す
@@ -346,7 +355,6 @@ pub fn Reader(comptime Builder: type) type {
                         return try self.builder.nil(loc);
                     }
                     return self.fail(loc, switch (syntax.upcase(ch.cp)) {
-                        'P' => "#P（パス名）は未実装です（Phase 23 で実装予定）",
                         'S' => "#S（構造体）は未実装です（Phase 26 で実装予定）",
                         'C' => "#C（複素数）は未実装です（Phase 20 で実装予定）",
                         'A' => "#A（配列）は未実装です（Phase 21 で実装予定）",
@@ -720,6 +728,11 @@ const TestBuilder = struct {
         try b.note(loc);
         return std.fmt.allocPrint(b.arena, "\"{s}\"", .{utf8});
     }
+    pub fn pathname(b: *TestBuilder, diag: *Diagnostic, loc: SourceLoc, obj: Datum) Error!Datum {
+        _ = diag;
+        try b.note(loc);
+        return std.fmt.allocPrint(b.arena, "#P{s}", .{obj});
+    }
     pub fn character(b: *TestBuilder, loc: SourceLoc, cp: u21) Error!Datum {
         try b.note(loc);
         return std.fmt.allocPrint(b.arena, "char:{x}", .{cp});
@@ -1043,9 +1056,15 @@ test "feature expressions" {
     }, opts);
 }
 
+test "#P reads a pathname (Phase 23)" {
+    try expectRead(&.{
+        .{ .input = "#p\"x\"", .expect = "#P\"x\"" },
+        .{ .input = "#P\"/tmp/a.txt\"", .expect = "#P\"/tmp/a.txt\"" },
+    }, .{});
+}
+
 test "unimplemented dispatch is an explicit error" {
     try expectRead(&.{
-        .{ .input = "#p\"x\"", .expect = "ERROR" },
         .{ .input = "#s(point)", .expect = "ERROR" },
         .{ .input = "#c(1 2)", .expect = "ERROR" },
         .{ .input = "#2a((1))", .expect = "ERROR" },

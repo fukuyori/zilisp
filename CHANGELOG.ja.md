@@ -50,6 +50,16 @@
   ファイルの `load`（`*package*` を束縛する）。シンボルは `*package*` を基準にパッケージで修飾して印字する。ネイティブのプログラムは
   定数を「パッケージ::名前」で書く。教材のブロックの一致は 421 から 429 に。起動時間 9.08 ms
 
+- Phase 23：ストリームとパス名。標準のストリーム（`*standard-output*`・`*standard-input*`・`*error-output*`・`*terminal-io*` など）、
+  ファイルのストリーム（`open`・`close`・`with-open-file`。文字と `(unsigned-byte 8)` の要素、UTF-8 と Latin-1）、文字列の
+  ストリーム（`with-output-to-string`・`with-input-from-string`・`read-from-string`・`prin1-to-string` など）、broadcast・two-way・
+  synonym のストリーム、読み書きの関数（`read-line`・`read-char`・`read`・`read-byte`・`read-sequence`・`write-string`・`write-line`・
+  `write-byte`・`fresh-line` など）、出力先のストリームを受け取る印字の関数と `format`。パス名（`#P`・`make-pathname`・
+  `merge-pathnames`・`namestring`・`probe-file`・`truename`・`directory`・`ensure-directories-exist`・`delete-file`・`rename-file`・
+  `file-write-date`・`*default-pathname-defaults*`。読み方は SBCL 2.6.7 と同じ）。回収されるストリームは GC が閉じる。
+  スクリプトは、標準入力の終わりで黙って終わる（SBCL の `--script` と同じ）。教材のブロックの一致は 429 から 467 に。
+  起動時間 9.47 ms
+
 ### Fixed
 - Codex のレビュー（Phase 22）の指摘 6 件：ネイティブのプログラムが、起動時に定数を読むときにパッケージを登録していたので、
   `defpackage` の前の `find-package` がそれを返し、コンパイル時と実行時の両方で `make-package` するとエラーになった、既にあるパッケージに

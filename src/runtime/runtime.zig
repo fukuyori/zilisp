@@ -96,6 +96,15 @@ pub const Syms = struct {
     @"1+": Value,
     @"1-": Value,
     funcall: Value,
+    // ストリームとパス名の特殊変数（Phase 23）
+    @"*standard-output*": Value,
+    @"*standard-input*": Value,
+    @"*error-output*": Value,
+    @"*terminal-io*": Value,
+    @"*query-io*": Value,
+    @"*debug-io*": Value,
+    @"*trace-output*": Value,
+    @"*default-pathname-defaults*": Value,
 };
 
 /// main が記録するスタックの先頭（Windows 以外で、GC の保守的走査の範囲に使う。§3.4）
@@ -148,6 +157,8 @@ pub const Runtime = struct {
     packages: std.ArrayList(*PackageData) = .empty,
     /// delete-package で削除したパッケージの本体（Runtime を破棄するときに解放する）
     deleted_packages: std.ArrayList(*PackageData) = .empty,
+    /// ストリームの Zig の側の状態（Phase 23。GC が、回収されるストリームの状態を閉じて解放する：streams.finalizeDead）
+    streams: std.ArrayList(*@import("../primitives/streams.zig").StreamState) = .empty,
     /// 仮のパッケージ：ネイティブのプログラムが起動時に定数を読むとき、まだ作られていないパッケージの修飾に使う。
     /// パッケージの一覧には入れない（find-package などからは見えない）。同じ名前のパッケージを make-package・defpackage で
     /// 作るときに、正式に登録して使う（Codex のレビュー P22 #1）
@@ -232,6 +243,8 @@ pub const Runtime = struct {
     }
 
     fn destroy0(rt: *Runtime) void {
+        // ファイルの出力を書き出して閉じる
+        @import("../primitives/streams.zig").closeAll(rt);
         for (rt.packages.items) |p| freePackageData(rt.gpa, p);
         rt.packages.deinit(rt.gpa);
         for (rt.deleted_packages.items) |p| freePackageData(rt.gpa, p);

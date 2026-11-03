@@ -399,6 +399,12 @@ pub fn runProgram(init: std.process.Init, prog: *const Program) !u8 {
         // エラーで抜けたときは、このフォームの中で作った動的束縛を戻す（VM の run と同じ。§6.5）
         const depth = th.binding_depth;
         const v = t.entry(th, Value.nil, &[_]Value{}, 0);
+        if (v == Value.unwind and @import("../primitives/streams.zig").isQuietScriptExit(th)) {
+            // 標準入力の終わり・書けない標準出力：表示せずに正常に終える（SBCL 2.6.7 の --script と同じ）
+            th.unbindTo(depth);
+            th.clearError();
+            break;
+        }
         if (v == Value.unwind) {
             th.unbindTo(depth);
             try stdout.flush();

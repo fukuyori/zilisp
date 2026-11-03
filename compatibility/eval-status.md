@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 429 |
+| match | 両方とも正常に終わり、標準出力が同じ | 467 |
 | both-error | 両方ともエラーで終わった | 362 |
 | output-diff | 両方とも正常に終わったが、標準出力が違う | 0 |
-| zilisp-error | Zilisp だけがエラー | 164 |
+| zilisp-error | Zilisp だけがエラー | 126 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -19,19 +19,16 @@
 | 最初のエラー | ブロック数 |
 |---|---|
 | 未実装：DEFSTRUCT | 31 |
-| 未実装：WITH-OPEN-FILE | 24 |
 | 未実装：DEFCLASS | 21 |
 | 未実装：HANDLER-CASE | 16 |
 | 未実装：ASSERT | 5 |
 | 未実装：DEFINE-CONDITION | 5 |
 | 未実装の関数：EVAL | 4 |
-| 未実装：WITH-OUTPUT-TO-STRING | 4 |
-| READER-ERROR | 3 |
 | 未実装："~5" | 3 |
 | 未実装："~{" | 3 |
 | 未実装：TRACE | 3 |
+| READER-ERROR | 2 |
 | 未実装の関数：RANDOM | 2 |
-| 未実装の関数：READ | 2 |
 | 未実装："FOR" | 2 |
 | 未実装："~:" | 2 |
 | 未実装：RESTART-CASE | 2 |
@@ -40,19 +37,12 @@
 | 未実装の関数：APROPOS | 1 |
 | 未実装の関数：COMPLEX | 1 |
 | 未実装の関数：DESCRIBE | 1 |
-| 未実装の関数：DIRECTORY | 1 |
 | 未実装の関数：DISASSEMBLE | 1 |
 | 未実装の関数：DOCUMENTATION | 1 |
 | 未実装の関数：GET-INTERNAL-REAL-TIME | 1 |
 | 未実装の関数：INSPECT | 1 |
 | 未実装の関数：LOGBITP | 1 |
-| 未実装の関数：MAKE-PATHNAME | 1 |
-| 未実装の関数：MERGE-PATHNAMES | 1 |
-| 未実装の関数：PPRINT | 1 |
-| 未実装の関数：PROBE-FILE | 1 |
 | 未実装の関数：RATIONALIZE | 1 |
-| 未実装の関数：READ-CHAR | 1 |
-| 未実装の関数：READ-LINE | 1 |
 | 未実装の関数：ROOM | 1 |
 | 未実装の関数：SINH | 1 |
 | 未実装の関数：WARN | 1 |

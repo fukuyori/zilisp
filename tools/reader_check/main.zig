@@ -22,6 +22,7 @@ const NullBuilder = struct {
     pub fn nil(_: *NullBuilder, _: reader.SourceLoc) reader.Error!void {}
     pub fn string(_: *NullBuilder, _: reader.SourceLoc, _: []const u8) reader.Error!void {}
     pub fn character(_: *NullBuilder, _: reader.SourceLoc, _: u21) reader.Error!void {}
+    pub fn pathname(_: *NullBuilder, _: *reader.Diagnostic, _: reader.SourceLoc, _: void) reader.Error!void {}
     pub fn listBegin(_: *NullBuilder, _: reader.SourceLoc) reader.Error!void {}
     pub fn listPush(_: *NullBuilder, _: *void, _: void) reader.Error!void {}
     pub fn listEnd(_: *NullBuilder, _: *void, _: ?void) reader.Error!void {}

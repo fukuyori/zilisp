@@ -1858,5 +1858,14 @@ test "stream and pathname errors like SBCL 2.6.7 (Phase 23)" {
     try expectError(&e, "(open \".zig-cache/unit-tmp/p23/a.txt\" :direction :io)", .unimplemented);
     try expectError(&e, "(open \".zig-cache/unit-tmp/p23/a.txt\" :element-type 'fixnum)", .unimplemented);
     try expectError(&e, "(with-output-to-string (s (make-string 3)) (write-string \"x\" s))", .unimplemented);
-    try expectValue(&e, "(progn (delete-file \".zig-cache/unit-tmp/p23/a.txt\") (delete-file \".zig-cache/unit-tmp/p23/b.bin\"))", "T");
+    // Codex のレビュー P23 #4：バイナリのストリームへの文字の出力は、どの関数からでも type-error
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/b.bin\" :direction :output :if-exists :supersede :element-type '(unsigned-byte 8)) (write-char #\\A s))", .type_error);
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/b.bin\" :direction :output :if-exists :supersede :element-type '(unsigned-byte 8)) (write-string \"A\" s))", .type_error);
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/b.bin\" :direction :output :if-exists :supersede :element-type '(unsigned-byte 8)) (format s \"x\"))", .type_error);
+    // #16：Latin-1 で表せない文字は stream-error（SBCL 2.6.7 は stream-encoding-error）
+    try expectError(&e, "(with-open-file (s \".zig-cache/unit-tmp/p23/l.txt\" :direction :output :if-exists :supersede :external-format :latin-1) (write-char (code-char #x100) s))", .stream_error);
+    // #6：閉じた two-way・synonym を通した入出力は closed-stream-error（stream-error の一種）
+    try expectError(&e, "(let ((s (make-two-way-stream (make-string-input-stream \"abc\") (make-string-output-stream)))) (close s) (read-char s))", .stream_error);
+    try expectError(&e, "(let ((s (make-synonym-stream '*standard-output*))) (close s) (write-string \"z\" s))", .stream_error);
+    try expectValue(&e, "(progn (delete-file \".zig-cache/unit-tmp/p23/a.txt\") (delete-file \".zig-cache/unit-tmp/p23/b.bin\") (delete-file \".zig-cache/unit-tmp/p23/l.txt\"))", "T");
 }

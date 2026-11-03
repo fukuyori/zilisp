@@ -366,7 +366,7 @@ pub const table = [_]Entry{
     .{ .name = "PRINC-TO-STRING", .impl = streams.princToString, .min = 1, .max = 1 },
     .{ .name = "WRITE-TO-STRING", .impl = streams.writeToString, .min = 1, .max = any },
     .{ .name = "READ-CHAR", .impl = streams.readChar, .min = 0, .max = 4 },
-    .{ .name = "READ-CHAR-NO-HANG", .impl = streams.readChar, .min = 0, .max = 4 },
+    .{ .name = "READ-CHAR-NO-HANG", .impl = streams.readCharNoHang, .min = 0, .max = 4 },
     .{ .name = "UNREAD-CHAR", .impl = streams.unreadChar, .min = 1, .max = 2 },
     .{ .name = "PEEK-CHAR", .impl = streams.peekChar, .min = 0, .max = 5 },
     .{ .name = "READ-LINE", .impl = streams.readLine, .min = 0, .max = 4 },

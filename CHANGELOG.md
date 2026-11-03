@@ -68,6 +68,18 @@
   matches. Startup time 9.47 ms
 
 ### Fixed
+- Codex review (Phase 23), 16 issues: `:if-exists :rename` and `:rename-and-delete` truncated the file instead of moving it
+  to `name.bak`; the REPL and `*standard-input*` read standard input through different buffers, so input could be lost;
+  CR LF was read as one newline on Windows (SBCL 2.6.7 does not translate it) and `read` on a Latin-1 stream decoded the
+  bytes as UTF-8; `write-string`, `format` and other character output to a binary stream did not signal an error;
+  `write-byte`, `finish-output` and `force-output` on a broadcast stream did not reach its streams; reading or writing
+  through a closed synonym or two-way stream worked; `read-char-no-hang` waited for terminal input; `file-length` of an
+  `:overwrite` stream ignored the existing length; `pathname-match-p` compared only the name and type, byte by byte;
+  `merge-pathnames` kept `:back` and did not fall back to the default version; `directory` left out matching
+  directories and returned duplicates for patterns such as `**/**/`; `equalp` did not compare pathnames;
+  `input-stream-p`, `stream-element-type`, `file-position` and `file-length` did not follow synonym streams; characters
+  that Latin-1 cannot encode were written as `?` (now a stream-error). Also `make-pathname` without `:defaults` gave the
+  version `:newest` (SBCL gives NIL), and `equal` on pathnames no longer compares the version (as SBCL)
 - Codex review (Phase 22), 6 issues: native programs registered packages while reading their constants at startup, so
   `find-package` saw them before `defpackage` and a `make-package` run both at compile time and at run time failed;
   `import` did not set the home package of a home-less symbol already present; `shadowing-import` changed the home package;

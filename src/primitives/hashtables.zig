@@ -78,7 +78,7 @@ pub fn hashEqual(v: Value, depth: u32) u64 {
     if (v.isOther() and Runtime.kindOf(v) == .pathname) {
         const p: *const object.Pathname = @ptrCast(@alignCast(v.pointer()));
         var h: u64 = 0x50415448;
-        for ([_]Value{ p.device, p.directory, p.name, p.type, p.version }) |x| h = mix(h *% 31 +% hashEqual(x, 4));
+        for ([_]Value{ p.device, p.directory, p.name, p.type }) |x| h = mix(h *% 31 +% hashEqual(x, 4));
         return h;
     }
     return hashEql(v);
@@ -114,6 +114,8 @@ fn hashEqualp(th: *Thread, v: Value, depth: u32) ?u64 {
         return mix(arrays.storageLen(data) +% 0x3c6ef372);
     }
     if (isHashTable(v)) return mix(tablePtr(v).count +% 0xa54ff53a);
+    // パス名は equalp でも equal で比べるので、equal のハッシュ値
+    if (v.isOther() and Runtime.kindOf(v) == .pathname) return hashEqual(v, 4);
     return mix(v.raw());
 }
 

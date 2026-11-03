@@ -93,8 +93,16 @@ since = "Phase 23"
 id = "close-abort"
 description = "(close stream :abort t)（with-open-file をエラーで抜けたときなど）で、書いていたファイルをどうするか"
 sbcl = "新しく作ったファイルを消す・:supersede なら元のファイルに戻す"
-zilisp = "閉じるだけ（それまでに書いた内容が残る。Phase 23）"
+zilisp = "閉じるだけ（それまでに書いた内容が残る。Phase 23）。ただし :if-exists :rename・:rename-and-delete で退避したファイルは元に戻す（Phase 23 のレビュー）"
 clhs = "close（:abort が真なら、ストリームを作った副作用を元に戻そうと「試みる」。どこまで戻すかは処理系依存）"
+since = "Phase 23"
+
+[[items]]
+id = "synonym-file-position"
+description = "synonym ストリームを通した file-position（ファイルの入力ストリームを指すとき）"
+sbcl = "読んだ文字の数ではなく、内部のバッファの終わりの位置を返す（例：4 バイトのファイルで read-char の後に 4）"
+zilisp = "指している先のストリームの今の位置（例：read-char の後に 1。直接のストリームの file-position と同じ。Phase 23 のレビュー）"
+clhs = "file-position（ファイルの中の今の位置を返す。※synonym を通した場合の規定は原文では未確認）"
 since = "Phase 23"
 
 [[items]]

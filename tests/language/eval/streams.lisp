@@ -77,3 +77,48 @@
 (format t "~&c~%")
 (dolist (n '("t1.txt" "t2.lisp" "b.bin" "u8.txt")) (when (probe-file (f n)) (delete-file (f n))))
 (print (probe-file (f "t1.txt")))
+;; Codex のレビュー P23 の修正
+;; #1 :if-exists :rename は「名前.bak」に退避する。:rename-and-delete は閉じるときに退避したものを消す
+(dolist (n '("r.txt" "r.txt.bak")) (when (probe-file (f n)) (delete-file (f n))))
+(with-open-file (s (f "r.txt") :direction :output) (write-string "old" s))
+(print (with-open-file (s (f "r.txt") :direction :output :if-exists :rename) (write-string "new" s)))
+(print (list (with-open-file (s (f "r.txt")) (read-line s)) (with-open-file (s (f "r.txt.bak")) (read-line s))))
+(print (with-open-file (s (f "r.txt") :direction :output :if-exists :rename) (write-string "new2" s)))
+(print (with-open-file (s (f "r.txt.bak")) (read-line s)))
+(print (with-open-file (s (f "r.txt") :direction :output :if-exists :rename-and-delete) (write-string "new3" s)))
+(print (list (with-open-file (s (f "r.txt")) (read-line s)) (probe-file (f "r.txt.bak"))))
+;; #8 :overwrite の file-length は、元のファイルの長さから
+(print (with-open-file (s (f "r.txt") :direction :output :if-exists :overwrite)
+         (list (file-length s) (progn (write-string "X" s) (file-position s)) (file-length s))))
+(print (with-open-file (s (f "r.txt")) (read-line s)))
+;; #3 CR LF は変換しない（CR も文字）。Latin-1 の read
+(with-open-file (s (f "crlf.txt") :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+  (dolist (b (map 'list #'char-code (concatenate 'string "\"a" (string #\Return) (string #\Newline) "b\" x"))) (write-byte b s)))
+(print (with-open-file (s (f "crlf.txt")) (list (length (read s)) (file-position s) (read s) (file-position s))))
+(print (with-open-file (s (f "crlf.txt")) (list (read-line s) (file-position s) (read-line s) (file-position s))))
+(print (with-open-file (s (f "crlf.txt")) (list (char-code (read-char s)) (char-code (read-char s)) (char-code (read-char s)))))
+(with-open-file (s (f "l1.txt") :direction :output :if-exists :supersede :external-format :latin-1)
+  (write-string (concatenate 'string "\"" (string (code-char 233)) "\" sym") s))
+(print (with-open-file (s (f "l1.txt") :external-format :latin-1)
+         (list (char-code (char (read s) 0)) (read s) (file-position s) (file-length s))))
+;; #15 synonym の問い合わせは指している先に任せる
+(print (let ((*standard-input* (make-string-input-stream "x")))
+         (let ((s (make-synonym-stream '*standard-input*)))
+           (list (input-stream-p s) (output-stream-p s) (stream-element-type s) (file-position s) (open-stream-p s)))))
+(print (with-open-file (in (f "r.txt")) (let ((*standard-input* in)) (file-length (make-synonym-stream '*standard-input*)))))
+;; #6 閉じた two-way・synonym
+(print (let ((s (make-two-way-stream (make-string-input-stream "abc") (make-string-output-stream))))
+         (close s) (list (open-stream-p s) (open-stream-p (two-way-stream-input-stream s)))))
+;; #7 read-char-no-hang（文字列のストリームは read-char と同じ）
+(print (with-input-from-string (s "ab") (list (read-char-no-hang s) (read-char-no-hang s) (read-char-no-hang s nil :e))))
+;; #5 broadcast：write-byte・finish-output を伝える。要素の型は最後のストリームの型（空なら T）
+(print (let ((b (make-broadcast-stream))) (list (input-stream-p b) (output-stream-p b) (stream-element-type b) (file-length b))))
+(print (with-open-file (f1 (f "bb.bin") :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+         (let ((b (make-broadcast-stream f1))) (list (write-byte 65 b) (stream-element-type b)))))
+(print (with-open-file (r (f "bb.bin") :element-type '(unsigned-byte 8)) (list (read-byte r) (read-byte r nil :eof))))
+(with-open-file (f1 (f "bc.txt") :direction :output :if-exists :supersede)
+  (let ((b (make-broadcast-stream f1))) (write-string "abc" b) (finish-output b)
+    (print (with-open-file (r (f "bc.txt")) (read-line r nil :empty)))))
+(print (let ((s (make-string-output-stream)))
+         (let ((b (make-broadcast-stream s))) (write-string "q" b) (finish-output b) (force-output b) (get-output-stream-string s))))
+(dolist (n '("r.txt" "crlf.txt" "l1.txt" "bb.bin" "bc.txt")) (delete-file (f n)))

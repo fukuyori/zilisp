@@ -227,10 +227,19 @@ pub fn merge(th: *Thread, pv: Value, dv: Value, default_version: Value) ?Value {
             return null;
         };
         x = Runtime.consPtr(directory).cdr;
-        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) items.append(rt.gpa, Runtime.consPtr(x).car) catch {
-            _ = th.outOfMemory();
-            return null;
-        };
+        const back = kw(th, "BACK") orelse return null;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const e = Runtime.consPtr(x).car;
+            // :back は直前の要素（名前）を取り除く（CLHS 19.2.2.4.3・SBCL 2.6.7 と同じ。Codex のレビュー P23 #10）
+            if (e == back and items.items.len > 1 and isString(items.items[items.items.len - 1])) {
+                _ = items.pop();
+                continue;
+            }
+            items.append(rt.gpa, e) catch {
+                _ = th.outOfMemory();
+                return null;
+            };
+        }
         var list = Value.nil;
         var i = items.items.len;
         while (i > 0) {
@@ -244,7 +253,8 @@ pub fn merge(th: *Thread, pv: Value, dv: Value, default_version: Value) ?Value {
     }
     const name = if (p.name != Value.nil) p.name else d.name;
     const typ = if (p.type != Value.nil) p.type else d.type;
-    const version = if (p.version != Value.nil) p.version else if (p.name == Value.nil) d.version else default_version;
+    // 版：パス名の版、なければ（名前がなければ既定の版）、それもなければ default-version（CLHS 19.2.3。Codex のレビュー P23 #11）
+    const version = if (p.version != Value.nil) p.version else if (p.name == Value.nil and d.version != Value.nil) d.version else default_version;
     const device = if (p.device != Value.nil) p.device else d.device;
     return make(rt, Value.nil, device, directory, name, typ, version) catch {
         _ = th.outOfMemory();
@@ -469,7 +479,8 @@ pub fn makePathname(th: *Thread, args: []const Value) Value {
     const directory = if (kv[2]) |dir| (directoryArg(th, dir) orelse return Value.unwind) else if (d) |dd| dd.directory else Value.nil;
     const name = kv[3] orelse if (d) |dd| dd.name else Value.nil;
     const typ = kv[4] orelse if (d) |dd| dd.type else Value.nil;
-    const version = kv[5] orelse if (d) |dd| (if (kv[3] == null) dd.version else (if (name != Value.nil) (kw(th, "NEWEST") orelse return Value.unwind) else Value.nil)) else if (name != Value.nil) (kw(th, "NEWEST") orelse return Value.unwind) else Value.nil;
+    // 版：指定がなければ :defaults の版、:defaults もなければ NIL（SBCL 2.6.7 の make-pathname と同じ）
+    const version = kv[5] orelse if (d) |dd| dd.version else Value.nil;
     return make(th.rt, Value.nil, device, directory, name, typ, version) catch th.outOfMemory();
 }
 
@@ -507,8 +518,8 @@ pub fn wildPathnameP(th: *Thread, args: []const Value) Value {
     return Value.nil;
 }
 
-/// glob の照合（* は任意の文字列、? は任意の1文字）
-fn globMatch(pat: []const u8, s: []const u8) bool {
+/// glob の照合（* は任意の文字列、? は任意の1文字。文字（コードポイント）の単位。Codex のレビュー P23 #9）
+fn globMatch(pat: []const u21, s: []const u21) bool {
     if (pat.len == 0) return s.len == 0;
     if (pat[0] == '*') {
         var i: usize = 0;
@@ -520,26 +531,87 @@ fn globMatch(pat: []const u8, s: []const u8) bool {
     return false;
 }
 
-/// 名前・型の欄が文字列 s に合うか（NIL は空、:wild は何でも）
-fn componentMatch(th: *Thread, pattern: Value, s: ?[]const u8) bool {
-    const gpa = th.rt.gpa;
-    if (pattern == (th.rt.internKeyword("WILD") catch return false)) return true;
-    if (pattern == Value.nil) return s == null;
-    const str = s orelse return false;
-    const pat = stringUtf8(gpa, pattern) catch return false;
+/// Lisp の文字列の文字の並び（gpa で確保）
+fn stringChars(gpa: std.mem.Allocator, v: Value) error{OutOfMemory}![]u21 {
+    const str = Runtime.stringPtr(v);
+    const out = try gpa.alloc(u21, str.length());
+    for (out, 0..) |*c, i| c.* = str.charAt(i);
+    return out;
+}
+
+/// UTF-8 の文字の並び（gpa で確保。不正なバイトは U+FFFD）
+fn utf8Chars(gpa: std.mem.Allocator, s: []const u8) error{OutOfMemory}![]u21 {
+    var out: std.ArrayList(u21) = .empty;
+    errdefer out.deinit(gpa);
+    var i: usize = 0;
+    while (i < s.len) {
+        const n = std.unicode.utf8ByteSequenceLength(s[i]) catch 1;
+        const cp = if (i + n <= s.len) (std.unicode.utf8Decode(s[i..][0..n]) catch 0xFFFD) else 0xFFFD;
+        try out.append(gpa, cp);
+        i += if (i + n <= s.len) n else 1;
+    }
+    return out.toOwnedSlice(gpa);
+}
+
+/// 文字列のパターン（Lisp の文字列）が、文字列 s（UTF-8）に合うか
+fn globValue(gpa: std.mem.Allocator, pattern: Value, s: []const u8) bool {
+    const pat = stringChars(gpa, pattern) catch return false;
     defer gpa.free(pat);
+    const str = utf8Chars(gpa, s) catch return false;
+    defer gpa.free(str);
     return globMatch(pat, str);
 }
 
-/// (pathname-match-p パス名 ワイルドカード)：名前と型だけを照合する（ディレクトリが両方とも同じか、ワイルドカード側が NIL）
+/// directory の照合：名前・型の欄が文字列 s に合うか（NIL は欄が空のときだけ、:wild は何でも）
+fn componentMatch(th: *Thread, pattern: Value, s: ?[]const u8) bool {
+    if (pattern == (th.rt.internKeyword("WILD") catch return false)) return true;
+    if (pattern == Value.nil) return s == null;
+    const str = s orelse return false;
+    if (!isString(pattern)) return false;
+    return globValue(th.rt.gpa, pattern, str);
+}
+
+/// pathname-match-p の1つの欄（ワイルドカード側が NIL か :wild なら何でも。文字列は glob、ほかは equal）
+fn fieldMatch(th: *Thread, value: Value, pattern: Value) bool {
+    if (pattern == Value.nil or pattern == (th.rt.internKeyword("WILD") catch return false)) return true;
+    if (isString(pattern) and isString(value)) {
+        const pat = stringChars(th.rt.gpa, pattern) catch return false;
+        defer th.rt.gpa.free(pat);
+        const str = stringChars(th.rt.gpa, value) catch return false;
+        defer th.rt.gpa.free(str);
+        return globMatch(pat, str);
+    }
+    return @import("lists.zig").equal2(value, pattern);
+}
+
+/// ディレクトリの要素の並びの照合（:wild は1つ、:wild-inferiors は0個以上、文字列は glob）
+fn directoryMatch(th: *Thread, value: Value, pattern: Value) bool {
+    if (!pattern.isCons()) return value == pattern;
+    const pc = Runtime.consPtr(pattern);
+    const wild_inferiors = th.rt.internKeyword("WILD-INFERIORS") catch return false;
+    if (pc.car == wild_inferiors) {
+        // 0 個、または1つ以上を飲み込む
+        if (directoryMatch(th, value, pc.cdr)) return true;
+        return value.isCons() and directoryMatch(th, Runtime.consPtr(value).cdr, pattern);
+    }
+    if (!value.isCons()) return false;
+    const vc = Runtime.consPtr(value);
+    if (!fieldMatch(th, vc.car, pc.car)) return false;
+    return directoryMatch(th, vc.cdr, pc.cdr);
+}
+
+/// (pathname-match-p パス名 ワイルドカード)：欄ごとに照合する（ワイルドカード側の欄が NIL なら何でも合う。
+/// ディレクトリは :absolute・:relative が同じで、要素ごとに照合。SBCL 2.6.7 と同じ。Codex のレビュー P23 #9）
 pub fn pathnameMatchP(th: *Thread, args: []const Value) Value {
     const p = designator(th, args[0]) orelse return Value.unwind;
     const w = designator(th, args[1]) orelse return Value.unwind;
-    const name = if (isString(ptr(p).name)) (stringUtf8(th.rt.gpa, ptr(p).name) catch return th.outOfMemory()) else null;
-    defer if (name) |n| th.rt.gpa.free(n);
-    const typ = if (isString(ptr(p).type)) (stringUtf8(th.rt.gpa, ptr(p).type) catch return th.outOfMemory()) else null;
-    defer if (typ) |t| th.rt.gpa.free(t);
-    return th.rt.boolean(componentMatch(th, ptr(w).name, name) and componentMatch(th, ptr(w).type, typ));
+    const pp = ptr(p);
+    const wp = ptr(w);
+    const dir_ok = wp.directory == Value.nil or wp.directory == (kw(th, "WILD") orelse return Value.unwind) or
+        (pp.directory.isCons() and directoryMatch(th, pp.directory, wp.directory));
+    const version_ok = wp.version == (kw(th, "NEWEST") orelse return Value.unwind) or fieldMatch(th, pp.version, wp.version);
+    return th.rt.boolean(fieldMatch(th, pp.device, wp.device) and dir_ok and
+        fieldMatch(th, pp.name, wp.name) and fieldMatch(th, pp.type, wp.type) and version_ok);
 }
 
 /// (probe-file パス名)：あれば絶対パスのパス名（ディレクトリは末尾が /）、なければ NIL
@@ -654,11 +726,12 @@ fn walk(c: *Collector, io: Io, base: []const u8, comps: []const Value, pat: *con
         defer dir.close(io);
         var it = dir.iterate();
         while (it.next(io) catch null) |e| {
-            if (e.kind == .directory) continue;
             const dot = std.mem.lastIndexOfScalar(u8, e.name, '.');
             const n, const t: ?[]const u8 = if (dot) |d| (if (d == 0) .{ e.name, null } else .{ e.name[0..d], e.name[d + 1 ..] }) else .{ e.name, null };
             if (!componentMatch(th, pat.name, n) or !componentMatch(th, pat.type, t)) continue;
-            try c.results.append(gpa, try std.fmt.allocPrint(gpa, "{s}{s}", .{ base, e.name }));
+            // 名前・型の合うディレクトリも含める（ディレクトリのパス名で返す。SBCL 2.6.7 と同じ。Codex のレビュー P23 #12）
+            const slash = if (e.kind == .directory) "/" else "";
+            try c.results.append(gpa, try std.fmt.allocPrint(gpa, "{s}{s}{s}", .{ base, e.name, slash }));
         }
         return;
     }
@@ -738,6 +811,8 @@ pub fn directoryList(th: *Thread, args: []const Value) Value {
     var i = c.results.items.len;
     while (i > 0) {
         i -= 1;
+        // ** が重なると同じものに何度も合うので、並べた後の重複を除く（Codex のレビュー P23 #13）
+        if (i > 0 and std.mem.eql(u8, c.results.items[i], c.results.items[i - 1])) continue;
         const found = probe(th, c.results.items[i]) orelse continue;
         defer rt.gpa.free(found.path);
         const v = fromOsPath(rt, found.path, found.dir) catch return th.outOfMemory();
@@ -746,11 +821,12 @@ pub fn directoryList(th: *Thread, args: []const Value) Value {
     return list;
 }
 
-/// equal でのパス名の比較（欄ごとに equal）
+/// equal でのパス名の比較（欄ごとに equal。版は比べない：物理パス名の版は SBCL 2.6.7 の pathname= も比べない。
+/// (equal (make-pathname :name "a") #P"a") は版が NIL と :NEWEST で違っても T）
 pub fn equalPathnames(a: Value, b: Value) bool {
     const lists = @import("lists.zig");
     const x = ptr(a);
     const y = ptr(b);
     return lists.equal2(x.host, y.host) and lists.equal2(x.device, y.device) and lists.equal2(x.directory, y.directory) and
-        lists.equal2(x.name, y.name) and lists.equal2(x.type, y.type) and lists.equal2(x.version, y.version);
+        lists.equal2(x.name, y.name) and lists.equal2(x.type, y.type);
 }

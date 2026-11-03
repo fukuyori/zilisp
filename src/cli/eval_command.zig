@@ -16,6 +16,7 @@ const Value = @import("../values/value.zig").Value;
 const eval_mod = @import("../compiler/eval.zig");
 const Options = @import("args.zig").Options;
 const read_command = @import("read_command.zig");
+const streams = @import("../primitives/streams.zig");
 
 pub const Result = enum { ok, failed };
 
@@ -162,25 +163,14 @@ pub const prompt = "* ";
 pub fn repl(s: *Session, gpa: std.mem.Allocator, in: *Io.Reader, stdout: *Io.Writer, stderr: *Io.Writer) Io.Writer.Error!Result {
     var pending: std.ArrayList(u8) = .empty;
     defer pending.deinit(gpa);
+    // REPL と Lisp の *standard-input* は同じ入力を読む（REPL が先読みした行を、評価中の READ-LINE などが取りこぼさない。
+    // Codex のレビュー P23 #2）
+    streams.shareStdinReader(s.th, in);
+    defer streams.shareStdinReader(s.th, null);
     while (true) {
         if (pending.items.len == 0) try stdout.writeAll(prompt);
         try stdout.flush();
-        const line = in.takeDelimiter('\n') catch |err| switch (err) {
-            error.StreamTooLong => {
-                try stderr.writeAll("zilisp: 入力の行が長すぎます\n");
-                try stderr.flush();
-                pending.clearRetainingCapacity();
-                // 行の残りを読み捨てる
-                _ = in.discardDelimiterInclusive('\n') catch {};
-                continue;
-            },
-            error.ReadFailed => {
-                try stdout.flush();
-                try stderr.writeAll("zilisp: 入力を読めません\n");
-                try stderr.flush();
-                return .failed;
-            },
-        } orelse {
+        const line = streams.takeStdinLine(s.th) orelse {
             try stdout.writeByte('\n');
             if (std.mem.trim(u8, pending.items, " \t\r\n").len != 0) {
                 // フォームの途中で入力が終わった：END-OF-FILE として報告する

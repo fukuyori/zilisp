@@ -61,6 +61,17 @@
   起動時間 9.47 ms
 
 ### Fixed
+- Codex のレビュー（Phase 23）の指摘 16 件：`:if-exists` の `:rename`・`:rename-and-delete` が、ファイルを「名前.bak」に移さずに
+  切り詰めていた、REPL と `*standard-input*` が別のバッファで標準入力を読んでいたので、入力を取りこぼすことがあった、Windows で
+  CR LF を1つの改行として読んでいた（SBCL 2.6.7 は変換しない）、Latin-1 のストリームの `read` がバイト列を UTF-8 として読んでいた、
+  バイナリのストリームへの `write-string`・`format` などの文字の出力がエラーにならなかった、broadcast の `write-byte`・`finish-output`・
+  `force-output` が中のストリームに届かなかった、閉じた synonym・two-way を通して読み書きできた、`read-char-no-hang` が端末の入力を
+  待っていた、`:overwrite` のストリームの `file-length` が既にある長さを数えなかった、`pathname-match-p` が名前と型だけを、バイト単位で
+  照合していた、`merge-pathnames` が `:back` を残し、版がないときに default-version を使わなかった、`directory` が合うディレクトリを
+  返さず、`**/**/` などで重複を返した、`equalp` がパス名を比べなかった、`input-stream-p`・`stream-element-type`・`file-position`・
+  `file-length` が synonym の先をたどらなかった、Latin-1 で表せない文字を `?` で書いていた（stream-error にした）。あわせて、
+  `:defaults` のない `make-pathname` の版を `:newest` にしていた（SBCL は NIL）のを直し、パス名の `equal` は版を比べないようにした
+  （SBCL と同じ）
 - Codex のレビュー（Phase 22）の指摘 6 件：ネイティブのプログラムが、起動時に定数を読むときにパッケージを登録していたので、
   `defpackage` の前の `find-package` がそれを返し、コンパイル時と実行時の両方で `make-package` するとエラーになった、既にあるパッケージに
   ホームのないシンボルを `import` してもホームを設定しなかった、`shadowing-import` がホームを変えていた、KEYWORD に

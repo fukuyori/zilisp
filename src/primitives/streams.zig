@@ -5,7 +5,7 @@
 //!   されたら、GC が状態を閉じて解放する（finalizeDead。出力は書き出してから閉じる）。Runtime を破棄するときも同じ。
 //! - 入力は、どのストリームも UTF-8 のバイト列と位置で扱う（read-line・read-char・read が同じ位置を共有する）。
 //!   ファイルと文字列の入力ストリームは、開いたときに全体を読む。標準入力は、必要になった分だけ読み足す。
-//!   Windows では、文字の入力で CR LF を1つの改行として読む（SBCL 2.6.7 と同じ。出力は LF だけを書く）。
+//!   改行は変換しない（CR LF の CR も文字として読む。SBCL 2.6.7 と同じ。出力は LF だけを書く）。
 //! - 出力は、いったんバイト列にしてから、ストリームの種類に応じて書く（emit）。ファイルはバッファに溜めて、
 //!   64 KiB を超えたとき・finish-output・close で書き出す。
 //! - 標準のストリーム：*standard-output*（th.out に書く）、*standard-input*、*error-output*、*terminal-io*（two-way）、
@@ -54,6 +54,15 @@ pub const StreamState = struct {
     latin1: bool = false,
     /// 文字列の入力ストリームの、元の文字列の中での開始位置（file-position が返す）
     char_base: usize = 0,
+    /// 標準入力を REPL と同じ Io.Reader から読み足す（REPL が先に読んだ入力を取りこぼさない。Codex のレビュー P23 #2）
+    reader: ?*Io.Reader = null,
+    /// 出力のファイルの長さ（書き出した範囲の終わりと、開いたときの長さの大きい方。Codex のレビュー P23 #8）
+    file_len: u64 = 0,
+    /// :if-exists :rename・:rename-and-delete で退避したファイル（gpa で確保）。閉じるときに使う
+    backup: ?[]u8 = null,
+    delete_backup: bool = false,
+    /// 開いた名前（:abort で元に戻すとき）
+    path: ?[]u8 = null,
 
     fn input(st: *StreamState) []const u8 {
         return if (st.kind == .stdin) st.in_list.items else st.in_buf;
@@ -130,12 +139,32 @@ fn closeState(rt: *Runtime, st: *StreamState) void {
         }
         st.file = null;
     }
+    finishBackup(rt, st, false);
+    if (st.path) |n| rt.gpa.free(n);
+    st.path = null;
     st.out.clearAndFree(rt.gpa);
     if (st.kind != .stdin) {
         rt.gpa.free(st.in_buf);
         st.in_buf = &.{};
     }
     st.in_list.clearAndFree(rt.gpa);
+}
+
+/// 退避したファイルの後始末：abort なら元に戻し（新しいファイルを消す）、:rename-and-delete なら消す
+fn finishBackup(rt: *Runtime, st: *StreamState, abort: bool) void {
+    const b = st.backup orelse return;
+    if (rt.io) |io| {
+        if (abort) {
+            if (st.path) |n| {
+                Io.Dir.cwd().deleteFile(io, n) catch {};
+                Io.Dir.cwd().rename(b, Io.Dir.cwd(), n, io) catch {};
+            }
+        } else if (st.delete_backup) {
+            Io.Dir.cwd().deleteFile(io, b) catch {};
+        }
+    }
+    rt.gpa.free(b);
+    st.backup = null;
 }
 
 /// GC のマークの後：回収されるストリームの状態を閉じて解放する（gc.zig が呼ぶ）
@@ -175,6 +204,44 @@ pub fn isQuietScriptExit(th: *Thread) bool {
         .stdout, .stderr => k == .stream_error,
         else => false,
     };
+}
+
+/// REPL が標準入力を読む Io.Reader を、Lisp の標準入力のストリームにも使う（Codex のレビュー P23 #2）
+pub fn shareStdinReader(th: *Thread, in: ?*Io.Reader) void {
+    for (th.rt.streams.items) |st| if (st.kind == .stdin) {
+        st.reader = in;
+    };
+}
+
+/// 標準入力のストリームから1行を取り出す（REPL が使う。改行は含まない。終わりなら null）。
+/// 返す slice は、次に標準入力を読むまで有効
+pub fn takeStdinLine(th: *Thread) ?[]const u8 {
+    var st: *StreamState = undefined;
+    var found = false;
+    for (th.rt.streams.items) |x| if (x.kind == .stdin) {
+        st = x;
+        found = true;
+    };
+    if (!found) return null;
+    // 読み終えた分を捨てる（REPL の1行ごとに溜まらないように）
+    if (st.pos >= st.in_list.items.len) {
+        st.in_list.clearRetainingCapacity();
+        st.pos = 0;
+        st.last_len = 0;
+    }
+    while (true) {
+        const rest = st.in_list.items[st.pos..];
+        if (std.mem.indexOfScalar(u8, rest, '\n')) |i| {
+            st.pos += i + 1;
+            st.last_len = 0;
+            return rest[0..i];
+        }
+        if (!fillStdin(th, st)) {
+            if (rest.len == 0) return null;
+            st.pos += rest.len;
+            return rest;
+        }
+    }
 }
 
 /// 標準出力のストリームに溜まったものを書き出す（エラーの表示の前など）
@@ -225,6 +292,8 @@ fn resolveOutStream(th: *Thread, v0: Value) ?Value {
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {
         if (!isStream(v)) return streamDesignatorError(th, v);
+        // 途中の synonym・two-way も、閉じていればエラー（Codex のレビュー P23 #6）
+        if (flags(v) & SF.open == 0) return closedError(th, v);
         switch (kindOf(v)) {
             .synonym => v = th.rt.symbolPtr(ptr(v).ref).value,
             .two_way => v = Runtime.consPtr(ptr(v).ref).cdr,
@@ -245,6 +314,7 @@ fn resolveInStream(th: *Thread, v0: Value) ?Value {
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {
         if (!isStream(v)) return streamDesignatorError(th, v);
+        if (flags(v) & SF.open == 0) return closedError(th, v);
         switch (kindOf(v)) {
             .synonym => v = th.rt.symbolPtr(ptr(v).ref).value,
             .two_way => v = Runtime.consPtr(ptr(v).ref).car,
@@ -289,6 +359,7 @@ fn flushFile(th: *Thread, st: *StreamState) bool {
         return false;
     };
     st.file_offset += st.out.items.len;
+    st.file_len = @max(st.file_len, st.file_offset);
     st.out.clearRetainingCapacity();
     return true;
 }
@@ -303,6 +374,11 @@ pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
             return true;
         },
         else => {},
+    }
+    // 文字の出力は文字のストリームだけ（バイナリは type-error。SBCL 2.6.7 と同じ。Codex のレビュー P23 #4）
+    if (flags(s) & SF.binary != 0) {
+        _ = th.typeError(s, cl(th, "CHARACTER"));
+        return false;
     }
     const st = stateOf(s) orelse return true;
     if (bytes.len == 0) return true;
@@ -321,13 +397,20 @@ pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
         },
         .file => {
             if (st.latin1) {
-                // UTF-8 を Latin-1 にする（U+0100 以上は ?）
+                // UTF-8 を Latin-1 にする。U+0100 以上は表せないので stream-error（SBCL 2.6.7 は stream-encoding-error。
+                // Codex のレビュー P23 #16）
                 var view = std.unicode.Utf8View.initUnchecked(bytes);
                 var it = view.iterator();
-                while (it.nextCodepoint()) |cp| st.out.append(th.rt.gpa, if (cp < 256) @intCast(cp) else '?') catch {
-                    _ = th.outOfMemory();
-                    return false;
-                };
+                while (it.nextCodepoint()) |cp| {
+                    if (cp >= 256) {
+                        _ = th.signal(.stream_error, "Latin-1 で表せない文字です", Value.fromChar(cp), Value.unbound);
+                        return false;
+                    }
+                    st.out.append(th.rt.gpa, @intCast(cp)) catch {
+                        _ = th.outOfMemory();
+                        return false;
+                    };
+                }
             } else st.out.appendSlice(th.rt.gpa, bytes) catch {
                 _ = th.outOfMemory();
                 return false;
@@ -461,12 +544,23 @@ pub fn writeLine(th: *Thread, args: []const Value) Value {
 /// finish-output・force-output：ファイルなら書き出す。clear-output：何もしない
 pub fn finishOutput(th: *Thread, args: []const Value) Value {
     const s0 = outputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
-    const s = resolveOutStream(th, s0) orelse return Value.unwind;
+    if (!flushStream(th, s0)) return Value.unwind;
+    return Value.nil;
+}
+
+/// ストリームの出力を書き出す（broadcast は中のストリームそれぞれ。Codex のレビュー P23 #5）
+fn flushStream(th: *Thread, s0: Value) bool {
+    const s = resolveOutStream(th, s0) orelse return false;
+    if (kindOf(s) == .broadcast) {
+        var x = ptr(s).ref;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!flushStream(th, Runtime.consPtr(x).car)) return false;
+        return true;
+    }
     if (stateOf(s)) |st| {
-        if (st.kind == .file and !flushFile(th, st)) return Value.unwind;
+        if (st.kind == .file and !flushFile(th, st)) return false;
         if (st.kind == .stdout) (st.writer orelse th.out).flush() catch {};
     }
-    return Value.nil;
+    return true;
 }
 
 pub fn clearOutput(th: *Thread, args: []const Value) Value {
@@ -525,11 +619,28 @@ pub fn writeToString(th: *Thread, args: []const Value) Value {
 /// 標準入力から読み足す（読めたら真）
 fn fillStdin(th: *Thread, st: *StreamState) bool {
     if (st.kind != .stdin or st.stdin_eof) return false;
+    th.out.flush() catch {};
+    if (st.reader) |in| {
+        // 改行までを読む（最後の行に改行がなければ、残りをそのまま。長すぎる行はバッファの分ずつ）
+        const l = in.takeDelimiterInclusive('\n') catch |err| switch (err) {
+            error.ReadFailed => &.{},
+            error.EndOfStream, error.StreamTooLong => blk: {
+                const rest = in.buffered();
+                in.toss(rest.len);
+                break :blk rest;
+            },
+        };
+        if (l.len == 0) {
+            st.stdin_eof = true;
+            return false;
+        }
+        st.in_list.appendSlice(th.rt.gpa, l) catch return false;
+        return true;
+    }
     const io = th.rt.io orelse {
         st.stdin_eof = true;
         return false;
     };
-    th.out.flush() catch {};
     var buf: [4096]u8 = undefined;
     const n = Io.File.stdin().readStreaming(io, &.{&buf}) catch 0;
     if (n == 0) {
@@ -562,13 +673,6 @@ fn decodeAt(th: *Thread, st: *StreamState, len: *usize) ?u21 {
         return 0xFFFD;
     };
     len.* = n;
-    // Windows の文字の入力では、CR LF を1つの改行として読む（SBCL 2.6.7 と同じ）
-    if (windows and cp == '\r' and st.kind == .file) {
-        if (st.pos + 1 < st.input().len and st.input()[st.pos + 1] == '\n') {
-            len.* = 2;
-            return '\n';
-        }
-    }
     return cp;
 }
 
@@ -601,6 +705,31 @@ pub fn readChar(th: *Thread, args: []const Value) Value {
     const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
     const c = readCharRaw(th, st) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
     return Value.fromChar(c);
+}
+
+/// (read-char-no-hang &optional stream eof-error-p eof-value recursive-p)：
+/// 標準入力で、まだ届いていない文字は待たずに NIL（ほかのストリームは READ-CHAR と同じ。SBCL 2.6.7 と同じ。
+/// Codex のレビュー P23 #7）
+pub fn readCharNoHang(th: *Thread, args: []const Value) Value {
+    const s = inputDesignator(th, optArg(args, 0)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
+    const st = stateOf(s) orelse return eofResult(th, s, optArg(args, 1), optArg(args, 2));
+    if (st.kind == .stdin and st.pos >= st.in_list.items.len and !st.stdin_eof) {
+        // REPL と共有する Io.Reader に読み込み済みのものがあれば使う
+        if (st.reader) |in| {
+            const rest = in.buffered();
+            if (rest.len > 0) {
+                st.in_list.appendSlice(th.rt.gpa, rest) catch return oom(th);
+                in.toss(rest.len);
+                return readChar(th, args);
+            }
+        }
+        // 端末からの入力は待たない。ファイルやパイプは READ-CHAR と同じに読む
+        const io = th.rt.io orelse return Value.nil;
+        const tty = Io.File.stdin().isTty(io) catch true;
+        if (tty) return Value.nil;
+    }
+    return readChar(th, args);
 }
 
 /// (unread-char 文字 &optional stream)：最後に読んだ文字を戻す
@@ -699,14 +828,28 @@ pub fn readByte(th: *Thread, args: []const Value) Value {
 /// (write-byte 整数 stream)
 pub fn writeByte(th: *Thread, args: []const Value) Value {
     const s0 = outputDesignator(th, args[1]) orelse return Value.unwind;
-    const s = resolveOutStream(th, s0) orelse return Value.unwind;
-    if (!checkBinaryStream(th, s)) return Value.unwind;
     const v = args[0];
     if (!v.isFixnum() or v.asFixnum() < 0 or v.asFixnum() > 255) return th.typeError(v, cl(th, "INTEGER"));
-    const st = stateOf(s) orelse return v;
-    st.out.append(th.rt.gpa, @intCast(v.asFixnum())) catch return oom(th);
-    if (st.out.items.len >= flush_threshold and !flushFile(th, st)) return Value.unwind;
+    if (!emitByte(th, s0, @intCast(v.asFixnum()))) return Value.unwind;
     return v;
+}
+
+/// 1 バイトを書く（broadcast は中のストリームそれぞれ。Codex のレビュー P23 #5）
+fn emitByte(th: *Thread, s0: Value, byte: u8) bool {
+    const s = resolveOutStream(th, s0) orelse return false;
+    if (kindOf(s) == .broadcast) {
+        var x = ptr(s).ref;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!emitByte(th, Runtime.consPtr(x).car, byte)) return false;
+        return true;
+    }
+    if (!checkBinaryStream(th, s)) return false;
+    const st = stateOf(s) orelse return true;
+    st.out.append(th.rt.gpa, byte) catch {
+        _ = th.outOfMemory();
+        return false;
+    };
+    if (st.out.items.len >= flush_threshold and !flushFile(th, st)) return false;
+    return true;
 }
 
 /// (read-sequence 列 stream &key start end)：読んだ最後の位置
@@ -742,7 +885,7 @@ pub fn writeSequence(th: *Thread, args: []const Value) Value {
     const view = arrays.vectorView(seq) orelse return th.signal(.unimplemented, "WRITE-SEQUENCE にベクタ以外の列を使うのは未実装です", seq, Value.unbound);
     const b = @import("strings.zig").bounds(th, kv[0], kv[1], view.len) orelse return Value.unwind;
     if (flags(s) & SF.binary != 0) {
-        for (b[0]..b[1]) |i| if (writeByte(th, &.{ arrays.storageGet(view.data, i), s }) == Value.unwind) return Value.unwind;
+        for (b[0]..b[1]) |i| if (writeByte(th, &.{ arrays.storageGet(view.data, i), s0 }) == Value.unwind) return Value.unwind;
         return seq;
     }
     if (arrays.isStringLike(seq)) {
@@ -760,7 +903,19 @@ pub fn writeSequence(th: *Thread, args: []const Value) Value {
 fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *bool) Value {
     const rt = th.rt;
     while (true) {
-        const text = st.input()[st.pos..];
+        const raw = st.input()[st.pos..];
+        // Latin-1 の入力は UTF-8 にしてから読む（1 文字が 1 バイトなので、読んだ文字の数だけ元の位置を進める。
+        // Codex のレビュー P23 #3）
+        var converted: std.ArrayList(u8) = .empty;
+        defer converted.deinit(rt.gpa);
+        if (st.latin1) {
+            for (raw) |c| {
+                var u: [4]u8 = undefined;
+                const n = std.unicode.utf8Encode(c, &u) catch unreachable;
+                converted.appendSlice(rt.gpa, u[0..n]) catch return oom(th);
+            }
+        }
+        const text = if (st.latin1) converted.items else raw;
         var src = reader.Source.init(text, 0);
         var b: vb.ValueBuilder = .{ .rt = rt };
         var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{ .preserve_whitespace = preserve });
@@ -776,14 +931,14 @@ fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *
         };
         if (form == null) {
             if (fillStdin(th, st)) continue;
-            st.pos += src.pos;
+            st.pos += if (st.latin1) charCount(text[0..src.pos]) else src.pos;
             eof.* = true;
             return Value.nil;
         }
         var consumed = src.pos;
         // 読んだ後ろの空白を1つ読み進める（トークンの後ろは Reader が読み進めている。SBCL 2.6.7 と同じ）
         if (!preserve and consumed > 0 and consumed < text.len and !isWhitespace(text[consumed - 1]) and isWhitespace(text[consumed])) consumed += 1;
-        st.pos += consumed;
+        st.pos += if (st.latin1) charCount(text[0..consumed]) else consumed;
         st.last_len = 0;
         return form.?;
     }
@@ -977,13 +1132,23 @@ pub fn streamp(th: *Thread, args: []const Value) Value {
     return th.rt.boolean(isStream(args[0]));
 }
 
+/// synonym を、指している先のストリームまでたどる（問い合わせが使う。Codex のレビュー P23 #15）
+fn followSynonym(th: *Thread, v0: Value) ?Value {
+    var v = streamArg(th, v0) orelse return null;
+    var depth: usize = 0;
+    while (kindOf(v) == .synonym and depth < 64) : (depth += 1) {
+        v = streamArg(th, th.rt.symbolPtr(ptr(v).ref).value) orelse return null;
+    }
+    return v;
+}
+
 pub fn inputStreamP(th: *Thread, args: []const Value) Value {
-    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const s = followSynonym(th, args[0]) orelse return Value.unwind;
     return th.rt.boolean(flags(s) & SF.input != 0);
 }
 
 pub fn outputStreamP(th: *Thread, args: []const Value) Value {
-    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const s = followSynonym(th, args[0]) orelse return Value.unwind;
     return th.rt.boolean(flags(s) & SF.output != 0);
 }
 
@@ -998,8 +1163,15 @@ pub fn interactiveStreamP(th: *Thread, args: []const Value) Value {
 }
 
 pub fn streamElementType(th: *Thread, args: []const Value) Value {
-    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const s = followSynonym(th, args[0]) orelse return Value.unwind;
     const rt = th.rt;
+    // broadcast の要素の型は、最後のストリームの要素の型（空なら T。SBCL 2.6.7 と同じ）
+    if (kindOf(s) == .broadcast) {
+        var x = ptr(s).ref;
+        if (!x.isCons()) return rt.t;
+        while (Runtime.consPtr(x).cdr.isCons()) x = Runtime.consPtr(x).cdr;
+        return streamElementType(th, &.{Runtime.consPtr(x).car});
+    }
     if (flags(s) & SF.binary == 0) return cl(th, "CHARACTER");
     const tail = rt.cons(Value.fromFixnum(8), Value.nil) catch return oom(th);
     return rt.cons(cl(th, "UNSIGNED-BYTE"), tail) catch oom(th);
@@ -1016,6 +1188,7 @@ pub fn close(th: *Thread, args: []const Value) Value {
         .stdout, .stderr, .stdin => return th.rt.t,
         else => {},
     }
+    const abort = if (kv[0]) |a| a != Value.nil else false;
     if (stateOf(s)) |st| {
         if (st.kind == .file) {
             const ok = flushFile(th, st);
@@ -1023,6 +1196,8 @@ pub fn close(th: *Thread, args: []const Value) Value {
             st.file = null;
             th.rt.gpa.free(st.in_buf);
             st.in_buf = &.{};
+            // :rename・:rename-and-delete で退避したファイル：abort なら元に戻し、:rename-and-delete なら消す
+            finishBackup(th.rt, st, abort);
             if (!ok) return Value.unwind;
         }
     }
@@ -1032,16 +1207,19 @@ pub fn close(th: *Thread, args: []const Value) Value {
 
 /// (file-length stream)：ファイルの大きさ（バイト）
 pub fn fileLength(th: *Thread, args: []const Value) Value {
-    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const s = followSynonym(th, args[0]) orelse return Value.unwind;
+    // broadcast は 0（SBCL 2.6.7 と同じ）
+    if (kindOf(s) == .broadcast) return Value.fromFixnum(0);
     if (kindOf(s) != .file) return th.typeError(s, cl(th, "FILE-STREAM"));
     const st = stateOf(s) orelse return Value.nil;
-    if (flags(s) & SF.output != 0) return Value.fromFixnum(@intCast(st.file_offset + st.out.items.len));
+    if (flags(s) & SF.output != 0) return Value.fromFixnum(@intCast(@max(st.file_len, st.file_offset + st.out.items.len)));
     return Value.fromFixnum(@intCast(st.in_buf.len));
 }
 
 /// (file-position stream &optional 位置)：今の位置（ファイルはバイト、文字列は文字）。位置を指定すれば移して T
 pub fn filePosition(th: *Thread, args: []const Value) Value {
-    const s = streamArg(th, args[0]) orelse return Value.unwind;
+    const s = followSynonym(th, args[0]) orelse return Value.unwind;
+    if (kindOf(s) == .broadcast) return Value.fromFixnum(0);
     const st = stateOf(s) orelse return Value.nil;
     if (args.len < 2) {
         return switch (st.kind) {
@@ -1152,13 +1330,18 @@ pub fn open(th: *Thread, args: []const Value) Value {
             const if_exists = kv[2] orelse err_kw;
             var offset: u64 = 0;
             var truncate = true;
+            var rename_mode: u2 = 0; // 1 = :rename, 2 = :rename-and-delete
             if (exists) {
                 if (if_exists == Value.nil) return Value.nil;
                 if (if_exists == err_kw or if_exists == (kw(th, "NEW-VERSION") orelse return Value.unwind))
                     return th.signal(.file_error, "ファイルが既にあります", args[0], Value.unbound);
                 if (if_exists == append or if_exists == overwrite) {
                     truncate = false;
-                } else if (if_exists != supersede and if_exists != (kw(th, "RENAME") orelse return Value.unwind) and if_exists != (kw(th, "RENAME-AND-DELETE") orelse return Value.unwind)) {
+                } else if (if_exists == (kw(th, "RENAME") orelse return Value.unwind)) {
+                    rename_mode = 1;
+                } else if (if_exists == (kw(th, "RENAME-AND-DELETE") orelse return Value.unwind)) {
+                    rename_mode = 2;
+                } else if (if_exists != supersede) {
                     return th.typeError(if_exists, cl(th, "KEYWORD"));
                 }
             } else {
@@ -1167,16 +1350,44 @@ pub fn open(th: *Thread, args: []const Value) Value {
                 if (ide == Value.nil) return Value.nil;
                 if (ide != (kw(th, "CREATE") orelse return Value.unwind)) return th.signal(.file_error, "ファイルがありません", args[0], Value.unbound);
             }
-            const f = Io.Dir.cwd().createFile(io, name, .{ .truncate = truncate }) catch return th.signal(.file_error, "ファイルを開けません", args[0], Value.unbound);
-            if (exists and if_exists == append) offset = f.length(io) catch 0;
+            // :rename・:rename-and-delete：元のファイルを「名前.bak」に移してから作る（SBCL 2.6.7 と同じ。既にある .bak は上書き）
+            var backup: ?[]u8 = null;
+            if (rename_mode != 0) {
+                const b = std.mem.concat(rt.gpa, u8, &.{ name, ".bak" }) catch return oom(th);
+                Io.Dir.cwd().rename(name, Io.Dir.cwd(), b, io) catch {
+                    rt.gpa.free(b);
+                    return th.signal(.file_error, "ファイルを退避できません", args[0], Value.unbound);
+                };
+                backup = b;
+            }
+            const f = Io.Dir.cwd().createFile(io, name, .{ .truncate = truncate }) catch {
+                if (backup) |b| {
+                    Io.Dir.cwd().rename(b, Io.Dir.cwd(), name, io) catch {};
+                    rt.gpa.free(b);
+                }
+                return th.signal(.file_error, "ファイルを開けません", args[0], Value.unbound);
+            };
+            const len0: u64 = if (exists and !truncate) f.length(io) catch 0 else 0;
+            if (exists and if_exists == append) offset = len0;
+            const path_copy: ?[]u8 = if (backup != null) (rt.gpa.dupe(u8, name) catch null) else null;
             const s = makeStream(th, .file, SF.output | SF.open | (if (binary) SF.binary else 0), p, true) orelse {
                 f.close(io);
+                if (path_copy) |n| rt.gpa.free(n);
+                if (backup) |b| {
+                    Io.Dir.cwd().deleteFile(io, name) catch {};
+                    Io.Dir.cwd().rename(b, Io.Dir.cwd(), name, io) catch {};
+                    rt.gpa.free(b);
+                }
                 return Value.unwind;
             };
             const st = stateOf(s).?;
             st.file = f;
             st.file_offset = offset;
+            st.file_len = len0;
             st.latin1 = latin1;
+            st.backup = backup;
+            st.delete_backup = rename_mode == 2;
+            st.path = path_copy;
             return s;
         },
     }

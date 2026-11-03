@@ -53,3 +53,12 @@ T
 "a.lisp" 
 NIL 
 NIL 
+(NIL T T T T T T T NIL NIL T T T T) 
+((:ABSOLUTE "a" "x") (:ABSOLUTE "x") (:ABSOLUTE "a" "b" :UP "x")) 
+(42 42 :NEWEST) 
+(NIL :NEWEST :NEWEST T) 
+(T NIL 1) 
+(".zig-cache/lang-tmp/pathnames2/sub/") 
+(".zig-cache/lang-tmp/pathnames2/a.x" ".zig-cache/lang-tmp/pathnames2/d.x/" ".zig-cache/lang-tmp/pathnames2/sub/") 
+(".zig-cache/lang-tmp/pathnames2/a.x" ".zig-cache/lang-tmp/pathnames2/d.x/") 
+(".zig-cache/lang-tmp/pathnames2/sub/x/b.txt") 

@@ -374,7 +374,6 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_missing = try rt.intern(rt.sys, "%MISSING");
     _ = try rt.intern(rt.sys, "TOO-FEW");
     _ = try rt.intern(rt.sys, "TOO-MANY");
-    rt.sys_tombstone = try rt.intern(rt.sys, "%TOMBSTONE");
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。
     // マクロの印は残す（funcall できない）が、「未実装」の印は外す
     for ([_]Value{ rt.syms.defun, rt.syms.defvar, rt.syms.defparameter, rt.syms.defmacro, rt.syms.@"destructuring-bind", rt.syms.@"multiple-value-bind", rt.syms.@"multiple-value-list" }) |m| rt.symbolPtr(m).header.flags &= ~SymbolFlags.unimplemented;

@@ -100,7 +100,9 @@ const Marker = struct {
                 },
                 .hash_table => {
                     const t: *object.HashTable = @ptrFromInt(e);
-                    m.markValue(t.entries);
+                    m.markValue(t.kv);
+                    m.markValue(t.links);
+                    m.markValue(t.hashes);
                 },
                 // 文字列の中身はバッファ（finalize 待ちの一覧で管理）、double-float は値だけ、
                 // パッケージの本体は Runtime.packages が持つ（ルートとして別に走査する）
@@ -113,7 +115,8 @@ const Marker = struct {
                     m.markValue(r.numerator);
                     m.markValue(r.denominator);
                 },
-                .string, .double_float, .package, .bignum => {},
+                // raw_vector は数だけを持つ（中を走査しない）
+                .string, .double_float, .package, .bignum, .raw_vector => {},
                 _ => {},
             }
         }

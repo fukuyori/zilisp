@@ -28,6 +28,8 @@ pub const ObjKind = enum(u8) {
     ratio,
     /// 単純でない配列（多次元・fill-pointer・adjustable。Phase 21）
     array,
+    /// GC が中を走査しない数の配列（ハッシュ表のバケットの表・鎖・ハッシュ値。Phase 21.6）。Lisp からは見えない
+    raw_vector,
     _,
 };
 
@@ -171,15 +173,40 @@ pub const ValueCell = extern struct {
     value: Value,
 };
 
-/// ハッシュ表（詳細設計 §2.6。Phase 16 の最小版）。header.aux は比較の種類（HashTest）。
-/// 要素は simple-vector entries に (キー 値) の組で並べる（開番地法。空きはキーが unbound、削除した枠は墓標のシンボル）。
+/// GC が中を走査しない数の配列。header.len は要素の数、header.aux は要素のバイト数（4 か 8）
+pub const RawVector = extern struct {
+    header: ObjHeader,
+
+    pub fn items(v: *RawVector, comptime T: type) []T {
+        std.debug.assert(v.header.aux == @sizeOf(T));
+        const base: [*]T = @ptrCast(@alignCast(@as([*]u8, @ptrCast(v)) + @sizeOf(RawVector)));
+        return base[0..v.header.len];
+    }
+};
+
+/// ハッシュ表（詳細設計 §2.6。Phase 21.6 から SBCL 2.6.7 と同じ並べ方）。header.aux は比較の種類（HashTest）、
+/// header.flags の 1 は flat の表（src/primitives/hashtables.zig）、header.len はバケットの数。
+/// - kv：simple-vector。枠 i（1〜size）のキーが kv[2i]、値が kv[2i+1]。枠 0 は使わない。空きの枠はキーが unbound
+/// - links：raw_vector（u32）。先頭の header.len 個がバケットの表（バケット（ハッシュ値 & (header.len - 1)）ごとの
+///   鎖の先頭の枠の番号。0 は空。header.len は 2 の冪）、その後ろの size + 1 個が鎖（next：鎖の次の枠。
+///   空きの枠では空き枠の一覧の次）。確保の回数を減らすため 1 つの配列にまとめる
+/// - hashes：raw_vector（u64、size + 1 個）。equal・equalp の表の枠のハッシュ値（比べる前に照合し、作り直しで再計算しない）。
+///   eq・eql の表は NIL
+/// 枠は 1 から順に使い（hwm が使った最大の番号）、削除した枠は空き枠の一覧（free から next でたどる）に積んで、
+/// 後に入れたものから再利用する。maphash は枠の番号の順にたどる。
 /// 非移動型の GC なので、eq・eql のハッシュ値にアドレスを使える（§3）
 pub const HashTable = extern struct {
     header: ObjHeader,
-    entries: Value,
+    kv: Value,
+    links: Value,
+    hashes: Value,
     count: u32,
-    /// 削除した枠の数（増えたら作り直す）
-    tombstones: u32,
+    /// 使った枠の最大の番号
+    hwm: u32,
+    /// 空き枠の一覧の先頭（0 は空）
+    free: u32,
+    /// 枠の数
+    size: u32,
 };
 
 pub const HashTest = enum(u16) { eq, eql, equal, equalp };

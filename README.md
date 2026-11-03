@@ -50,7 +50,7 @@ Implemented after 0.2.0 (in `main`, not yet released):
 - Bignums and ratios, exact comparisons with floats, `floor`/`ceiling`/`truncate`/`round`, `gcd`, `lcm`,
   `expt`, `sqrt`, `isqrt`, `exp`, `log`, trigonometric functions and bit operations (`logand`, `ash`, ...)
 - Multidimensional arrays, fill pointers and adjustable arrays (`vector-push-extend`, `adjust-array`),
-  `equalp` and `equalp` hash tables
+  `equalp` and `equalp` hash tables; `maphash` visits entries in the same order as SBCL 2.6.7
 - Sequence functions (`find`, `position`, `remove-if`, `substitute`, `sort`, `subseq`, `search`,
   `concatenate`, `map`, `coerce`, ...), list and set functions (`member`, `assoc`, `union`, `pushnew`, ...),
   and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...); character classes

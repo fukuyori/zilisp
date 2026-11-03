@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | First draft |
 | 0.2 | 2026-11-01 | Changed to speed first. Decided and applied D-0 to D-10 (8-byte Value, page-based heap, conservative stack scan, native backend as the main path, new §7A) |
 | 0.2 (addendum) | 2026-11-01 | Applied the results of checking the SBCL source and Web information (§2.2, §2.5, §3.1, §3.4, §7A.6, §15.1). Added the conditions for a single executable to §16.3. Added references to §20 |
+| 0.2 (addendum 25) | 2026-11-03 | Phase 21.6: hash tables replaced with SBCL 2.6.7's layout (§2.6; maphash order, slot counts, flat tables). `raw_vector`, an array the GC does not scan (§2.4) |
 | 0.2 (addendum 24) | 2026-11-03 | Phase 21.5: Unicode 15.0.0 character classes and case (§11.2; the table generator and the comparison with SBCL 2.6.7 at every code point). Case folding in `equalp` (§2.6) |
 | 0.2 (addendum 23) | 2026-11-03 | Investigation and decisions: comparison of hash table entry layouts and replacement with SBCL's layout (§2.6; Phase 21.6), Unicode 15.0.0 support (§11.2; Phase 21.5), startup time per phase and the threshold for countermeasures (§11.2) |
 | 0.2 (addendum 22) | 2026-11-02 | Phase 21: general arrays (multidimensional, fill pointers, adjustable; §2.4), `equalp` and `equalp` hash tables (§2.6), and the character, string, sequence, list and set functions (§11.2) |
@@ -223,7 +224,8 @@ pub const ObjHeader = packed struct(u64) {
 | `bignum` | other | Sign, limb sequence | `bignum` |
 | `ratio` | other | Numerator and denominator (reduced, denominator positive) | `ratio` |
 | `complex` | other | Real and imaginary parts | `complex` |
-| `hash_table` | other | Comparison function, entry array, index table | `hash-table` |
+| `hash_table` | other | Comparison function, key/value array, bucket index and chains, hash value array (Phase 21.6; §2.6) | `hash-table` |
+| `raw_vector` | other | u32 or u64 elements placed directly in the body (the GC does not scan them; Phase 21.6) | (Internal: bucket index, chains and hash values of hash tables) |
 | `package` | other | §8 | `package` |
 | `code` | other | Bytecode, constant table, lambda list descriptor, line number table, **native entry** (if native compilation is done; §7A.6) | (Internal. Shared by all closures made from the same lambda) |
 | `closure` | function | Entry address, code, array of captured values (the layout is shared by the VM and native code; §7A.6) | `function` |
@@ -294,6 +296,20 @@ pub const ObjHeader = packed struct(u64) {
   - Fixnum tables of 100,000 entries or more: OA is about 1.6 times faster for lookups of present keys (5.6 vs 9.1 ns at 100,000; 21.5 vs 35.8 ns at 1,000,000; presumably because CH reads the bucket index and the entry, two memory accesses). CH is faster in the other operations.
   - DI was about the same as CH or slightly slower and used more memory than CH.
 - **Decision**: replace the table with CH (SBCL's layout) in Phase 21.6 (tque #343, after Phase 21.5 and before Phase 22). First check that a non-scanned array of u32 can be placed in the GC heap (for the bucket index and the chains). The slower lookup of present keys in fixnum tables of more than 100,000 entries is accepted.
+
+**Implementation in Phase 21.6 (hash table layout)**
+- **Layout** (`HashTable` in `src/values/object.zig`, `src/primitives/hashtables.zig`): a simple-vector of keys and values (the key of slot i at 2i and its value at 2i+1; slot 0 is unused; an empty slot has the key unbound), one u32 array holding both the bucket index and the `next` chains (combined to reduce allocations; the number of buckets is in `header.len`), and an array of u64 hash values only for `equal` and `equalp` tables. The table holds the count, the highest slot number used (hwm), the head of the free list and the number of slots. Tombstones (`ZILISP-SYSTEM::%TOMBSTONE`) are gone.
+- **Arrays the GC does not scan**: a new object kind `raw_vector` (`header.len` is the number of elements, `header.aux` the element size, 4 or 8). The GC does not scan its contents. It is not visible from Lisp (printed as `#<object …>`).
+- **Lookup**: the hash value selects a bucket and the chain is followed. `equal` and `equalp` tables compare the stored hash value before comparing keys (fewer content comparisons), and rebuilding a table does not recompute hash values.
+- **Deletion**: the slot is unlinked from its chain and pushed on the free list (the most recently freed slot is reused first).
+- **Order is the same as SBCL 2.6.7**: `maphash` and `loop`'s `being the hash-keys` (`%hash-pairs`) visit slots in slot-number order, which is insertion order when nothing was deleted. For this, the slot counts and slot reuse also follow SBCL (`%recompute-ht-vector-sizes`, `grow-hash-table` and `define-puthash/flat` in `target-hash-table.lisp`):
+  - The initial number of slots is `:size` (7 if smaller than 7 or omitted).
+  - Small `eq` and `eql` tables (`:size` up to 32 for `eq` and 16 for `eql`) start as flat tables. A flat table does not push deleted slots on the free list; insertion uses the empty slot with the highest number (SBCL searches flat tables linearly; Zilisp still uses the chains to search them). A flat table without `:size` has 8 slots.
+  - A full table grows to 1.5 times its size (at least one more); if the ratio to the power-of-two bucket count exceeds 0.9 it becomes 0.85, and below 0.55 it becomes 0.65. A flat table whose bucket count stays within the limit takes the bucket count as its new size and stays flat; otherwise it becomes a non-flat table.
+  - `clrhash` resets the highest slot number to 0.
+- **Checks**: insertion order, order after growing, insertion after deletion (flat and non-flat tables, around 32 entries for `eq` and 16 for `eql`, `:size` from 0 to 100), after `clrhash`, `remhash` and `setf` inside `maphash`, `loop` order, and `equalp` between hash tables all give the same results as SBCL 2.6.7 (language test `hash-tables.lisp`, also a GC stress version).
+- **Speed** (ReleaseFast, x86_64-windows, median of 7 runs excluding startup; ratio to `42fd447` before the change): inserting and looking up 200,000 fixnum keys 1.02, 50,000 string keys 0.92, 300,000 deletions and insertions in a table of 1,000 entries 0.56, creating 30,000 tables of 8 entries 1.02, `maphash` over 100,000 entries 0.76, deletion and insertion with string keys 0.81.
+- Results: the curriculum blocks still match in 421 cases (0 output differences). Startup time is 8.74 ms.
 
 ---
 
@@ -1203,6 +1219,7 @@ instance                      rack
 | P20 | 708 | 8.21 ms | 1.60 MB |
 | P21 | 949 | 8.80 ms | 1.72 MB |
 | P21.5 | 949 | 8.82 ms | 1.79 MB |
+| P21.6 | 949 | 8.74 ms | 1.79 MB |
 
 - Each 100 non-empty lines of boot.lisp add about 0.3 ms. In P21, about 4.1 ms is the process startup that an empty program also takes, about 1.7 ms is the setup before boot.lisp, and about 3.0 ms is loading boot.lisp.
 - **Rule (2026-11-03 decision)**: at the end of each phase, measure the startup time in the same way and record it in the CHANGELOG and in this table. When it exceeds **20 ms**, move the two-stage build of §11.3 forward.

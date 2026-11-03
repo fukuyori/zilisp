@@ -38,6 +38,10 @@
   Printer はそのような名前を囲む。表は同梱した UCD のファイル（`data/unicode/`。Unicode License v3。`zig build gen-unicode`）から
   作って `src/unicode/tables.zig` にコミットし、`zig build test` が、表が UCD と同じかと、全符号位置で SBCL 2.6.7 と同じかを
   確かめる。配布物に Unicode のライセンスを `LICENSE-UNICODE.txt` として入れた。起動時間 8.82 ms（ReleaseFast、`--eval nil`）
+- Phase 21.6：ハッシュ表を SBCL 2.6.7 と同じ並べ方にした（キーと値の配列、バケットの表と鎖、空き枠の一覧、`equal`・`equalp` の表の
+  ハッシュ値。墓標はなくした）。`maphash` と `loop` の `being the hash-keys` は SBCL と同じ順序でたどる（入れた順。`remhash` の後の
+  枠の再利用、大きくする規則、小さい flat の表も同じ）。削除と挿入の繰り返しは約 1.8 倍、`maphash` は約 1.3 倍速くなり、
+  ほかの操作はほぼ同じ。起動時間 8.74 ms
 
 ### Fixed
 - Codex のレビュー（Phase 21）の指摘 9 件：fill-pointer のない配列に `:fill-pointer` を指定した `adjust-array` がエラーに

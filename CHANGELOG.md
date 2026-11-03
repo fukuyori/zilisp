@@ -42,6 +42,11 @@
   generated from the bundled UCD files (`data/unicode/`, Unicode License v3; `zig build gen-unicode`) and committed in
   `src/unicode/tables.zig`; `zig build test` checks them and compares every code point with SBCL 2.6.7. The distribution
   packages include the Unicode license as `LICENSE-UNICODE.txt`. Startup time 8.82 ms (ReleaseFast, `--eval nil`)
+- Phase 21.6: hash tables use SBCL 2.6.7's layout (a key/value vector, a bucket index with chains, a free list, and stored
+  hash values for `equal` and `equalp` tables; no tombstones). `maphash` and `loop`'s `being the hash-keys` now visit
+  entries in the same order as SBCL (insertion order, with the same slot reuse after `remhash`, the same growth and the
+  same small "flat" tables). Deletion followed by insertion is about 1.8 times as fast and `maphash` about 1.3 times;
+  other operations are about the same. Startup time 8.74 ms
 
 ### Fixed
 - Codex review (Phase 21), 9 issues: `adjust-array` with `:fill-pointer` on an array without one did not signal an error

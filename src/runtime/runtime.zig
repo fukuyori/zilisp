@@ -153,8 +153,6 @@ pub const Runtime = struct {
     sys_quasiquote: Value = Value.nil,
     /// ZILISP-SYSTEM::%MISSING（分解束縛で、キーワード引数がないことを表す印）
     sys_missing: Value = Value.nil,
-    /// ZILISP-SYSTEM::%TOMBSTONE（ハッシュ表の削除した枠の印）
-    sys_tombstone: Value = Value.nil,
     /// 標準ライブラリ（src/lisp/boot.lisp）を読み込んでいる間は真（CL のシンボルにマクロ・関数を定義してよい）
     booting: bool = false,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
@@ -521,6 +519,18 @@ pub const Runtime = struct {
     }
 
     pub fn vectorPtr(v: Value) *object.SimpleVector {
+        return @ptrCast(@alignCast(v.pointer()));
+    }
+
+    /// 長さ n の、GC が中を走査しない数の配列を作り、0 で埋める（T は u32 か u64）
+    pub fn makeRawVector(rt: *Runtime, comptime T: type, n: usize) Error!Value {
+        const v = try rt.heap.create(object.RawVector, n * @sizeOf(T));
+        v.header = .{ .kind = .raw_vector, .aux = @sizeOf(T), .len = @intCast(n) };
+        @memset(v.items(T), 0);
+        return Value.fromPointer(v, .other);
+    }
+
+    pub fn rawVectorPtr(v: Value) *object.RawVector {
         return @ptrCast(@alignCast(v.pointer()));
     }
 

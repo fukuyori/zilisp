@@ -67,7 +67,8 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
             // SBCL 2.6.7 と同じ形：#<HASH-TABLE :TEST EQL :COUNT 2 {…}>
             return w.print("#<HASH-TABLE :TEST {s} :COUNT {d} {{{X}}}>", .{ name, t.count, v.raw() & ~@as(u64, 7) });
         },
-        _ => return w.print("#<object {x}>", .{v.raw()}),
+        // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
+        .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
     }
 }
 

@@ -44,6 +44,7 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - bignum と比、浮動小数との正確な比較、`floor`・`ceiling`・`truncate`・`round`、`gcd`・`lcm`、`expt`・`sqrt`・`isqrt`・
   `exp`・`log`・三角関数、ビット演算（`logand`・`ash` など）
 - 多次元の配列・fill-pointer・adjustable な配列（`vector-push-extend`・`adjust-array`）、`equalp` と `equalp` のハッシュ表
+  （`maphash` は SBCL 2.6.7 と同じ順序でたどる）
 - 列の関数（`find`・`position`・`remove-if`・`substitute`・`sort`・`subseq`・`search`・`concatenate`・`map`・`coerce` など）、
   リスト・集合の関数（`member`・`assoc`・`union`・`pushnew` など）、文字・文字列の関数（`char-upcase`・`string<`・
   `string-trim`・`parse-integer` など）。文字の種類と大文字・小文字は、SBCL 2.6.7 と同じく Unicode 15.0.0 に従う

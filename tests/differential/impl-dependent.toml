@@ -26,6 +26,14 @@ clhs = "2.1.4 Character Syntax Types、23.1.2 Effect of Readtable Case on the Li
 since = "Phase 21.5"
 
 [[items]]
+id = "hash-table-rehash-threshold-order"
+description = ":rehash-threshold に 1 以外を指定したハッシュ表で、remhash の後に入れた項目の maphash の順序"
+sbcl = "flat の表の続け方が、ソース（target-hash-table.lisp の grow-hash-table）から読める規則と合わない（例：(make-hash-table :rehash-threshold 0.25) は flat のまま大きくなる）"
+zilisp = ":rehash-threshold は型を検査し、:size を省いた flat の表の初めの枠の数（大きさ / threshold から決めるバケット数）にだけ使う。既定の大きさで 0.5 を指定した場合は SBCL と同じ順序。ほかは違うことがある。:rehash-threshold を指定しない表と、:rehash-size を指定した表は SBCL と同じ（Phase 21.6）"
+clhs = "18.1 Hash Table Concepts、maphash（順序は規定されていない）、make-hash-table（※rehash-size・rehash-threshold は処理系への目安で、無視してもよいと推測される。原文では未確認）"
+since = "Phase 21.6"
+
+[[items]]
 id = "reader-character-unicode-names"
 description = "#\\ の後の Unicode の文字名（#\\GREEK_SMALL_LETTER_LAMDA など）"
 sbcl = "読める"

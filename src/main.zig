@@ -162,6 +162,7 @@ test {
     _ = @import("runtime/roots.zig");
     _ = @import("runtime/gc.zig");
     _ = @import("primitives/primitives.zig");
+    _ = @import("primitives/hashtables.zig");
     _ = @import("vm/verify.zig");
     _ = @import("compiler/eval_test.zig");
     _ = eval_command;

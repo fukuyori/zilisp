@@ -185,7 +185,7 @@ pub const RawVector = extern struct {
 };
 
 /// ハッシュ表（詳細設計 §2.6。Phase 21.6 から SBCL 2.6.7 と同じ並べ方）。header.aux は比較の種類（HashTest）、
-/// header.flags の 1 は flat の表（src/primitives/hashtables.zig）、header.len はバケットの数。
+/// header.flags の 1 は flat の表、2 は rehash が増やす枠の数（src/primitives/hashtables.zig）、header.len はバケットの数。
 /// - kv：simple-vector。枠 i（1〜size）のキーが kv[2i]、値が kv[2i+1]。枠 0 は使わない。空きの枠はキーが unbound
 /// - links：raw_vector（u32）。先頭の header.len 個がバケットの表（バケット（ハッシュ値 & (header.len - 1)）ごとの
 ///   鎖の先頭の枠の番号。0 は空。header.len は 2 の冪）、その後ろの size + 1 個が鎖（next：鎖の次の枠。
@@ -207,6 +207,8 @@ pub const HashTable = extern struct {
     free: u32,
     /// 枠の数
     size: u32,
+    /// :rehash-size（header.flags の 2 が立っていれば増やす枠の数、立っていなければ倍率の single-float のビット）
+    rehash: u32,
 };
 
 pub const HashTest = enum(u16) { eq, eql, equal, equalp };

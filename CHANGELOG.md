@@ -49,6 +49,10 @@
   other operations are about the same. Startup time 8.74 ms
 
 ### Fixed
+- Codex review (Phase 21.6), 4 issues: growing a very large hash table could overflow the u32 bucket count (now a
+  `storage-condition` above 2^28 slots); a failed growth left a flat table marked as non-flat; `:rehash-size` was ignored,
+  so the `maphash` order differed from SBCL (it is now used, and `:rehash-size` and `:rehash-threshold` are type-checked);
+  `clrhash` cleared the whole table instead of the used part
 - Codex review (Phase 21), 9 issues: `adjust-array` with `:fill-pointer` on an array without one did not signal an error
   (and crashed for a zero-dimensional array); `(setf (aref a) x)` on a zero-dimensional array was an argument count error;
   `nsubst`, `nsubst-if`, `nsubst-if-not` and `nsublis` did not modify the tree; `remf` read the place before evaluating

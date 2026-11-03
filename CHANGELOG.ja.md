@@ -44,6 +44,10 @@
   ほかの操作はほぼ同じ。起動時間 8.74 ms
 
 ### Fixed
+- Codex のレビュー（Phase 21.6）の指摘 4 件：とても大きなハッシュ表を大きくすると、u32 のバケット数が溢れることがあった
+  （枠の数が 2^28 を超えるときは `storage-condition` にした）、大きくするのに失敗した flat の表が flat でない表の印のまま
+  残った、`:rehash-size` を無視していたので `maphash` の順序が SBCL と違った（使うようにし、`:rehash-size` と
+  `:rehash-threshold` の型を検査する）、`clrhash` が表の全体を消していた（使った範囲だけにした）
 - Codex のレビュー（Phase 21）の指摘 9 件：fill-pointer のない配列に `:fill-pointer` を指定した `adjust-array` がエラーに
   ならなかった（0次元の配列では異常終了した）、0次元の配列の `(setf (aref a) x)` が引数の個数のエラーになった、
   `nsubst`・`nsubst-if`・`nsubst-if-not`・`nsublis` が木を書き換えなかった、`remf` が指示子を評価する前に場所を読んでいた、

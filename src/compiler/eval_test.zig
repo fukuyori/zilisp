@@ -1444,6 +1444,14 @@ test "arrays, characters, strings, sequences, lists and equalp like SBCL 2.6.7 (
     try expectError(&e, "(vector-pop (make-array 2 :fill-pointer 0))", .simple_error);
     try expectError(&e, "(setf (fill-pointer (make-array 2 :fill-pointer 0)) 3)", .type_error);
     try expectError(&e, "(fill-pointer (make-array 2))", .type_error);
+    // make-hash-table の :rehash-size・:rehash-threshold の型（SBCL 2.6.7 と同じく type-error。Codex のレビュー P21.6 #3）
+    try expectError(&e, "(make-hash-table :rehash-size 1.0)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-size 0)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-size 3/2)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-size -1.5)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-threshold 2)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-threshold -1)", .type_error);
+    try expectError(&e, "(make-hash-table :rehash-threshold 'a)", .type_error);
     // Codex のレビュー P21 の指摘（SBCL 2.6.7 でエラーになるもの）
     try expectError(&e, "(make-sequence 'null 1)", .type_error);
     try expectError(&e, "(make-sequence 'cons 0)", .type_error);

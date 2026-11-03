@@ -27,6 +27,10 @@ fn tablePtr(v: Value) *HashTable {
     return @ptrCast(@alignCast(v.pointer()));
 }
 
+fn cl(th: *Thread, name: []const u8) Value {
+    return (th.rt.findSymbol(th.rt.cl, name) orelse unreachable).symbol;
+}
+
 fn testOf(t: *const HashTable) HashTest {
     return @fromBackingInt(t.header.aux);
 }
@@ -278,27 +282,69 @@ fn isFlat(t: *const HashTable) bool {
     return t.header.flags & flat_flag != 0;
 }
 
-/// 大きくしたときの枠の数とバケット数（SBCL の %recompute-ht-vector-sizes。rehash-size は既定の 1.5）
-fn grownSizes(old: u32) struct { size: u32, buckets: u32 } {
-    const f: f32 = 1.5 * @as(f32, @floatFromInt(old));
-    var size: u32 = @max(@as(u32, @intFromFloat(@trunc(f))), old + 1);
-    const buckets = std.math.ceilPowerOfTwoAssert(u32, size);
-    const lf = @as(f32, @floatFromInt(size)) / @as(f32, @floatFromInt(buckets));
-    if (lf > 0.9) {
-        size = @intFromFloat(@floor(0.85 * @as(f32, @floatFromInt(buckets))));
-    } else if (lf < 0.55) {
-        size = @intFromFloat(@floor(0.65 * @as(f32, @floatFromInt(buckets))));
+/// 枠の数の上限。キーと値の配列（2 × (枠の数 + 1)）、バケットの表と鎖（バケット数 + 枠の数 + 1）の長さが
+/// ヘッダの長さ（u32）に収まるようにする（Codex のレビュー P21.6 #1）
+const max_slots: u64 = 1 << 28;
+
+/// :rehash-size（SBCL と同じく、浮動小数は single-float にして持つ）
+pub const RehashSize = union(enum) {
+    /// 増やす枠の数（1 以上の整数）
+    add: u32,
+    /// 倍率（1.0 より大きい浮動小数）
+    ratio: f32,
+
+    pub const default: RehashSize = .{ .ratio = 1.5 };
+
+    fn encode(r: RehashSize) struct { flags: u8, bits: u32 } {
+        return switch (r) {
+            .add => |n| .{ .flags = int_rehash_flag, .bits = n },
+            .ratio => |f| .{ .flags = 0, .bits = @bitCast(f) },
+        };
+    }
+};
+
+const int_rehash_flag: u8 = 2;
+
+fn rehashOf(t: *const HashTable) RehashSize {
+    return if (t.header.flags & int_rehash_flag != 0) .{ .add = t.rehash } else .{ .ratio = @bitCast(t.rehash) };
+}
+
+/// 大きくしたときの枠の数とバケット数（SBCL の %recompute-ht-vector-sizes）。
+/// 倍率は single-float で計算し、少なくとも 1 増やす。既定の 1.5 のときだけ、バケット数に対する割合を 0.55〜0.9 に収める
+fn grownSizes(old: u32, rehash: RehashSize) struct { size: u64, buckets: u64 } {
+    var size: u64 = switch (rehash) {
+        .add => |n| @as(u64, old) + n,
+        .ratio => |r| blk: {
+            const f: f32 = r * @as(f32, @floatFromInt(old));
+            const n: u64 = if (f >= 0x1p40) 1 << 40 else @intFromFloat(@trunc(f));
+            break :blk @max(n, @as(u64, old) + 1);
+        },
+    };
+    const buckets = std.math.ceilPowerOfTwoAssert(u64, size);
+    if (rehash == .ratio and rehash.ratio == 1.5) {
+        const lf = @as(f32, @floatFromInt(size)) / @as(f32, @floatFromInt(buckets));
+        if (lf > 0.9) {
+            size = @intFromFloat(@floor(0.85 * @as(f32, @floatFromInt(buckets))));
+        } else if (lf < 0.55) {
+            size = @intFromFloat(@floor(0.65 * @as(f32, @floatFromInt(buckets))));
+        }
     }
     return .{ .size = size, .buckets = buckets };
 }
 
-/// 枠が埋まった表を大きくする
+/// 枠が埋まった表を大きくする。上限を超えるなら storage-condition（エラーを記録して偽）
 fn grow(th: *Thread, table: Value) bool {
     const t = tablePtr(table);
-    const g = grownSizes(t.size);
-    if (isFlat(t) and g.buckets <= flatLimit(testOf(t))) return resize(th, table, g.buckets);
-    t.header.flags &= ~flat_flag;
-    return resize(th, table, g.size);
+    const g = grownSizes(t.size, rehashOf(t));
+    if (isFlat(t) and g.buckets <= flatLimit(testOf(t))) return resize(th, table, @intCast(g.buckets));
+    if (g.size > max_slots) {
+        _ = th.signal(.storage_condition, "ハッシュ表が大きすぎます", table, Value.unbound);
+        return false;
+    }
+    if (!resize(th, table, @intCast(g.size))) return false;
+    // 作り直しが成功してから flat でない表にする（Codex のレビュー P21.6 #2）
+    tablePtr(table).header.flags &= ~flat_flag;
+    return true;
 }
 
 /// キーがないことを確かめてから、新しい項目を入れる。h はキーのハッシュ値。メモリが足りなければ偽（エラーを記録済み）
@@ -333,15 +379,22 @@ fn insertNew(th: *Thread, table: Value, k: Value, v: Value, h: u64) bool {
     return true;
 }
 
-/// size は :size の値（省略なら null）
-pub fn makeTable(th: *Thread, test_kind: HashTest, size_arg: ?usize) Value {
+/// size は :size の値（省略なら null）、threshold は :rehash-threshold（1/16〜1）
+pub fn makeTable(th: *Thread, test_kind: HashTest, size_arg: ?usize, rehash: RehashSize, threshold: f32) Value {
     const n: usize = @max(size_arg orelse default_size, default_size);
-    const flat = n <= flatLimit(test_kind);
-    // :size を省いた（または 7 を指定した）flat の表の枠の数はバケット数の 8（SBCL は最初の挿入で 8 にする）
-    const size = if (flat and n == default_size) bucketsFor(n) else n;
+    var flat = n <= flatLimit(test_kind);
+    var size = n;
+    if (flat and n == default_size) {
+        // :size を省いた（7 以下を指定した）flat の表：SBCL は最初の挿入で、大きさ / rehash-threshold から決めたバケット数を
+        // 枠の数にする（既定では 8）。バケット数が flat の上限を超えれば、枠の数 7 の flat でない表になる
+        const scaled: usize = @intFromFloat(@trunc(@as(f32, @floatFromInt(n)) / threshold));
+        const buckets = bucketsFor(@max(scaled, default_size));
+        if (buckets <= flatLimit(test_kind)) size = buckets else flat = false;
+    }
+    const enc = rehash.encode();
     const t = th.rt.heap.create(HashTable, 0) catch return th.outOfMemory();
     t.* = .{
-        .header = .{ .kind = .hash_table, .flags = if (flat) flat_flag else 0, .aux = @backingInt(test_kind) },
+        .header = .{ .kind = .hash_table, .flags = (if (flat) flat_flag else 0) | enc.flags, .aux = @backingInt(test_kind) },
         .kv = Value.nil,
         .links = Value.nil,
         .hashes = Value.nil,
@@ -349,6 +402,7 @@ pub fn makeTable(th: *Thread, test_kind: HashTest, size_arg: ?usize) Value {
         .hwm = 0,
         .free = 0,
         .size = 0,
+        .rehash = enc.bits,
     };
     const table = Value.fromPointer(t, .other);
     if (!resize(th, table, size)) return Value.unwind;
@@ -377,10 +431,32 @@ pub fn makeHashTable(th: *Thread, args: []const Value) Value {
     var size: ?usize = null;
     if (kv[1]) |s| {
         if (!s.isFixnum() or s.asFixnum() < 0) return th.typeError(s, th.rt.syms.integer);
+        // SBCL 2.6.7 と同じく 2^24 で打ち切る
         size = @intCast(@min(s.asFixnum(), 1 << 24));
     }
+    // :rehash-size は (or (integer 1 *) (float (1.0) *))、:rehash-threshold は (real 0 1)（CLHS make-hash-table）
+    var rehash: RehashSize = .default;
+    if (kv[2]) |r| {
+        if (r.isFixnum() and r.asFixnum() >= 1) {
+            rehash = .{ .add = @intCast(@min(r.asFixnum(), std.math.maxInt(u32))) };
+        } else if (r.isOther() and Runtime.kindOf(r) == .bignum and Runtime.bignumPtr(r).positive()) {
+            rehash = .{ .add = std.math.maxInt(u32) };
+        } else if (r.isSingleFloat() or (r.isOther() and Runtime.kindOf(r) == .double_float)) {
+            const f: f64 = if (r.isSingleFloat()) r.asSingle() else Runtime.doubleValue(r);
+            if (!(f > 1.0)) return th.typeError(r, cl(th, "REAL"));
+            rehash = .{ .ratio = @floatCast(f) };
+        } else return th.typeError(r, cl(th, "REAL"));
+    }
+    var threshold: f32 = 1.0;
+    if (kv[3]) |r| {
+        if (!numbers.isNumber(r)) return th.typeError(r, cl(th, "REAL"));
+        const f = numbers.hashF64(th, r) orelse return Value.unwind;
+        if (!(f >= 0 and f <= 1)) return th.typeError(r, cl(th, "REAL"));
+        // SBCL と同じく、1/16 より小さければ 1/16 にする
+        threshold = @max(@as(f32, @floatCast(f)), 1.0 / 16.0);
+    }
     if (kv[4]) |w| if (w != Value.nil) return th.signal(.unimplemented, "弱いハッシュ表は未実装です", w, Value.unbound);
-    return makeTable(th, test_kind, size);
+    return makeTable(th, test_kind, size, rehash, threshold);
 }
 
 fn checkTable(th: *Thread, v: Value) ?Value {
@@ -454,8 +530,10 @@ pub fn remhash(th: *Thread, args: []const Value) Value {
 pub fn clrhash(th: *Thread, args: []const Value) Value {
     if (checkTable(th, args[0])) |e| return e;
     const t = tablePtr(args[0]);
-    @memset(kvOf(t), Value.unbound);
-    @memset(Runtime.rawVectorPtr(t.links).items(u32), 0);
+    // 使った枠（1〜hwm）とバケットの表だけを消す。鎖は挿入のときに書き直す（Codex のレビュー P21.6 #4）
+    if (t.hwm == 0) return args[0];
+    @memset(kvOf(t)[0 .. 2 * (@as(usize, t.hwm) + 1)], Value.unbound);
+    @memset(indexOf(t), 0);
     t.count = 0;
     t.hwm = 0;
     t.free = 0;
@@ -510,4 +588,23 @@ pub fn sysHashPairs(th: *Thread, args: []const Value) Value {
     }
     std.mem.doNotOptimizeAway(table);
     return list;
+}
+
+test "grownSizes follows SBCL 2.6.7 and stays within the limit" {
+    const testing = std.testing;
+    // 既定の 1.5：SBCL 2.6.7 で観察した hash-table-size の移り変わり（flat でない表：16 → 24 → 36 → 54、7 → 10）
+    try testing.expectEqual(@as(u64, 24), grownSizes(16, .default).size);
+    try testing.expectEqual(@as(u64, 36), grownSizes(24, .default).size);
+    try testing.expectEqual(@as(u64, 54), grownSizes(36, .default).size);
+    try testing.expectEqual(@as(u64, 10), grownSizes(7, .default).size);
+    // flat の表はバケット数を枠の数にする（8 → 16）
+    try testing.expectEqual(@as(u64, 16), grownSizes(8, .default).buckets);
+    // 整数の rehash-size（SBCL：:rehash-size 10 で 8 → 18 → 28 → 38）
+    try testing.expectEqual(@as(u64, 18), grownSizes(8, .{ .add = 10 }).size);
+    try testing.expectEqual(@as(u64, 28), grownSizes(18, .{ .add = 10 }).size);
+    // 大きな表：u32 を超えても溢れず、上限を超えたことが分かる（Codex のレビュー P21.6 #1）
+    try testing.expect(grownSizes(@intCast(max_slots), .default).size > max_slots);
+    try testing.expect(grownSizes(std.math.maxInt(u32), .{ .add = std.math.maxInt(u32) }).size > max_slots);
+    try testing.expect(grownSizes(std.math.maxInt(u32), .{ .ratio = 3.0e38 }).size > max_slots);
+    try testing.expect(grownSizes(@intCast(max_slots / 2), .default).buckets <= max_slots * 2);
 }

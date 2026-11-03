@@ -57,6 +57,11 @@
   went from 421 to 429 matches. Startup time 9.08 ms
 
 ### Fixed
+- Codex review (Phase 22), 6 issues: native programs registered packages while reading their constants at startup, so
+  `find-package` saw them before `defpackage` and a `make-package` run both at compile time and at run time failed;
+  `import` did not set the home package of a home-less symbol already present; `shadowing-import` changed the home package;
+  KEYWORD could be made to use other packages; `NIL` was printed unqualified even when it was not visible from
+  `*package*`; `defpackage` did not check the arguments of `:size` and `:documentation`
 - `concatenate` and other functions that collect several vectors could run out of reserved capacity (an assertion
   failure in Debug builds, possible memory corruption in ReleaseFast builds); a failed standard-library load in
   `Thread.create` leaked the VM buffers

@@ -116,8 +116,9 @@ pub const ValueBuilder = struct {
             .uninterned => try rt.makeSymbol(name),
             .named => |n| blk: {
                 const p = rt.findPackage(n.name) orelse (if (b.create_packages)
-                    // ネイティブのプログラムが起動時に定数を読むとき：まだ defpackage を実行していないパッケージは空のまま作る
-                    try rt.makePackage(n.name, &.{})
+                    // ネイティブのプログラムが起動時に定数を読むとき：まだ作られていないパッケージは、一覧に入れない仮のパッケージにする
+                    // （後で make-package・defpackage が同じ名前で作るときに登録する。Codex のレビュー P22 #1）
+                    try rt.pendingPackage(n.name)
                 else
                     return fail(diag, loc, "そのパッケージはありません"));
                 if (n.external) {

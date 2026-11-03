@@ -117,3 +117,30 @@
 (in-package :cl-user)
 (print (my-project:main))
 (print (list (multiple-value-list (find-symbol "SPLIT-STRING" :my-project.core)) (multiple-value-list (find-symbol "SPLIT-STRING" :my-project))))
+
+;; Codex のレビュー P22 の指摘
+;; #1：ネイティブでも、defpackage・make-package の前にはパッケージがない（起動時に定数を読むときに一覧に登録しない）
+(print (find-package "NP0"))
+(defpackage :np0)
+(print 'np0::x)
+(eval-when (:compile-toplevel :load-toplevel :execute) (make-package "NQ0"))
+(print (list (package-name (find-package "NQ0")) 'nq0::y))
+;; #2：ホームのないシンボルを、既にあるパッケージに import し直すと、ホームが設定される
+(let ((p (make-package "RP")) (q (make-package "RQ")))
+  (let ((s (intern "X" p)))
+    (import s q) (unintern s p) (import s q)
+    (print (eq (symbol-package s) q))))
+;; #3：shadowing-import はホームを変えない
+(let ((p (make-package "RS")) (s (make-symbol "X")))
+  (shadowing-import s p)
+  (print (list (symbol-package s) (eq (find-symbol "X" p) s))))
+;; #5：NIL も、今のパッケージから見えなければ修飾する
+(let ((*package* (make-package "PN")))
+  (cl:print (cl:list (cl:format cl:nil "~S" cl:nil) (cl:format cl:nil "~S" '(1 cl:nil 2)) (cl:format cl:nil "~S" '(1 . 2))
+                     (cl:format cl:nil "~S" 'cl:t) (cl:format cl:nil "~A" cl:nil))))
+(defpackage :ln1 (:local-nicknames (:c :cl)))
+(let ((*package* (find-package :ln1))) (cl:print (cl:format cl:nil "~S" cl:nil)))
+(print (list (format nil "~S" nil) (format nil "~S" '(nil))))
+;; #6：:size・:documentation の正しい指定
+(defpackage :p6 (:size 10) (:documentation "ok"))
+(print (package-name (find-package :p6)))

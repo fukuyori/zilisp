@@ -24,7 +24,7 @@ pub fn princ(rt: *Runtime, w: *Writer, v: Value) Error!void {
 
 pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Error!void {
     if (v.isFixnum()) return w.print("{d}", .{v.asFixnum()});
-    if (v == Value.nil) return w.writeAll("NIL");
+    if (v == Value.nil) return printNil(rt, w, escape);
     if (v.isChar()) return if (escape) printChar(w, v.asChar()) else writeCp(w, v.asChar());
     if (v.isSingleFloat()) return printFloat(w, f32, v.asSingle());
     if (v == Value.unbound) return w.writeAll("#<unbound>");
@@ -266,6 +266,23 @@ fn printFloat(w: *Writer, comptime T: type, x: T) Error!void {
     try w.writeByte('.');
     if (digits.len > 1) try w.writeAll(digits[1..]) else try w.writeByte('0');
     return w.print("{c}{d}", .{ marker, exp10 });
+}
+
+/// NIL（即値）。エスケープ付きの印字では、ほかのシンボルと同じく、今のパッケージから見えなければ修飾する
+/// （CL を use しないパッケージでは COMMON-LISP:NIL。SBCL 2.6.7 と同じ。Codex のレビュー P22 #5）
+fn printNil(rt: *Runtime, w: *Writer, escape: bool) Error!void {
+    if (!escape) return w.writeAll("NIL");
+    if (qualify_all) return w.writeAll("COMMON-LISP::NIL");
+    const cur = rt.currentPackage();
+    const visible = if (cur) |c| (if (rt.findSymbol(c, "NIL")) |f| f.symbol == Value.nil else false) else false;
+    if (visible) return w.writeAll("NIL");
+    var prefix: []const u8 = rt.cl.name;
+    if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == rt.cl) {
+        prefix = n.name;
+        break;
+    };
+    try writeSymbolName(w, prefix);
+    return w.writeAll(":NIL");
 }
 
 /// 真なら、キーワードと uninterned 以外のシンボルをすべて「パッケージ::名前」の形で書く（ネイティブバックエンドが定数を

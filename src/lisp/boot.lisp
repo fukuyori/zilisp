@@ -1096,9 +1096,16 @@
            (push (cons (string (car pair)) (string (cadr pair))) local-nicknames)))
         (:documentation
          (when doc-p (zl-sys::%macro-form-error "DEFPACKAGE の :documentation は1回だけ指定できます" opt))
+         ;; 引数はちょうど1つの文字列（SBCL 2.6.7：個数の誤りは program-error、文字列でなければ type-error。
+         ;; Codex のレビュー P22 #6）
+         (unless (and (consp (cdr opt)) (null (cddr opt)))
+           (zl-sys::%macro-form-error "DEFPACKAGE の :documentation には文字列を1つ指定します" opt))
+         (unless (stringp (cadr opt)) (zl-sys::%type-error (cadr opt) 'string))
          (setq doc-p t))
         (:size
          (when size-p (zl-sys::%macro-form-error "DEFPACKAGE の :size は1回だけ指定できます" opt))
+         (unless (and (consp (cdr opt)) (null (cddr opt)) (integerp (cadr opt)) (>= (cadr opt) 0))
+           (zl-sys::%macro-form-error "DEFPACKAGE の :size には負でない整数を1つ指定します" opt))
          (setq size-p t))
         (t (zl-sys::%macro-form-error "DEFPACKAGE の知らないオプションです" opt))))
     (let ((shadowing-names (mapcan (lambda (s) (copy-list (cdr s))) shadowing-imports))

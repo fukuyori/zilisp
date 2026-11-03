@@ -378,13 +378,13 @@ pub fn collect(rt: *Runtime) void {
     // 正確なルート
     m.markValue(Value.fromPointer(rt.nil_symbol, .other));
     m.markValue(rt.t);
-    for (rt.packages.items) |p| {
+    for ([_][]const *@import("runtime.zig").PackageData{ rt.packages.items, rt.pending_packages.items }) |list| for (list) |p| {
         m.markValue(p.obj);
         var it = p.internal.valueIterator();
         while (it.next()) |v| m.markValue(v.*);
         var et = p.external.valueIterator();
         while (et.next()) |v| m.markValue(v.*);
-    }
+    };
     rt.roots.forEach(&m, markValueCb);
     rt.handles.forEach(&m, markValueCb);
     if (rt.thread) |th| th.forEachRoot(&m, markValueCb);

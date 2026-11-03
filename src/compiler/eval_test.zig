@@ -1793,6 +1793,16 @@ test "package errors like SBCL 2.6.7 (Phase 22)" {
     try expectError(&e, "(defpackage :e10 (:shadow :x) (:intern :x))", .program_error);
     try expectError(&e, "(defpackage :e10 (:intern :x) (:export :x))", .program_error);
     try expectError(&e, "(defpackage :e10 bogus)", .program_error);
+    // :size・:documentation の引数（SBCL 2.6.7 と同じ種類。Codex のレビュー P22 #6）
+    try expectError(&e, "(defpackage :e10 (:size -1))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:size))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:size 1 2))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:size 1.5))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:documentation 17))", .type_error);
+    try expectError(&e, "(defpackage :e10 (:documentation))", .program_error);
+    try expectError(&e, "(defpackage :e10 (:documentation \"a\" \"b\"))", .program_error);
+    // KEYWORD はほかのパッケージを use できない（SBCL 2.6.7 は simple-error。Codex のレビュー P22 #4）
+    try expectError(&e, "(use-package \"E1\" :keyword)", .simple_error);
     // 削除したパッケージ
     try expectValue(&e, "(let ((p (make-package \"E11\"))) (list (delete-package p) (delete-package p) (package-name p)))", "(T NIL NIL)");
     try expectError(&e, "(let ((p (make-package \"E12\"))) (delete-package p) (intern \"X\" p))", .package_error);

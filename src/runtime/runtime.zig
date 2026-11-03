@@ -148,6 +148,10 @@ pub const Runtime = struct {
     packages: std.ArrayList(*PackageData) = .empty,
     /// delete-package で削除したパッケージの本体（Runtime を破棄するときに解放する）
     deleted_packages: std.ArrayList(*PackageData) = .empty,
+    /// 仮のパッケージ：ネイティブのプログラムが起動時に定数を読むとき、まだ作られていないパッケージの修飾に使う。
+    /// パッケージの一覧には入れない（find-package などからは見えない）。同じ名前のパッケージを make-package・defpackage で
+    /// 作るときに、正式に登録して使う（Codex のレビュー P22 #1）
+    pending_packages: std.ArrayList(*PackageData) = .empty,
     /// NIL の名前・属性リストなどを持つシンボルの実体（値としての NIL は即値 Value.nil）
     nil_symbol: *Symbol,
     t: Value,
@@ -232,6 +236,8 @@ pub const Runtime = struct {
         rt.packages.deinit(rt.gpa);
         for (rt.deleted_packages.items) |p| freePackageData(rt.gpa, p);
         rt.deleted_packages.deinit(rt.gpa);
+        for (rt.pending_packages.items) |p| freePackageData(rt.gpa, p);
+        rt.pending_packages.deinit(rt.gpa);
         rt.roots.deinit();
         rt.handles.deinit();
         rt.heap.deinit();
@@ -316,8 +322,38 @@ pub const Runtime = struct {
         }
     }
 
-    /// 必要な確保をすべて済ませてから、パッケージの一覧に登録する（途中で失敗しても一覧は変わらない）
+    /// 必要な確保をすべて済ませてから、パッケージの一覧に登録する（途中で失敗しても一覧は変わらない）。
+    /// 同じ名前の仮のパッケージがあれば、それに別名を付けて登録する
     pub fn makePackage(rt: *Runtime, name: []const u8, nicknames: []const []const u8) Error!*PackageData {
+        for (rt.pending_packages.items, 0..) |p, i| {
+            if (!std.mem.eql(u8, p.name, name)) continue;
+            const nicks = try rt.gpa.alloc([]const u8, nicknames.len);
+            var copied: usize = 0;
+            errdefer {
+                for (nicks[0..copied]) |n| rt.gpa.free(n);
+                rt.gpa.free(nicks);
+            }
+            for (nicknames, 0..) |n, j| {
+                nicks[j] = try rt.gpa.dupe(u8, n);
+                copied = j + 1;
+            }
+            try rt.packages.ensureUnusedCapacity(rt.gpa, 1);
+            rt.gpa.free(p.nicknames);
+            p.nicknames = nicks;
+            _ = rt.pending_packages.orderedRemove(i);
+            rt.packages.appendAssumeCapacity(p);
+            return p;
+        }
+        return rt.allocPackage(name, nicknames, &rt.packages);
+    }
+
+    /// 仮のパッケージを探し、なければ作る（パッケージの一覧には入れない）
+    pub fn pendingPackage(rt: *Runtime, name: []const u8) Error!*PackageData {
+        for (rt.pending_packages.items) |p| if (std.mem.eql(u8, p.name, name)) return p;
+        return rt.allocPackage(name, &.{}, &rt.pending_packages);
+    }
+
+    fn allocPackage(rt: *Runtime, name: []const u8, nicknames: []const []const u8, list: *std.ArrayList(*PackageData)) Error!*PackageData {
         const p = try rt.gpa.create(PackageData);
         errdefer rt.gpa.destroy(p);
         const name_copy = try rt.gpa.dupe(u8, name);
@@ -330,12 +366,12 @@ pub const Runtime = struct {
             nicks[i] = try rt.gpa.dupe(u8, n);
             copied = i + 1;
         }
-        try rt.packages.ensureUnusedCapacity(rt.gpa, 1);
+        try list.ensureUnusedCapacity(rt.gpa, 1);
         const obj = try rt.heap.create(object.Package, 0);
         p.* = .{ .name = name_copy, .nicknames = nicks };
         obj.* = .{ .header = .{ .kind = .package }, .data = p };
         p.obj = Value.fromPointer(obj, .other);
-        rt.packages.appendAssumeCapacity(p);
+        list.appendAssumeCapacity(p);
         return p;
     }
 

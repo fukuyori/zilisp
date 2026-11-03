@@ -381,6 +381,7 @@ pub const sys_table = [_]Entry{
     .{ .name = "%HASH-PAIRS", .impl = hashtables.sysHashPairs, .min = 1, .max = 1 },
     // パッケージ（Phase 22。boot.lisp の in-package・defpackage・do-symbols が使う）
     .{ .name = "%FIND-PACKAGE-OR-LOSE", .impl = packages.sysFindPackageOrLose, .min = 1, .max = 1 },
+    .{ .name = "%TYPE-ERROR", .impl = packages.sysTypeError, .min = 2, .max = 2 },
     .{ .name = "%PACKAGE-SYMBOLS", .impl = packages.sysPackageSymbols, .min = 2, .max = 2 },
     .{ .name = "%ALL-PACKAGE-SYMBOLS", .impl = packages.sysAllPackageSymbols, .min = 0, .max = 0 },
     .{ .name = "%DEFPACKAGE", .impl = packages.sysDefpackage, .min = 10, .max = 10 },

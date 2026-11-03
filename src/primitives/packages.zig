@@ -455,9 +455,8 @@ pub fn importSymbols(th: *Thread, args: []const Value) Value {
     for (syms) |sym| {
         const name = symbolUtf8(th, sym) orelse return Value.unwind;
         defer rt.gpa.free(name);
-        if (p.present(name) != null) continue;
-        rt.putSymbol(if (p == rt.keyword) &p.external else &p.internal, name, sym) catch return oom(th);
-        // ホームパッケージのないシンボルは、p をホームにする（CLHS import）
+        if (p.present(name) == null) rt.putSymbol(if (p == rt.keyword) &p.external else &p.internal, name, sym) catch return oom(th);
+        // ホームパッケージのないシンボルは、p をホームにする（既に p にある場合も。CLHS import。Codex のレビュー P22 #2）
         if (sym != Value.nil and symbolHome(rt, sym) == Value.nil) setSymbolHome(rt, sym, p.obj);
     }
     return rt.t;
@@ -475,10 +474,8 @@ pub fn shadowingImport(th: *Thread, args: []const Value) Value {
         if (p.present(name)) |f| {
             if (f.symbol != sym) removePresent(rt, p, f.symbol, name);
         }
-        if (p.present(name) == null) {
-            rt.putSymbol(&p.internal, name, sym) catch return oom(th);
-            if (sym != Value.nil and symbolHome(rt, sym) == Value.nil) setSymbolHome(rt, sym, p.obj);
-        }
+        // ホームパッケージは変えない（SBCL 2.6.7 と同じ。Codex のレビュー P22 #3）
+        if (p.present(name) == null) rt.putSymbol(&p.internal, name, sym) catch return oom(th);
         if (!p.isShadowing(sym)) p.shadowing.append(rt.gpa, sym) catch return oom(th);
     }
     return rt.t;
@@ -536,6 +533,11 @@ fn useConflict(th: *Thread, p: *PackageData, adds: []const *PackageData) bool {
 /// p に adds を use させる（重複は除く）。衝突があれば何もせず偽（エラーを記録済み）
 pub fn usePackages(th: *Thread, p: *PackageData, adds_in: []const *PackageData) bool {
     const rt = th.rt;
+    // KEYWORD はほかのパッケージを use できない（SBCL 2.6.7 は simple-error。Codex のレビュー P22 #4）
+    if (p == rt.keyword and adds_in.len != 0) {
+        _ = th.signal(.simple_error, "KEYWORD パッケージは、ほかのパッケージを use できません", p.obj, Value.unbound);
+        return false;
+    }
     var adds: std.ArrayList(*PackageData) = .empty;
     defer adds.deinit(rt.gpa);
     for (adds_in) |u| {
@@ -752,6 +754,11 @@ pub fn findAllSymbols(th: *Thread, args: []const Value) Value {
 
 // ---------------------------------------------------------------------------
 // ZILISP-SYSTEM の関数（boot.lisp のマクロが使う）
+
+/// ZILISP-SYSTEM::%TYPE-ERROR 値 型：type-error（boot.lisp のマクロが引数を検査するとき）
+pub fn sysTypeError(th: *Thread, args: []const Value) Value {
+    return th.typeError(args[0], args[1]);
+}
 
 /// ZILISP-SYSTEM::%FIND-PACKAGE-OR-LOSE 指定子：in-package が使う（なければ package-error）
 pub fn sysFindPackageOrLose(th: *Thread, args: []const Value) Value {

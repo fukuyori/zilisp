@@ -65,3 +65,13 @@ T
 T 
 NIL 
 NIL 
+(0 1 2 3 4 5 6 7 8 9) 
+(0 2 4) 
+(99) 
+(T 99) 
+((:RELATIVE) (:RELATIVE "a")) 
+1 
+NIL 
+NIL 
+(:RELATIVE) 
+((:ABSOLUTE) (:ABSOLUTE "b") (:RELATIVE)) 

@@ -626,7 +626,7 @@
              ;; agy のレビュー 0.3 #4）
              (parse-arithmetic (var)
                (let ((has-start nil) (has-limit nil) (has-by nil) (inclusive t) (start-dir nil) (limit-dir nil)
-                     (lim (gensym "LIMIT")) (stp (gensym "STEP")) (down nil) (test nil))
+                     (start (gensym "START")) (lim (gensym "LIMIT")) (stp (gensym "STEP")) (down nil) (test nil))
                  (if (not (and var (symbolp var)))
                      (zl-sys::%macro-form-error "LOOP の for の数の変数はシンボルでなければなりません" var))
                  (tagbody
@@ -634,7 +634,7 @@
                     (cond ((at "FROM" "UPFROM" "DOWNFROM")
                            (if has-start (zl-sys::%macro-form-error "LOOP の for の開始の値が2つあります" (peek)))
                            (setq start-dir (cond ((at "UPFROM") :up) ((at "DOWNFROM") :down) (t nil)))
-                           (next) (setq has-start t) (bind var (need-form "FROM")))
+                           (next) (setq has-start t) (bind start (need-form "FROM")))
                           ((at "TO" "UPTO" "BELOW" "DOWNTO" "ABOVE")
                            (if has-limit (zl-sys::%macro-form-error "LOOP の for の終わりの値が2つあります" (peek)))
                            (setq limit-dir (cond ((at "UPTO" "BELOW") :up) ((at "DOWNTO" "ABOVE") :down) (t nil)))
@@ -649,7 +649,9 @@
                  (if (and start-dir limit-dir (not (eq start-dir limit-dir)))
                      (zl-sys::%macro-form-error "LOOP の for の上り・下りの向きが矛盾しています" var))
                  (setq down (or (eq start-dir :down) (eq limit-dir :down)))
-                 (if (not has-start) (bind var 0))
+                 ;; ループの変数は、部分節の式をすべて評価した後で束縛する（to・by の式は外側の同じ名前の変数を見る。
+                 ;; SBCL と同じ。Codex のレビュー 0.3 修正の修正 #1）
+                 (bind var (if has-start start 0))
                  (if has-by
                      (add-first (list `(if (not (plusp ,stp)) (zl-sys::%type-error ,stp '(and real (satisfies plusp))))))
                      (bind stp 1))
@@ -737,10 +739,12 @@
                  (t (zl-sys::%macro-form-error "LOOP の条件の中に置けない句です" (peek)))))
              ;; it は、条件の直後の最初の句の中でだけ使える（CLHS 6.1.6.2。and の後ろと else の後ろでは使えない。
              ;; agy のレビュー 0.3 #5）
-             (parse-clause-group (it outer)
+             (parse-clause-group (it)
                (setq it-var it)
                (let ((forms (parse-selectable)))
-                 (setq it-var outer)
+                 ;; 入れ子の条件の and・else の後ろでも、外側の条件の it は使えない（SBCL と同じ。Codex のレビュー 0.3
+                 ;; 修正の修正 #2）
+                 (setq it-var nil)
                  (tagbody
                   next
                     (if (at "AND")
@@ -750,8 +754,8 @@
                ;; 条件の式も、外側の条件の直後の最初の句なら it を使える（SBCL と同じ。Codex のレビュー 0.3 修正 #5）
                (let ((test (parse-form-or-it kw)) (saved it-var) (then nil) (else nil) (it (gensym "IT")))
                  (bind it nil)
-                 (setq then (parse-clause-group it saved))
-                 (if (at "ELSE") (progn (next) (setq else (parse-clause-group saved saved))))
+                 (setq then (parse-clause-group it))
+                 (if (at "ELSE") (progn (next) (setq else (parse-clause-group nil))))
                  (if (at "END") (next))
                  (setq it-var saved)
                  (let ((cond-form (if (zl-sys::%loop-keyword-p kw '("UNLESS")) `(not (setq ,it ,test)) `(setq ,it ,test))))

@@ -141,11 +141,22 @@ pub const ValueBuilder = struct {
     }
 
     /// #.：*read-eval* が真ならフォームを評価する（偽なら reader-error。CLHS 2.4.8.6）
-    pub fn readEval(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, form: Value) Error!Value {
+    /// ストリームから読んでいるなら、評価の前にストリームの位置を Source に合わせ、評価の後にバッファと位置を取り直す
+    /// （評価の中の read-line などが標準入力を読み足すと、バッファが動く。Codex のレビュー 0.3 修正の修正の修正 #1）
+    pub fn readEval(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, form: Value) Error!Value {
         const rt = b.rt;
         if (rt.symbolPtr(rt.syms.@"*read-eval*").value == Value.nil) return fail(diag, loc, "*READ-EVAL* が偽なので #. は使えません");
         const th = b.th orelse return fail(diag, loc, "ここでは #. を使えません");
+        const streams = @import("../primitives/streams.zig");
+        const s = b.stream;
+        if (s != Value.nil) streams.setReadPosition(s, b.toStreamPos(src, src.pos));
         const v = @import("../compiler/eval.zig").eval(th, form);
+        if (s != Value.nil) {
+            if (!b.latin1) if (streams.readBuffer(s)) |buf| {
+                src.text = buf[@min(b.stream_base, buf.len)..];
+            };
+            src.seekTo(b.fromStreamPos(src, streams.readPosition(s)));
+        }
         if (v == Value.unwind) return error.LispError;
         return v;
     }

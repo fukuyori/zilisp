@@ -134,6 +134,14 @@
     KEYWORD replaced its value; `with` destructuring without an initial value used the wrong defaults; `it` in the
     test of a nested condition; a pathname without a directory against `(:absolute :wild-inferiors)`; malformed
     directories in `make-pathname` (simple-error, as in SBCL); the second value of `parse-namestring` for streams.
+  - A further Codex review found 5 more, now fixed: `for ... from` bound the loop variable before evaluating `to`/`by`
+    (they saw the new variable); the outer `it` leaked into `and`/`else` of a nested condition; `:back` did not remove a
+    preceding `:wild`/`:wild-inferiors`; `make-string` rejected `:element-type nil`; `format` to a closed stream
+    signalled an error even when nothing was written (as in SBCL, only writing and `~&` signal).
+  - And 3 more: reading more of standard input inside `#.` (for example with `read-line`) moved the input buffer while
+    the outer reader still used it (a crash; the reader now resynchronizes after `#.` as after reader macros);
+    `(format t "")` with a closed `*standard-output*`; empty strings in `make-pathname` directories are dropped before
+    `:back` is processed, as in SBCL.
 - Standard output and standard error were written at file positions from 0, so redirecting both to one file, or
   appending with `>>`, overwrote earlier output (they are now written as streams)
 - Codex review (Phase 24), 8 issues: `format` copied list arguments where the GC could not see them, so a `~/name/`

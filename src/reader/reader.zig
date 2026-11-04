@@ -573,7 +573,7 @@ pub fn Reader(comptime Builder: type) type {
                     const form = try self.readRequired(loc, "#. の後");
                     if (self.suppress) return try self.builder.nil(loc);
                     if (comptime !@hasDecl(Builder, "readEval")) return self.fail(loc, "#. はここでは使えません");
-                    return try self.builder.readEval(&self.diagnostic, loc, form);
+                    return try self.builder.readEval(&self.diagnostic, loc, self.src, form);
                 },
                 .sharp_equal => {
                     // 読み飛ばしの最中の #n= は値を返さず、続くオブジェクトがそのまま読み飛ばしの対象になる

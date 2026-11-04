@@ -340,6 +340,23 @@ fn resolveInStream(th: *Thread, v0: Value) ?Value {
     return null;
 }
 
+/// 出力に使えるストリームか（閉じていない出力のストリーム。エラーは記録しない。format が、実際に書くまで
+/// エラーにしないために使う）
+pub fn usableOutput(th: *Thread, v0: Value) bool {
+    var v = v0;
+    var depth: usize = 0;
+    while (depth < 64) : (depth += 1) {
+        if (!isStream(v)) return false;
+        if (flags(v) & SF.open == 0) return false;
+        switch (kindOf(v)) {
+            .synonym => v = th.rt.symbolPtr(ptr(v).ref).value,
+            .two_way => v = Runtime.consPtr(ptr(v).ref).cdr,
+            else => return flags(v) & SF.output != 0,
+        }
+    }
+    return false;
+}
+
 /// 出力のストリーム指定子（NIL は *standard-output*、T は *terminal-io*）
 pub fn outputDesignator(th: *Thread, v: ?Value) ?Value {
     const rt = th.rt;

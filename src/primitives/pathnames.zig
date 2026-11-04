@@ -234,6 +234,13 @@ fn componentArg(th: *Thread, v: Value) ?Value {
     return null;
 }
 
+/// :back で取り除ける直前の要素（名前・:wild・:wild-inferiors。SBCL の import-directory と同じ。
+/// Codex のレビュー 0.3 修正の修正 #3）
+fn backRemovable(th: *Thread, e: Value) bool {
+    if (isString(e)) return true;
+    return e == (kw(th, "WILD") orelse return false) or e == (kw(th, "WILD-INFERIORS") orelse return false);
+}
+
 /// ディレクトリの :back を、直前の名前と一緒に取り除く（make-pathname・merge-pathnames。SBCL と同じ。
 /// agy のレビュー 0.3 #12）
 fn canonicalDirectory(th: *Thread, dir: Value) ?Value {
@@ -246,7 +253,7 @@ fn canonicalDirectory(th: *Thread, dir: Value) ?Value {
     var x = dir;
     while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
         const e = Runtime.consPtr(x).car;
-        if (e == back and items.items.len > 1 and isString(items.items[items.items.len - 1])) {
+        if (e == back and items.items.len > 1 and backRemovable(th, items.items[items.items.len - 1])) {
             _ = items.pop();
             changed = true;
             continue;
@@ -300,7 +307,7 @@ pub fn merge(th: *Thread, pv: Value, dv: Value, default_version: Value) ?Value {
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
             const e = Runtime.consPtr(x).car;
             // :back は直前の要素（名前）を取り除く（CLHS 19.2.2.4.3・SBCL 2.6.7 と同じ。Codex のレビュー P23 #10）
-            if (e == back and items.items.len > 1 and isString(items.items[items.items.len - 1])) {
+            if (e == back and items.items.len > 1 and backRemovable(th, items.items[items.items.len - 1])) {
                 _ = items.pop();
                 continue;
             }
@@ -539,6 +546,9 @@ fn directoryArg(th: *Thread, v: Value) ?Value {
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
             var e = Runtime.consPtr(x).car;
             if (arrays.isStringLike(e)) {
+                // 空の文字列の要素は除く（:back を処理する前に。SBCL の import-directory と同じ。
+                // Codex のレビュー 0.3 修正の修正の修正 #3）
+                if (arrays.vectorView(e).?.len == 0) continue;
                 e = simpleString(th, e) orelse return null;
             } else {
                 var ok = false;
@@ -566,6 +576,11 @@ fn directoryArg(th: *Thread, v: Value) ?Value {
     }
     if (arrays.isStringLike(v)) {
         const abs = kw(th, "ABSOLUTE") orelse return null;
+        // 空の文字列は (:absolute)（SBCL と同じ）
+        if (arrays.vectorView(v).?.len == 0) return rt.cons(abs, Value.nil) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
         const sv = simpleString(th, v) orelse return null;
         const tail = rt.cons(sv, Value.nil) catch {
             _ = th.outOfMemory();

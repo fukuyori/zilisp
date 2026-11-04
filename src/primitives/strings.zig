@@ -471,7 +471,8 @@ pub fn makeString(th: *Thread, args: []const Value) Value {
     // :element-type は文字の型だけ（character・base-char・standard-char。SBCL と同じく、それ以外は simple-error。
     // Codex のレビュー 0.3 #12）
     if (kv[1]) |et| {
-        var ok = false;
+        // NIL（空の型）も受け付ける（SBCL と同じ。Codex のレビュー 0.3 修正の修正 #4）
+        var ok = et == Value.nil;
         for ([_][]const u8{ "CHARACTER", "BASE-CHAR", "STANDARD-CHAR" }) |name| if (et == cl(th, name)) {
             ok = true;
         };

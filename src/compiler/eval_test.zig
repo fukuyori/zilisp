@@ -1916,6 +1916,8 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         // その修正への Codex のレビュー：ディレクトリの形の誤りは simple-error（SBCL の import-directory と同じ）
         .{ "(make-pathname :directory '(:bogus \"a\"))", .simple_error },
         .{ "(make-pathname :directory '(:relative :bogus))", .simple_error },
+        // 閉じたストリームへの format は、書くとき（と ~&）にエラー（何も書かなければ NIL）
+        .{ "(let ((s (make-string-output-stream))) (close s) (format s \"x\"))", .stream_error },
     }) |c| try expectError(&e, c[0], c[1]);
     // 大きな列（言語試験の GC stress では遅いので、ここで確かめる）
     try expectValue(&e, "(length (mapcan #'list (loop for i from 1 to 70000 collect i)))", "70000");
@@ -1927,6 +1929,23 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
     // 束縛は印字の後に戻る
     try expectValue(&e, "(progn (write-to-string 1 :base 16) *print-base*)", "10");
     try expectValue(&e, "(let ((*print-base* 2)) (prin1-to-string 5))", "\"101\"");
+}
+
+test "reading standard input: #. that reads more input (0.3 review)" {
+    // 標準入力から読んでいる途中の #. の中で read-line すると、入力のバッファが確保し直される。外側の Reader は
+    // バッファを取り直して続ける（解放した場所を読まない。SBCL 2.6.7 は (7 9)。Codex のレビュー 0.3 修正の修正の修正 #1）
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    const gpa = testing.allocator;
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(gpa);
+    try input.appendSlice(gpa, "(#.(progn (read-line) (read-line) 7)\n");
+    try input.appendNTimes(gpa, 'a', 10000);
+    try input.appendSlice(gpa, "\n9)\n");
+    var in_reader: std.Io.Reader = .fixed(input.items);
+    @import("../primitives/streams.zig").shareStdinReader(e.th, &in_reader);
+    try expectValue(&e, "(read)", "(7 9)");
 }
 
 test "stream and pathname errors like SBCL 2.6.7 (Phase 23)" {

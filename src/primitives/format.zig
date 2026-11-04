@@ -104,6 +104,9 @@ const Out = struct {
     base_line_start: bool = true,
     /// stream が pretty stream：溜めずに直接書く（条件付きの改行などとの順序を保つ）
     direct: bool = false,
+    /// stream が閉じている・出力のストリームでない：実際に書くとき（と ~&）にエラーにする（何も書かない
+    /// (format 閉じたストリーム "") は NIL。SBCL と同じ。Codex のレビュー 0.3 修正の修正 #5）
+    unusable: bool = false,
 
     /// 今の桁。direct（pretty stream に直接書いている）ならストリームに聞く（Codex P24 #7）
     fn column(o: *const Out, th: *Thread) ?usize {
@@ -170,6 +173,7 @@ const Ctx = struct {
             if (!streams.emit(c.th, s, o.buf.items)) return error.Lisp;
             o.buf.clearRetainingCapacity();
         }
+        if (o.unusable) return;
         o.base_col = streams.columnOf(c.th, s);
         o.base_line_start = streams.atLineStart(c.th, s);
     }
@@ -603,6 +607,10 @@ fn directive(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fa
                 '|' => try c.repeat(o, 0x0C, n),
                 '~' => try c.repeat(o, '~', n),
                 else => if (n > 0) {
+                    // 使えないストリームなら、行の先頭か調べる前にエラー（SBCL の fresh-line と同じ）
+                    if (o.unusable) {
+                        if (o.stream) |s| _ = streams.outputDesignator(c.th, s) orelse return error.Lisp;
+                    }
                     if (!o.atLineStart(c.th)) try c.write(o, "\n");
                     try c.repeat(o, '\n', n - 1);
                 },
@@ -1858,7 +1866,13 @@ pub fn format(th: *Thread, args: []const Value) Value {
     const rt = th.rt;
     const dest = args[0];
     const control = args[1];
-    const out_stream: ?Value = if (dest == Value.nil) null else if (dest == rt.t) (streams.outputDesignator(th, Value.nil) orelse return Value.unwind) else if (streams.isStream(dest)) (streams.outputDesignator(th, dest) orelse return Value.unwind) else {
+    // T は *standard-output*。閉じているかは、実際に書くときに確かめる（明示したストリームと同じ。
+    // Codex のレビュー 0.3 修正の修正の修正 #2）
+    const out_stream: ?Value = if (dest == Value.nil) null else if (dest == rt.t) blk: {
+        const so = rt.symbolPtr(rt.syms.@"*standard-output*").value;
+        if (!streams.isStream(so)) return th.typeError(so, (rt.findSymbol(rt.cl, "STREAM") orelse unreachable).symbol);
+        break :blk so;
+    } else if (streams.isStream(dest)) dest else {
         if (arrays.isStringLike(dest))
             return th.signal(.unimplemented, "FORMAT の出力先に文字列を使うのは未実装です", dest, Value.unbound);
         return th.typeError(dest, (rt.findSymbol(rt.cl, "STREAM") orelse unreachable).symbol);
@@ -1868,9 +1882,11 @@ pub fn format(th: *Thread, args: []const Value) Value {
     var o: Out = .{ .stream = target };
     defer o.buf.deinit(rt.gpa);
     if (target) |s| {
-        o.base_col = streams.columnOf(th, s);
-        o.base_line_start = streams.atLineStart(th, s);
-        o.direct = streams.prettyStateOf(s) != null;
+        if (streams.usableOutput(th, s)) {
+            o.base_col = streams.columnOf(th, s);
+            o.base_line_start = streams.atLineStart(th, s);
+            o.direct = streams.prettyStateOf(s) != null;
+        } else o.unusable = true;
     }
     var a: Args = .{ .items = args[2..] };
     if (run(th, &o, control, &a)) |_| {} else |err| switch (err) {

@@ -69,9 +69,8 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 | Linux（x86-64・AArch64） | `zilisp-<版>-x86_64-linux.tar.gz`・`zilisp-<版>-aarch64-linux.tar.gz`（静的リンク、musl） |
 | macOS（Apple Silicon・Intel） | `zilisp-<版>-aarch64-macos.tar.gz`・`zilisp-<版>-x86_64-macos.tar.gz` |
 
-リリースの配布物には**電子署名を付けていません**。Windows の SmartScreen や macOS の Gatekeeper が警告することが
-あります。各ファイルの SHA-256 は `SHA256SUMS.txt` にあります。Windows のインストーラーは、既定では今の利用者だけに
-インストールし（管理者の権限は不要）、選べば `PATH` に Zilisp を加えます。
+Windows のインストーラーは、既定では今の利用者だけにインストールし（管理者の権限は不要）、選べば `PATH` に
+Zilisp を加えます。
 
 ## 使い方
 

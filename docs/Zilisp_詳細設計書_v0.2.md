@@ -1603,7 +1603,7 @@ GUI（Tk）や TLS などの外部ネイティブライブラリを使うアプ�
 | ワークフロー | 起動 | 内容 |
 |---|---|---|
 | `.github/workflows/test.yml` | `main` への push、pull request、`release.yml` からの呼び出し | Linux・macOS（arm64）・Windows で `zig fmt --check`、`zig build test`、`lang-test`、`native-test` |
-| `.github/workflows/release.yml` | タグ `v*` の push | ①タグと `build.zig.zon`・`src/version.zig` のバージョン、`CHANGELOG.md`・`CHANGELOG.ja.md` の見出しの一致を確かめる ②試験（`test.yml`） ③ビルド：x86_64・aarch64 の Linux（musl）と macOS は ReleaseFast で `.tar.gz`（`bin/zilisp`・`LICENSE`・README と CHANGELOG の英語版・日本語版）、x86_64 の Windows は `scripts/build-installer.ps1`（署名なし）でインストーラーと ZIP。実行できるもの（x86_64 Linux、aarch64 macOS、Windows）は `--version` と言語試験の1つで確かめる ④`SHA256SUMS.txt` を作り、`CHANGELOG.md`（英語）と `CHANGELOG.ja.md`（日本語）の該当バージョンの節をリリースノートにして、GitHub のリリースを登録する |
+| `.github/workflows/release.yml` | タグ `v*` の push | ①タグと `build.zig.zon`・`src/version.zig` のバージョン、`CHANGELOG.md`・`CHANGELOG.ja.md` の見出しの一致を確かめる ②試験（`test.yml`） ③ビルド：x86_64・aarch64 の Linux（musl）と macOS は ReleaseFast で `.tar.gz`（`bin/zilisp`・`LICENSE`・README と CHANGELOG の英語版・日本語版）、x86_64 の Windows は `scripts/build-installer.ps1`（署名なし）でインストーラーと ZIP。実行できるもの（x86_64 Linux、aarch64 macOS、Windows）は `--version` と言語試験の1つで確かめる ④`CHANGELOG.md`（英語）と `CHANGELOG.ja.md`（日本語）の該当バージョンの節をリリースノートにして、GitHub のリリースを登録する |
 
 - Zig は `mlugg/setup-zig@v2` で 0.17.0 を入れる。
 - **CI の配布物には署名を付けない**（2026-11-02 決定：証明書は開発機の証明書ストアにあり、CI では使わない）。リリースノートに、署名がないこと（SmartScreen・Gatekeeper の警告）を書く。署名付きの Windows の配布物は、利用者が `-Sign` で作り、リリースのファイルを差し替える（`docs/version-update-checklist.md`）。§18.2 の「配布物は利用者が `-Sign` を付けて作る」は、署名付きの配布物についての規則とする。

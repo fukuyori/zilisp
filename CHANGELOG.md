@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+### Changed
+- Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed
+
 ## 0.3.0 - 2026-11-04
 
 Data processing, files and programs in several files (Phases 19–24): iteration and `loop`, the numeric tower

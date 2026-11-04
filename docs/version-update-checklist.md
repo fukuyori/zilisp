@@ -22,7 +22,7 @@ Zilisp のバージョン、または使用する Zig のバージョンを変�
    `build.zig.zon`・`src/version.zig`・`CHANGELOG.md`・`CHANGELOG.ja.md` の見出しの一致を確かめ、3つの OS で試験してから、
    各ターゲットをビルドしてリリースを登録する（配布物は署名なし。リリースノートは、両方の変更履歴の該当バージョンの節）。
 4. 署名付きの Windows の配布物が必要なときは、利用者が `scripts/build-installer.ps1 -Sign` で作成し（Claude は作成しない）、
-   リリースの同じ名前のファイルを差し替える（`gh release upload v<バージョン> <ファイル> --clobber`。SHA256SUMS.txt も作り直す）。
+   リリースの同じ名前のファイルを差し替える（`gh release upload v<バージョン> <ファイル> --clobber`）。
 
 ## 2. 内部形式を変更したとき（該当する場合のみ）
 

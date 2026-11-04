@@ -126,11 +126,6 @@ jobs:
           pattern: dist-*
           path: assets
           merge-multiple: true
-      - name: checksums
-        run: |
-          cd assets
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
       - name: release notes（CHANGELOG.md・CHANGELOG.ja.md の該当バージョンの節）
         run: |
           section() {
@@ -143,16 +138,10 @@ jobs:
           {
             section CHANGELOG.md
             echo
-            echo "The release packages are not code-signed. Windows SmartScreen and macOS Gatekeeper may warn about them."
-            echo "SHA-256 checksums are in SHA256SUMS.txt."
-            echo
             echo "---"
             echo
             echo "## 日本語"
             section CHANGELOG.ja.md
-            echo
-            echo "配布物には電子署名を付けていません。Windows では SmartScreen の警告が、macOS では Gatekeeper の警告が出ることがあります。"
-            echo "各ファイルの SHA-256 は SHA256SUMS.txt にあります。"
           } > notes.md
       - name: publish
         run: gh release create "$GITHUB_REF_NAME" assets/* --title "Zilisp $VERSION" --notes-file notes.md --verify-tag

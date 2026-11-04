@@ -76,9 +76,8 @@ Download a package from the [Releases](https://github.com/fukuyori/zilisp/releas
 | Linux (x86-64, AArch64) | `zilisp-<version>-x86_64-linux.tar.gz`, `zilisp-<version>-aarch64-linux.tar.gz` (static, musl) |
 | macOS (Apple Silicon, Intel) | `zilisp-<version>-aarch64-macos.tar.gz`, `zilisp-<version>-x86_64-macos.tar.gz` |
 
-The release packages are **not code-signed**. Windows SmartScreen and macOS Gatekeeper may warn
-about them. SHA-256 checksums are in `SHA256SUMS.txt`. The Windows installer installs for the
-current user by default (no administrator rights needed) and can optionally add Zilisp to `PATH`.
+The Windows installer installs for the current user by default (no administrator rights needed) and can
+optionally add Zilisp to `PATH`.
 
 ## Usage
 

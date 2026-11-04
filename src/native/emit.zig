@@ -21,7 +21,8 @@ const Node = ir.Node;
 const Lambda = ir.Lambda;
 const Var = ir.Var;
 
-pub const Error = error{ OutOfMemory, WriteFailed };
+/// NotReadable：読み戻せる形で書けない定数（関数・ストリームなど）がある（Emitter.not_readable にその定数）
+pub const Error = error{ OutOfMemory, WriteFailed, NotReadable };
 
 pub const ToplevelForm = struct {
     lambda: *Lambda,
@@ -46,6 +47,8 @@ pub const Emitter = struct {
     next_var: u32 = 0,
     /// 生成した関数の本文（lambda ごと）
     functions: std.Io.Writer.Allocating,
+    /// finish が error.NotReadable を返したときの、読み戻せない定数
+    not_readable: Value = Value.nil,
 
     pub fn init(rt: *Runtime, gpa: std.mem.Allocator) Emitter {
         return .{ .rt = rt, .gpa = gpa, .functions = .init(gpa) };
@@ -136,11 +139,21 @@ pub const Emitter = struct {
         printer.qualify_all = true;
         defer printer.qualify_all = false;
         // 循環・共有する構造（#1=(a . #1#) など）は #n= と #n# で書く（Phase 24。起動時の Reader が同じ形に読む）
+        // *print-readably* の形で書く（#nA で表せない配列は #A(次元 要素の型 . 中身)。読み戻せない定数はエラー）
         var settings = printer.Settings.standard(true);
         settings.circle = true;
+        settings.readably = true;
+        settings.array = true;
+        settings.gensym = true;
         for (e.consts.items) |v| {
             var bad: Value = Value.nil;
-            printer.writeObject(e.rt, &text.writer, v, settings, &bad) catch return error.WriteFailed;
+            printer.writeObject(e.rt, &text.writer, v, settings, &bad) catch |err| switch (err) {
+                error.NotReadable => {
+                    e.not_readable = bad;
+                    return error.NotReadable;
+                },
+                error.WriteFailed => return error.WriteFailed,
+            };
             try text.writer.writeByte('\n');
         }
         try w.writeAll("const constants_text = ");

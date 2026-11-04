@@ -103,3 +103,23 @@
 (print (with-output-to-string (s) (write-string "12345" s) (format s "~10Ty")))
 (print (let ((*print-case* :downcase)) (f "~A ~S ~:(~A~)" 'foo 'bar 'baz)))
 (print (f "~W ~:W ~@W" '(1 2) "s" '(a b)))
+
+;; Codex P24 の指摘：引数のリストを ~/名前/ の中で切っても、残りの引数は回収されない（--gc-stress でも同じ）
+(defvar *format-args* (cons 0 (loop for i below 100 collect (list i))))
+(defun format-zap (s x c a)
+  (declare (ignore s x c a))
+  (setf (cdr *format-args*) nil)
+  (dotimes (i 100) (cons i i)))
+(print (search "aaaaaaaa" (format nil "~?" "~/format-zap/~@{~S~}" *format-args*)))
+;; 論理ブロックの中の ~:* ~@* ~@[ ~:P は引数の位置を戻す
+(print (format nil "~:<~A ~:*~A~:>" '(10 20)))
+(print (format nil "~:<~@[~A~]~:>" '(10 20)))
+(print (format nil "~:<~A ~A ~2:*~A ~@*~A~:>" '(1 2 3)))
+(print (format nil "~:<~A~:P~:>" '(1)))
+;; pretty stream の上の ~& と fresh-line は必ず改行する（SBCL の pretty stream は桁を答えない）
+(print (format nil "~<a~&b~:>" nil))
+(print (format nil "~<a~%~&b~:>" nil))
+(print (format nil "~<~&b~:>" nil))
+(print (with-output-to-string (s) (pprint-logical-block (s nil) (fresh-line s) (write-string "x" s) (fresh-line s) (terpri s) (fresh-line s) (write-string "y" s))))
+(print (with-output-to-string (s) (format s "~&a") (pprint-logical-block (s nil) (format s "~&b"))))
+(terpri)

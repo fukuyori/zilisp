@@ -44,9 +44,39 @@ const Tok = union(enum) { text: []const u21, dir: Dir };
 const Args = struct {
     items: []const Value,
     pos: usize = 0,
-    /// 論理ブロック（~<…~:>）の引数：まだ取り出していないリストと、pprint-pop の状態（(数 . ストリーム)）
+    /// items を持つ Lisp のベクタ（GC から見えるように、Args と一緒にスタックに置く。リストの引数を写したとき）
+    holder: Value = Value.nil,
+    /// 論理ブロック（~<…~:>）の引数：元のリスト、まだ取り出していないリスト、pprint-pop の状態（(数 . ストリーム)）。
+    /// 論理ブロックでは items を使わず、リストを先頭から必要な分だけたどる（循環するリストでも止まる）
+    list: Value = Value.nil,
     tail: Value = Value.nil,
     state: ?Value = null,
+
+    /// 位置 n に移る（~@* ~:* ~@[ の巻き戻し。SBCL の (nthcdr n orig-args)）。範囲の外なら null
+    fn seek(a: *Args, n: usize) ?void {
+        if (a.state != null) {
+            var x = a.list;
+            for (0..n) |_| {
+                if (!x.isCons()) return null;
+                x = Runtime.consPtr(x).cdr;
+            }
+            a.tail = x;
+            a.pos = n;
+            return;
+        }
+        if (n > a.items.len) return null;
+        a.pos = n;
+    }
+
+    /// 位置 i の引数（i < pos）
+    fn at(a: *const Args, i: usize) Value {
+        if (a.state != null) {
+            var x = a.list;
+            for (0..i) |_| x = Runtime.consPtr(x).cdr;
+            return Runtime.consPtr(x).car;
+        }
+        return a.items[i];
+    }
 
     fn remaining(a: *const Args) usize {
         if (a.state != null) {
@@ -75,13 +105,16 @@ const Out = struct {
     /// stream が pretty stream：溜めずに直接書く（条件付きの改行などとの順序を保つ）
     direct: bool = false,
 
-    fn column(o: *const Out) ?usize {
+    /// 今の桁。direct（pretty stream に直接書いている）ならストリームに聞く（Codex P24 #7）
+    fn column(o: *const Out, th: *Thread) ?usize {
+        if (o.direct) return streams.columnOf(th, o.stream.?);
         if (std.mem.lastIndexOfScalar(u8, o.buf.items, '\n')) |i| return charCount(o.buf.items[i + 1 ..]);
         const b = o.base_col orelse return null;
         return b + charCount(o.buf.items);
     }
 
-    fn atLineStart(o: *const Out) bool {
+    fn atLineStart(o: *const Out, th: *Thread) bool {
+        if (o.direct) return streams.atLineStart(th, o.stream.?);
         if (o.buf.items.len == 0) return o.base_line_start;
         return o.buf.items[o.buf.items.len - 1] == '\n';
     }
@@ -202,8 +235,14 @@ const Ctx = struct {
     }
 
     /// リストの要素（真のリストでなければ type-error）
-    fn list(c: *Ctx, v: Value) Fail![]Value {
-        return (listItems(c.arena, v) catch return c.oom()) orelse c.typeError(v, "LIST");
+    fn list(c: *Ctx, v: Value) Fail!ArgList {
+        return (listItems(c.th.rt, v) catch return c.oom()) orelse c.typeError(v, "LIST");
+    }
+
+    /// リストの引数から Args を作る（~? ~{ の引数）
+    fn listArgs(c: *Ctx, v: Value) Fail!Args {
+        const l = try c.list(v);
+        return .{ .items = l.items, .holder = l.holder };
     }
 
     fn optChar(c: *Ctx, v: ?Value) Fail!?u21 {
@@ -296,19 +335,18 @@ fn stringChars(arena: Allocator, v: Value) error{OutOfMemory}![]u21 {
     return out;
 }
 
-/// リストの要素（arena）。真のリストでなければ null
-fn listItems(arena: Allocator, v: Value) error{OutOfMemory}!?[]Value {
+/// リストの引数を写したもの（holder は items を持つ Lisp の単純ベクタ）
+const ArgList = struct { items: []const Value, holder: Value };
+
+/// リストの要素を Lisp の単純ベクタに写す。真のリストでなければ null。
+/// arena に写すと GC から見えず、ユーザーの関数（~/名前/ など）が元のリストを変えると要素が回収される（Codex P24 #1）
+fn listItems(rt: *Runtime, v: Value) error{OutOfMemory}!?ArgList {
     var n: usize = 0;
     var x = v;
     while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
     if (x != Value.nil) return null;
-    const out = try arena.alloc(Value, n);
-    x = v;
-    for (out) |*it| {
-        it.* = Runtime.consPtr(x).car;
-        x = Runtime.consPtr(x).cdr;
-    }
-    return out;
+    const vec = try rt.makeVectorFromList(v, n);
+    return .{ .items = Runtime.vectorPtr(vec).items(), .holder = vec };
 }
 
 // ---------------------------------------------------------------------------
@@ -565,7 +603,7 @@ fn directive(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fa
                 '|' => try c.repeat(o, 0x0C, n),
                 '~' => try c.repeat(o, '~', n),
                 else => if (n > 0) {
-                    if (!o.atLineStart()) try c.write(o, "\n");
+                    if (!o.atLineStart(c.th)) try c.write(o, "\n");
                     try c.repeat(o, '\n', n - 1);
                 },
             }
@@ -594,7 +632,7 @@ fn directive(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fa
             if (d.at) {
                 try formatControl(c, o, ctl, a);
             } else {
-                var sub: Args = .{ .items = try c.list(try c.nextArg(a)) };
+                var sub: Args = try c.listArgs(try c.nextArg(a));
                 try formatControl(c, o, ctl, &sub);
             }
         },
@@ -846,7 +884,7 @@ fn dirP(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
     _ = try c.params(d, a, 0);
     const arg = if (d.colon) blk: {
         if (a.pos == 0) return c.fail("FORMAT の ~:P の前の引数がありません");
-        break :blk a.items[a.pos - 1];
+        break :blk a.at(a.pos - 1);
     } else try c.nextArg(a);
     const one = arg == Value.fromFixnum(1);
     if (d.at) return c.write(o, if (one) "y" else "ies");
@@ -869,7 +907,7 @@ fn dirT(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
     if (d.at) {
         const colrel = try c.int(p[0], 1);
         const colinc = try c.int(p[1], 1);
-        const spaces = if (o.column()) |cur| blk: {
+        const spaces = if (o.column(c.th)) |cur| blk: {
             if (colinc <= 0) break :blk colrel;
             const cu: i64 = @intCast(cur);
             break :blk @divFloor(cu + colrel + colinc - 1, colinc) * colinc - cu;
@@ -878,7 +916,7 @@ fn dirT(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
     }
     const colnum = try c.int(p[0], 1);
     const colinc = try c.int(p[1], 1);
-    const cur0 = o.column() orelse return c.write(o, "  ");
+    const cur0 = o.column(c.th) orelse return c.write(o, "  ");
     const cur: i64 = @intCast(cur0);
     if (cur < colnum) return c.repeat(o, ' ', colnum - cur);
     if (colinc != 0) try c.repeat(o, ' ', colinc - @rem(cur - colnum, colinc));
@@ -889,13 +927,13 @@ fn dirStar(c: *Ctx, d: Dir, a: *Args) Fail!void {
     const p = try c.params(d, a, 1);
     if (d.at) {
         const posn = try c.int(p[0], 0);
-        if (posn < 0 or posn > a.items.len) return c.fail("FORMAT の ~@* の位置が引数の範囲の外です");
-        a.pos = @intCast(posn);
+        if (posn < 0) return c.fail("FORMAT の ~@* の位置が引数の範囲の外です");
+        a.seek(@intCast(posn)) orelse return c.fail("FORMAT の ~@* の位置が引数の範囲の外です");
     } else if (d.colon) {
         const n = try c.int(p[0], 1);
         const np = @as(i64, @intCast(a.pos)) - n;
-        if (np < 0 or np > a.items.len) return c.fail("FORMAT の ~:* の位置が引数の範囲の外です");
-        a.pos = @intCast(np);
+        if (np < 0) return c.fail("FORMAT の ~:* の位置が引数の範囲の外です");
+        a.seek(@intCast(np)) orelse return c.fail("FORMAT の ~:* の位置が引数の範囲の外です");
     } else {
         var n = try c.int(p[0], 1);
         while (n > 0) : (n -= 1) _ = try c.nextArg(a);
@@ -918,10 +956,25 @@ fn formatControl(c: *Ctx, o: *Out, ctl: Value, a: *Args) Fail!void {
     }
     if (ctl.isFunctionPointer()) {
         // 関数の制御（formatter が作る）：(apply 関数 ストリーム 引数) を呼び、残りの引数を返す
+        if (a.state != null) {
+            // 論理ブロックの中：残りのリストを渡し、返った残りのリストから続ける
+            var rest_items: std.ArrayList(Value) = .empty;
+            var x = a.tail;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) rest_items.append(c.arena, Runtime.consPtr(x).car) catch return c.oom();
+            const before = rest_items.items.len;
+            const rest = try callWithStream(c, o, ctl, rest_items.items, &.{});
+            var n: usize = 0;
+            x = rest;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+            _ = a.seek(a.pos + (before - @min(n, before)));
+            return;
+        }
         const rest = try callWithStream(c, o, ctl, a.items[a.pos..], &.{});
-        const items = (listItems(c.arena, rest) catch return c.oom()) orelse return;
+        var n: usize = 0;
+        var x = rest;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
         // 残りの引数（rest は a.items の後ろの部分のはず）に合わせて位置を進める
-        a.pos = a.items.len - @min(items.len, a.items.len - a.pos);
+        a.pos = a.items.len - @min(n, a.items.len - a.pos);
         return;
     }
     _ = c.th.typeError(ctl, (c.th.rt.findSymbol(c.th.rt.cl, "STRING") orelse unreachable).symbol);
@@ -990,7 +1043,7 @@ fn dirCase(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fail
     const rest = toks[i + 1 ..];
     const close = findDirective(rest, ')', false) orelse return c.fail("FORMAT の ~( に対応する ~) がありません");
     _ = try c.params(d, a, 0);
-    var inner: Out = .{ .base_col = o.column(), .base_line_start = o.atLineStart() };
+    var inner: Out = .{ .base_col = o.column(c.th), .base_line_start = o.atLineStart(c.th) };
     defer inner.buf.deinit(c.gpa);
     const r = interpret(c, &inner, rest[0..close], a);
     // ~^ で抜けたときも、それまでの出力は変換して書く
@@ -1049,7 +1102,7 @@ fn dirConditional(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Arg
         const prev = a.pos;
         const arg = try c.nextArg(a);
         if (arg != Value.nil) {
-            a.pos = prev;
+            _ = a.seek(prev);
             try interpret(c, o, secs[0], a);
         }
     } else if (d.colon) {
@@ -1085,7 +1138,7 @@ fn dirIterate(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
 
     var list_args: Args = undefined;
     const loop_args: *Args = if (d.at) a else blk: {
-        list_args = .{ .items = try c.list(try c.nextArg(a)) };
+        list_args = try c.listArgs(try c.nextArg(a));
         break :blk &list_args;
     };
     const guts = struct {
@@ -1101,7 +1154,7 @@ fn dirIterate(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
             if (m.* < 0) break;
         }
         if (d.colon) {
-            var sub: Args = .{ .items = try c.list(try c.nextArg(loop_args)) };
+            var sub: Args = try c.listArgs(try c.nextArg(loop_args));
             const saved_outside = c.outside;
             c.outside = loop_args;
             defer c.outside = saved_outside;
@@ -1256,10 +1309,8 @@ fn dirLogicalBlock(c: *Ctx, o: *Out, d: Dir, segments: []const []const Tok, semi
             const b: *@This() = @ptrCast(@alignCast(ctx));
             _ = th;
             var inner: Out = .{ .stream = ps, .direct = true };
-            var items: std.ArrayList(Value) = .empty;
-            var x = b.arg;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) items.append(b.c.arena, Runtime.consPtr(x).car) catch return error.Lisp;
-            var args: Args = .{ .items = items.items, .tail = b.arg, .state = state };
+            // 引数は pprint-pop と同じく、リストを先頭から1つずつ取り出す（循環するリストでも *print-circle* で止まる）
+            var args: Args = .{ .items = &.{}, .list = b.arg, .tail = b.arg, .state = state };
             interpret(b.c, &inner, b.insides, &args) catch |err| switch (err) {
                 error.Up => {},
                 error.UpUp, error.Lisp => return error.Lisp,
@@ -1319,7 +1370,7 @@ fn justify(c: *Ctx, o: *Out, newline_prefix: ?[]const u8, extra_space: i64, line
     const length = if (chars > mincol) mincol + @divFloor(chars - mincol + colinc - 1, colinc) * colinc else mincol;
     var padding = length - chars + num_gaps * minpad;
     if (newline_prefix) |nl| {
-        const cur: i64 = @intCast(o.column() orelse 0);
+        const cur: i64 = @intCast(o.column(c.th) orelse 0);
         if (cur + length + extra_space > line_len) try c.write(o, nl);
     }
     const doPadding = struct {
@@ -1850,10 +1901,10 @@ pub fn formatRest(th: *Thread, args: []const Value) Value {
     const s = args[0];
     var arena_state = std.heap.ArenaAllocator.init(rt.gpa);
     defer arena_state.deinit();
-    const items = (listItems(arena_state.allocator(), args[2]) catch return th.outOfMemory()) orelse return th.typeError(args[2], rt.syms.list);
+    const items = (listItems(rt, args[2]) catch return th.outOfMemory()) orelse return th.typeError(args[2], rt.syms.list);
     var o: Out = .{ .stream = s, .base_col = streams.columnOf(th, s), .base_line_start = streams.atLineStart(th, s), .direct = streams.prettyStateOf(s) != null };
     defer o.buf.deinit(rt.gpa);
-    var a: Args = .{ .items = items };
+    var a: Args = .{ .items = items.items, .holder = items.holder };
     run(th, &o, args[1], &a) catch return Value.unwind;
     if (o.buf.items.len > 0 and !streams.emit(th, s, o.buf.items)) return Value.unwind;
     // 残りの引数：元のリストの、使った数だけ進めた尾

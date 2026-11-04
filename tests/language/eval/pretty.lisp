@@ -153,3 +153,21 @@
 (let ((*print-pretty* nil)) (print ''(a 'b #'c)))
 (pprint '(a b c))
 (terpri)
+
+;; Codex P24 の指摘：表に配列の項目がなくても、配列の要素は *print-circle* の番号を共有する
+(let ((*print-pprint-dispatch* (copy-pprint-dispatch nil)) (*print-circle* t) (*print-readably* t))
+  (set-pprint-dispatch '(and array (not string)) nil)
+  (let ((v (vector 0))) (setf (aref v 0) v) (print v))
+  (let* ((x (list 1)) (v (vector x x))) (print v))
+  (let* ((x (list 1)) (a (make-array '(2 2) :initial-contents (list (list x x) (list 1 x))))) (print a)))
+(let ((*print-circle* t)) (let* ((x (list 1)) (a (make-array '(2 2) :initial-contents (list (list x x) (list 1 x))))) (print a)))
+(let ((*print-circle* t) (*print-readably* t)) (let* ((x (list 1)) (a (make-array '(2 0 2)))) (print (list a x x))))
+(let ((v (make-array 3 :fill-pointer 2 :initial-contents '(a b c)))) (print v) (let ((*print-readably* t)) (print v)))
+;; 循環するリストを ~:<…~:> に渡しても止まる
+(let ((*print-circle* t)) (print (format nil "~:<~W~:>" '#1=(a . #1#))))
+(let ((*print-circle* t)) (print (format nil "~:<~@{~W~^ ~}~:>" '#2=(a b . #2#))))
+;; with-standard-io-syntax は *print-pprint-dispatch* も標準の表にする
+(let ((*print-pprint-dispatch* (copy-pprint-dispatch nil)))
+  (set-pprint-dispatch 'integer (lambda (s x) (declare (ignore x)) (write-string "X" s)))
+  (print (with-standard-io-syntax (let ((*print-pretty* t)) (write-to-string 1)))))
+(terpri)

@@ -191,8 +191,29 @@ fn handleIt(th: *Thread, stream: Value, v: Value) Fail!void {
 /// pretty printing の関数がないときの印字（SBCL の output-ugly-object）。cons とベクタの要素は outputObject で書く
 fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
     if (v.isCons()) return uglyList(th, stream, v);
-    if (v.isOther() and Runtime.kindOf(v) == .simple_vector and !readablyOn(th) and special(th, th.rt.syms.@"*print-array*") != Value.nil)
-        return uglyVector(th, stream, v);
+    // 配列の要素も outputObject で書く（*print-circle* の番号を外側と共有する。Codex P24 #2）
+    if (v.isOther() and (readablyOn(th) or special(th, th.rt.syms.@"*print-array*") != Value.nil)) if (Runtime.kindOf(v)) |kind| switch (kind) {
+        .simple_vector => return uglyVector(th, stream, Runtime.vectorPtr(v).items()),
+        .array => {
+            const ar: *object.Array = @ptrCast(@alignCast(v.pointer()));
+            const dims = ar.dims();
+            const is_string = Runtime.kindOf(ar.data) == .string;
+            if (dims.len == 1 and !is_string) {
+                const n = if (ar.header.flags & object.Array.has_fill_pointer != 0) ar.fill_pointer else dims[0];
+                return uglyVector(th, stream, Runtime.vectorPtr(ar.data).items()[0..n]);
+            }
+            if (dims.len != 1) {
+                if (readablyOn(th) and !printer.readablyPrintable(dims, is_string)) return readableArrayForm(th, stream, ar);
+                if (!is_string) {
+                    var buf: [24]u8 = undefined;
+                    try emit(th, stream, std.fmt.bufPrint(&buf, "#{d}A", .{dims.len}) catch unreachable);
+                    var index: usize = 0;
+                    return uglyAxis(th, stream, Runtime.vectorPtr(ar.data).items(), dims, &index);
+                }
+            }
+        },
+        else => {},
+    };
     // アトム：今の印字の変数で書く（*print-circle* の番号は outputObject が付ける）
     var buf: std.Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
@@ -247,12 +268,12 @@ fn uglyList(th: *Thread, stream: Value, v: Value) Fail!void {
     try emit(th, stream, ")");
 }
 
-fn uglyVector(th: *Thread, stream: Value, v: Value) Fail!void {
+fn uglyVector(th: *Thread, stream: Value, items: []const Value) Fail!void {
     if (levelExceeded(th)) return emit(th, stream, "#");
     th.pp_level += 1;
     defer th.pp_level -= 1;
     try emit(th, stream, "#(");
-    for (Runtime.vectorPtr(v).items(), 0..) |x, i| {
+    for (items, 0..) |x, i| {
         if (i > 0) try emit(th, stream, " ");
         if (lengthLimit(th)) |l| if (i >= l) {
             try emit(th, stream, "...");
@@ -261,6 +282,54 @@ fn uglyVector(th: *Thread, stream: Value, v: Value) Fail!void {
         try outputObject(th, stream, x);
     }
     try emit(th, stream, ")");
+}
+
+/// 多次元の配列の1つの軸（要素の型が T。SBCL の sub-output-array-guts）
+fn uglyAxis(th: *Thread, stream: Value, items: []const Value, dims: []const usize, index: *usize) Fail!void {
+    if (dims.len == 0) {
+        const x = items[index.*];
+        index.* += 1;
+        return outputObject(th, stream, x);
+    }
+    var rest: usize = 1;
+    for (dims[1..]) |d| rest *= d;
+    if (levelExceeded(th)) {
+        index.* += dims[0] * rest;
+        return emit(th, stream, "#");
+    }
+    th.pp_level += 1;
+    defer th.pp_level -= 1;
+    try emit(th, stream, "(");
+    for (0..dims[0]) |i| {
+        if (i > 0) try emit(th, stream, " ");
+        if (lengthLimit(th)) |l| if (i >= l) {
+            try emit(th, stream, "...");
+            index.* += (dims[0] - i) * rest;
+            break;
+        };
+        try uglyAxis(th, stream, items, dims[1..], index);
+    }
+    try emit(th, stream, ")");
+}
+
+/// #A(次元 要素の型 . 中身)：#nA で読み戻せない配列を *print-readably* で書く
+/// （SBCL の output-unreadable-array-readably：そのリストを作って、ストリームに write する）
+fn readableArrayForm(th: *Thread, stream: Value, ar: *object.Array) Fail!void {
+    const rt = th.rt;
+    const dims = ar.dims();
+    const is_string = Runtime.kindOf(ar.data) == .string;
+    var index: usize = 0;
+    const contents = listifyAxis(rt, ar.data, is_string, dims, &index) catch return oom(th);
+    var dim_list = Value.nil;
+    var i = dims.len;
+    while (i > 0) {
+        i -= 1;
+        dim_list = rt.cons(Value.fromFixnum(@intCast(dims[i])), dim_list) catch return oom(th);
+    }
+    const etype = sym(th, if (is_string) "CHARACTER" else "T");
+    const form = rt.cons(dim_list, rt.cons(etype, contents) catch return oom(th)) catch return oom(th);
+    try emit(th, stream, "#A");
+    return outputObject(th, stream, form);
 }
 
 // ---------------------------------------------------------------------------
@@ -823,9 +892,31 @@ fn pprintArray(th: *Thread, ps: Value, a: Value) Fail!void {
     // 多次元の配列：#nA と、各軸を論理ブロックで
     const ar: *object.Array = @ptrCast(@alignCast(a.pointer()));
     const dims = ar.dims();
+    // #nA で読み戻せない配列は #A(次元 要素の型 . 中身) の形で（SBCL の pprint-array も output-ugly-object にする）
+    if (readablyOn(th) and !printer.readablyPrintable(dims, Runtime.kindOf(ar.data) == .string)) return readableArrayForm(th, ps, ar);
     var buf: [24]u8 = undefined;
     try emit(th, ps, std.fmt.bufPrint(&buf, "#{d}A", .{dims.len}) catch unreachable);
     return multiDimGuts(th, ps, ar.data, 0, dims);
+}
+
+/// 配列の要素を、軸ごとのリストにする（SBCL の listify-array。0次元なら要素そのもの）
+fn listifyAxis(rt: *Runtime, data: Value, is_string: bool, dims: []const usize, index: *usize) !Value {
+    if (dims.len == 0) {
+        const x = if (is_string) Value.fromChar(Runtime.stringPtr(data).charAt(index.*)) else Runtime.vectorPtr(data).items()[index.*];
+        index.* += 1;
+        return x;
+    }
+    // 要素を順に作って後ろに付ける（頭は GC から見えるよう、スタックの変数に持つ）
+    var head = Value.nil;
+    var last = Value.nil;
+    for (0..dims[0]) |_| {
+        const item = try listifyAxis(rt, data, is_string, dims[1..], index);
+        const cell = try rt.cons(item, Value.nil);
+        if (head == Value.nil) head = cell else Runtime.consPtr(last).cdr = cell;
+        last = cell;
+    }
+    std.mem.doNotOptimizeAway(head);
+    return head;
 }
 
 fn multiDimGuts(th: *Thread, ps: Value, data: Value, index: usize, dims: []const usize) Fail!void {

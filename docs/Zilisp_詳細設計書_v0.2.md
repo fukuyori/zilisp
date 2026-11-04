@@ -18,7 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
-| 0.2（追記31） | 2026-11-04 | Phase 24（P24d）：pretty printer（§11.2。pretty stream、`pprint-logical-block` などの pretty printing の関数、`*print-pprint-dispatch*` の表と標準の印字、`format` の `~<…~:>`・`~_`・`~I`・`~:T`、`*print-pretty*` の初期値 T） |
+| 0.2（追記31） | 2026-11-04 | Phase 24（P24d）：pretty printer（§11.2。pretty stream、`pprint-logical-block` などの pretty printing の関数、`*print-pprint-dispatch*` の表と標準の印字、`format` の `~<…~:>`・`~_`・`~I`・`~:T`、`*print-pretty*` の初期値 T、`#nA` の読み取りと往復の受入） |
 | 0.2（追記30） | 2026-11-03 | Phase 24（P24c）：Reader の拡張（§11.2。readtable のオブジェクト、ユーザー定義の reader macro、`#.`、`#n=`／`#n#`、読み取りと印字の `readtable-case`、`*read-base*` などの読み取りの変数、`with-standard-io-syntax`） |
 | 0.2（追記29） | 2026-11-03 | Phase 24（P24b）：pretty printer 以外のすべての指示子の `format`（§11.2。SBCL と同じ字句解析と指示子の意味、`~F ~E ~G ~$` のための `flonum-to-string` の移植、`formatter`、`~T` のためのストリームの桁） |
 | 0.2（追記28） | 2026-11-03 | Phase 24（P24a）：印字の変数（§11.2。`*print-base*`・`*print-case*`・`*print-circle*`・`*print-readably*` など、`write` のすべてのキーワード、`print-not-readable`） |
@@ -1344,9 +1344,13 @@ Phase 24 は4つに分けて進める：P24a 印字の変数、P24b `format`、P
   - **pretty stream** は新しいストリームの種類（`.pretty`）：通し番号の付いた操作（条件付きの改行・字下げ・タブ・論理ブロックの始めと終わり）の列、論理ブロックのスタック、接頭辞と接尾辞、バッファ。出力の決め方は SBCL と同じ（`enqueue-newline`・`maybe-output`・`fits-on-line-p`・`output-line`・`expand-tabs`）。行の長さは `*print-right-margin*`、なければ 80。`*print-miser-width*` と `*print-lines*`（「 ..」と接尾辞を書き、その後は何も書かない）も効く。
   - `*print-pretty*` が真なら、`print`・`prin1`・`princ`・`write`・`-to-string` の関数・`~A ~S ~W` は `output-object` で印字する。`*print-circle*` は、オブジェクトを2回走査し（1回目は何も書かないストリームに書く）、論理ブロックの中で印を付ける（SBCL の `check-for-circularity` と同じ）。`*print-level*`・`*print-length*` は論理ブロック（`pprint-pop`）にも効く。
   - **dispatch の表** は新しいオブジェクトの種類（`object.PprintDispatch`）：優先度と型を持つ項目と、car のシンボルで引く cons の項目。`pprint-dispatch`・`set-pprint-dispatch`・`copy-pprint-dispatch`。初期の表（`zilisp-system:*standard-pprint-dispatch-table*`）は Zig で扱い、その写しを変えたときにだけ項目に展開する。特殊形式とマクロ（`let`・`defun`・`cond`・`case`・`do`・`dolist`・`loop`・`tagbody`・`prog`・`setq`・ラムダリスト・`quote` と backquote・配列）の標準の印字は SBCL から移植した（一部は SBCL の format の制御文字列のまま）。関数の呼び出しと `&body` のあるマクロは、ラムダリストで字下げする。`defmacro` はラムダリストを属性リストに残すようにした（`zilisp-system::%macro-lambda-list`）。
-  - 関数：`pprint`・`pprint-newline`・`pprint-indent`・`pprint-tab`・`pprint-fill`・`pprint-linear`・`pprint-tabular`、マクロ `pprint-logical-block`・`pprint-pop`・`pprint-exit-if-list-exhausted`。pretty stream でないストリームでは、`pprint-newline`・`pprint-indent`・`pprint-tab` は何もしない。`format`：`~<…~:>`（論理ブロック、`~@;` の行ごとの接頭辞、`~:@>` の fill の形）・`~_`・`~I`・`~:T`、pretty stream での `~T`。
+  - 関数：`pprint`・`pprint-newline`・`pprint-indent`・`pprint-tab`・`pprint-fill`・`pprint-linear`・`pprint-tabular`、マクロ `pprint-logical-block`・`pprint-pop`・`pprint-exit-if-list-exhausted`。pretty stream でないストリームでは、`pprint-newline`・`pprint-indent`・`pprint-tab` は何もしない。pretty stream は桁を答えない（SBCL の `pretty-misc` は `charpos` に NIL を返す）ので、その上の `fresh-line` と `~&` は必ず改行する。`~<…~:>` の中の引数は、`pprint-pop` と同じくリストから1つずつ取り出し（循環するリストでも `*print-circle*` で止まる）、`~:*`・`~@*`・`~@[` はそのリストの中で位置を戻す。`format`：`~<…~:>`（論理ブロック、`~@;` の行ごとの接頭辞、`~:@>` の fill の形）・`~_`・`~I`・`~:T`、pretty stream での `~T`。
   - `*print-pretty*` の初期値を、SBCL と同じ T にした（2026-11-04 の決定）。小さなリストを 4 万回印字すると、NIL のときの約 2.3 倍の時間がかかる（70 ms と 162 ms。SBCL は 39 ms と 91 ms で、同じく約 2.3 倍）。教材のブロックの一致は 478 のまま。
   - 試験：言語試験 `pretty.lisp`（231 行の出力。SBCL 2.6.7 と同じ。GC stress の版も）と `pretty-default.lisp`（73 行。変数の初期値のままの印字。SBCL 2.6.7 と同じ）。
+- **Phase 24 の受入（往復）**：`*print-readably*` で印字したものを読み戻すと `equalp` になる。`*print-pretty*` が NIL と T のどちらでも、`*print-right-margin*` を狭くしても同じ（言語試験 `round-trip.lisp`。GC stress の版も。SBCL 2.6.7 と同じ出力）。そのために2つの不足を埋めた。
+  - Reader は `#nA`（SBCL の `sharp-A`：各軸の長さは、1つ上の軸の最初の要素の長さ。長さ 0 の軸より後ろの軸は 0）と、SBCL の `#A(次元 要素の型 . 中身)` を読む。ネイティブのプログラムはスレッドなしで定数を読むので、配列は `make-array` を呼ばずに Builder の中で作る。エラーの種類は SBCL と同じ：形の誤りは reader-error、長さが次元と合わなければ simple-error、次元の誤り・ドット対で終わるリスト・文字でない要素は type-error（スレッドがあるとき。なければ reader-error）。
+  - ネイティブのプログラム：定数を `*print-readably*` で書くようにした（次元と要素の型が保たれる）。読み戻せない定数（`#.` で作ったハッシュ表・関数など）は、壊れたプログラムを作らずに `--emit-zig` でエラーにする。
+  - `*print-readably*` のとき、`#nA` で表せない配列（文字の配列と、`(make-array '(0 3))` のように長さ 0 の軸の後ろに長さが 0 でない軸があるもの）は `#A((0 3) T)` の形で書く（SBCL の `array-readably-printable-p` と `output-unreadable-array-readably`。pretty printer では、SBCL と同じくそのリストを pretty printer で書く）。
 
 ### 11.3 標準ライブラリのビルド
 

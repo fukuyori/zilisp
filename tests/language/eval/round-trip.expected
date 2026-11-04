@@ -1,0 +1,36 @@
+
+#2A((1 2 3) (4 5 6)) 
+(2 3) 
+#(A B) 
+#0AX 
+(2 0 0) 
+(2 2) 
+(3 2) 
+#2A((#\a #\b) (#\c #\d)) 
+CHARACTER 
+#(1 2 3) 
+5 
+#2A((X Y) (Z W)) 
+3 
+"#2A((7 7 7) (7 7 7))" 
+#1=#2A((1 #1#) (2 3)) 
+#2A(((A) (A)) (B C)) 
+T 
+(#A((0 3) T) #2A(() () ()) #A((2 0 4) T NIL NIL) #2A() #0A0 #2A((X X) (X X))) 
+(#A((0 3) T) #2A(() () ()) #A((2 0 4) T NIL NIL) #2A() #0A0 #2A((X X) (X X))) 
+#2A() 
+pretty NIL margin NIL: ok 50 ng NIL
+pretty NIL margin 20: ok 50 ng NIL
+pretty T margin NIL: ok 50 ng NIL
+pretty T margin 20: ok 50 ng NIL
+
+(T T T) 
+(T T T) 
+
+NIL 
+(0 2) 
+(0 2) 
+(0 3) 
+((2 2) CHARACTER) 
+#\c 
+(2 2 2) 

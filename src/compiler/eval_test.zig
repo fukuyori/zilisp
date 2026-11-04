@@ -1867,6 +1867,17 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         // reader macro の中のエラーは、その種類のまま伝わる
         .{ "(let ((*readtable* (copy-readtable))) (set-macro-character #\\! (lambda (s c) (declare (ignore s c)) (car 1))) (read-from-string \"!\"))", .type_error },
         .{ "(read-delimited-list #\\] (make-string-input-stream \"1 2\"))", .end_of_file },
+        // #nA・#A(次元 要素の型 . 中身)（P24）：SBCL の sharp-A と make-array と同じ種類
+        .{ "(read-from-string \"#2A((1 2) (3))\")", .simple_error },
+        .{ "(read-from-string \"#2A(1 2)\")", .reader_error },
+        .{ "(read-from-string \"#1A 5\")", .reader_error },
+        .{ "(read-from-string \"#A(x)\")", .reader_error },
+        .{ "(read-from-string \"#A((2 2) character 1 2 3 4)\")", .simple_error },
+        .{ "(read-from-string \"#A((2) character (1 2))\")", .simple_error },
+        .{ "(read-from-string \"#A((2) character 1 2)\")", .type_error },
+        .{ "(read-from-string \"#A((-1) t)\")", .type_error },
+        .{ "(read-from-string \"#A(x t)\")", .type_error },
+        .{ "(read-from-string \"#2A((1 2) . 3)\")", .type_error },
     }) |c| try expectError(&e, c[0], c[1]);
     // ~<…~:>（pretty printer の論理ブロック。P24d）：引数がリストでなければ、そのまま書く
     try expectValue(&e, "(format nil \"~<a~:>\" nil)", "\"a\"");

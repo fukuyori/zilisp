@@ -12,6 +12,7 @@ const Runtime = @import("../runtime/runtime.zig").Runtime;
 const resolver_mod = @import("../compiler/resolver.zig");
 const verify_ir = @import("../compiler/verify_ir.zig");
 const emit = @import("../native/emit.zig");
+const printer = @import("../printer/printer.zig");
 const eval_command = @import("eval_command.zig");
 const Options = @import("args.zig").Options;
 
@@ -80,7 +81,17 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
     em.registerNames() catch return oom(stderr);
     var out: Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
-    em.finish(&out.writer, path, toplevels.items) catch return oom(stderr);
+    em.finish(&out.writer, path, toplevels.items) catch |err| {
+        if (err != error.NotReadable) return oom(stderr);
+        // 関数・ストリームなどの定数は、ネイティブのプログラムの起動時に読み戻せない
+        try stderr.print("zilisp: {s}: 読み戻せる形で書けない定数があるため、ネイティブのプログラムにできません: ", .{path});
+        var bad_text: Io.Writer.Allocating = .init(gpa);
+        defer bad_text.deinit();
+        var bad: Value = Value.nil;
+        printer.writeObject(rt, &bad_text.writer, em.not_readable, printer.Settings.standard(true), &bad) catch {};
+        try stderr.print("{s}\n", .{bad_text.written()});
+        return .failed;
+    };
     Io.Dir.cwd().writeFile(io, .{ .sub_path = out_path, .data = out.written() }) catch |err| {
         try stderr.print("zilisp: {s} に書けません: {t}\n", .{ out_path, err });
         return .failed;

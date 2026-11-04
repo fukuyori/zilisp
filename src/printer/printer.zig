@@ -124,6 +124,19 @@ pub fn write(rt: *Runtime, w: *Writer, v: Value, escape: bool) Writer.Error!void
     writeObject(rt, w, v, Settings.standard(escape), &bad) catch return error.WriteFailed;
 }
 
+/// #nA の形で読み戻せる多次元の配列か（要素の型が T で、長さ 0 の軸より前に長さが 0 でない軸がない。
+/// #nA は長さ 0 の軸より後ろの軸の長さを 0 とみなすため。SBCL 2.6.7 の array-readably-printable-p）
+pub fn readablyPrintable(dims: []const usize, is_string: bool) bool {
+    if (is_string) return false;
+    const zero = std.mem.indexOfScalar(usize, dims, 0) orelse return true;
+    var last_nonzero: ?usize = null;
+    for (dims, 0..) |d, i| if (d != 0) {
+        last_nonzero = i;
+    };
+    const nonzero = last_nonzero orelse return true;
+    return zero > nonzero;
+}
+
 /// 設定に従って印字する。*print-readably* で読み戻せないものがあれば error.NotReadable（bad にそのオブジェクト）
 pub fn writeObject(rt: *Runtime, w: *Writer, v: Value, s: Settings, bad: *Value) Error!void {
     var p: P = .{ .rt = rt, .w = w, .s = s, .bad = bad };
@@ -404,9 +417,54 @@ const P = struct {
             }
             return w.print(") {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
         }
+        if (p.s.readably and !readablyPrintable(dims, is_string)) return p.arrayWithType(a.data, is_string, dims, depth);
         try w.print("#{d}A", .{dims.len});
         var index: usize = 0;
         return p.arrayAxis(a.data, is_string, dims, &index, depth);
+    }
+
+    /// #A(次元 要素の型 . 中身)：#nA では読み戻せない配列を *print-readably* で書く形
+    /// （SBCL 2.6.7 の output-unreadable-array-readably。中身は各行のリスト）
+    fn arrayWithType(p: *P, data: Value, is_string: bool, dims: []const usize, depth: usize) Error!void {
+        const w = p.w;
+        // 次元・NIL・要素の型も、ふつうのオブジェクトとして書く（*package* によってはパッケージ名が付く）
+        try w.writeAll("#A(");
+        if (dims.len == 0) try p.obj(Value.nil, depth + 1) else {
+            try w.writeByte('(');
+            for (dims, 0..) |d, i| {
+                if (i > 0) try w.writeByte(' ');
+                try p.obj(Value.fromFixnum(@intCast(d)), depth + 2);
+            }
+            try w.writeByte(')');
+        }
+        try w.writeByte(' ');
+        const etype = (p.rt.findSymbol(p.rt.cl, if (is_string) "CHARACTER" else "T") orelse unreachable).symbol;
+        try p.obj(etype, depth + 1);
+        var index: usize = 0;
+        if (dims.len == 0) {
+            try w.writeAll(" . ");
+            try p.listAxis(data, is_string, dims, &index, depth + 1);
+        } else for (0..dims[0]) |_| {
+            try w.writeByte(' ');
+            try p.listAxis(data, is_string, dims[1..], &index, depth + 1);
+        }
+        try w.writeByte(')');
+    }
+
+    /// arrayWithType の中身の1つの軸（リストとして書く。空なら NIL）
+    fn listAxis(p: *P, data: Value, is_string: bool, dims: []const usize, index: *usize, depth: usize) Error!void {
+        if (dims.len == 0) {
+            const x = if (is_string) Value.fromChar(Runtime.stringPtr(data).charAt(index.*)) else Runtime.vectorPtr(data).items()[index.*];
+            index.* += 1;
+            return p.obj(x, depth);
+        }
+        if (dims[0] == 0) return p.obj(Value.nil, depth);
+        try p.w.writeByte('(');
+        for (0..dims[0]) |i| {
+            if (i > 0) try p.w.writeByte(' ');
+            try p.listAxis(data, is_string, dims[1..], index, depth + 1);
+        }
+        try p.w.writeByte(')');
     }
 
     fn arrayAxis(p: *P, data: Value, is_string: bool, dims: []const usize, index: *usize, depth: usize) Error!void {

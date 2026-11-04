@@ -12,6 +12,7 @@ const SourceLoc = reader.SourceLoc;
 const Error = reader.Error;
 const Thread = @import("../runtime/thread.zig").Thread;
 const readtable = @import("readtable.zig");
+const arrays = @import("../primitives/arrays.zig");
 
 pub const ValueBuilder = struct {
     rt: *Runtime,
@@ -135,6 +136,105 @@ pub const ValueBuilder = struct {
         const v = @import("../compiler/eval.zig").eval(th, form);
         if (v == Value.unwind) return error.LispError;
         return v;
+    }
+
+    /// #nA と #A(次元 要素の型 . 中身)：配列を作る（SBCL 2.6.7 の sharp-A。Phase 24）。
+    /// ネイティブの定数の読み込みはスレッドなしで読むので、make-array を呼ばずにここで作る。
+    /// 中身の誤りは SBCL の make-array と同じ種類のエラー（スレッドがなければ reader-error）
+    pub fn array(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, rank: ?usize, contents: Value) Error!Value {
+        const gpa = b.rt.gpa;
+        var dims: std.ArrayList(usize) = .empty;
+        defer dims.deinit(gpa);
+        if (rank) |r| {
+            // 各軸の長さは、その軸の最初の要素の長さ（長さ 0 の軸より後ろの軸も 0。CLHS 2.4.8.12）
+            var seq = contents;
+            for (0..r) |axis| {
+                const len = try b.readSeqLength(diag, loc, seq, true);
+                try dims.append(gpa, len);
+                if (axis + 1 != r and len != 0) seq = arrays.seqElt(seq, 0);
+            }
+            return b.makeReadArray(diag, loc, dims.items, contents, false);
+        }
+        // 次元の数がない #A は (次元 要素の型 . 中身) の形（SBCL が特殊化した配列を読み戻せる形で印字するときの形）
+        if (!contents.isCons() or !Runtime.consPtr(contents).cdr.isCons())
+            return fail(diag, loc, "#A の後には、#nA(中身) か (次元 要素の型 . 中身) が必要です");
+        const dspec = Runtime.consPtr(contents).car;
+        const rest = Runtime.consPtr(contents).cdr;
+        const etype = Runtime.consPtr(rest).car;
+        const body = Runtime.consPtr(rest).cdr;
+        if (dspec.isFixnum() and dspec.asFixnum() >= 0) {
+            try dims.append(gpa, @intCast(dspec.asFixnum()));
+        } else {
+            if (!dspec.isList()) return b.typeFail(diag, loc, dspec, "LIST");
+            var x = dspec;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+                const d = Runtime.consPtr(x).car;
+                if (!d.isFixnum() or d.asFixnum() < 0) return b.typeFail(diag, loc, d, "INTEGER");
+                try dims.append(gpa, @intCast(d.asFixnum()));
+            }
+            if (x != Value.nil) return b.typeFail(diag, loc, dspec, "LIST");
+        }
+        return b.makeReadArray(diag, loc, dims.items, body, isCharType(b.rt, etype));
+    }
+
+    /// 型の誤り（スレッドがあれば type-error。なければ reader-error）
+    fn typeFail(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, datum: Value, type_name: []const u8) Error {
+        const th = b.th orelse return fail(diag, loc, "#A の中身の型が正しくありません");
+        const rt = b.rt;
+        const expected = if (rt.findSymbol(rt.cl, type_name)) |f| f.symbol else Value.nil;
+        _ = th.typeError(datum, expected);
+        return error.LispError;
+    }
+
+    /// 中身の長さと次元が合わない（スレッドがあれば simple-error。SBCL の make-array と同じ）
+    fn lengthFail(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, datum: Value) Error {
+        const message = "#A の中身の長さが次元と合いません";
+        const th = b.th orelse return fail(diag, loc, message);
+        _ = th.signal(.simple_error, message, datum, Value.unbound);
+        return error.LispError;
+    }
+
+    /// シーケンスの長さ。#nA の軸の中身がシーケンスでなければ reader-error（axis が真）、ドット対で終わるリストは type-error
+    fn readSeqLength(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, v: Value, axis: bool) Error!usize {
+        if (v.isList()) {
+            var n: usize = 0;
+            var x = v;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+            if (x != Value.nil) return b.typeFail(diag, loc, x, "LIST");
+            return n;
+        }
+        if (arrays.vectorView(v)) |view| return view.len;
+        if (axis) return fail(diag, loc, "#nA の軸の中身がシーケンスではありません");
+        return b.typeFail(diag, loc, v, "SEQUENCE");
+    }
+
+    /// 次元と、入れ子のシーケンスの中身から配列を作る（1次元なら単純ベクタか文字列。要素の型が T なら既定の要素は 0）
+    fn makeReadArray(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, dims: []const usize, contents: Value, chars: bool) Error!Value {
+        const rt = b.rt;
+        var total: usize = 1;
+        for (dims) |d| total = std.math.mul(usize, total, d) catch return fail(diag, loc, "#A の配列が大きすぎます");
+        if (total > std.math.maxInt(u32)) return fail(diag, loc, "#A の配列が大きすぎます");
+        const data = if (chars) try rt.makeStringFilled(total, 0) else try rt.makeVectorFilled(total, Value.fromFixnum(0));
+        var base: usize = 0;
+        try b.fillRead(diag, loc, data, dims, contents, &base, chars);
+        if (dims.len == 1) return data;
+        const a = try rt.makeArrayObject(dims, data, 0, 0);
+        std.mem.doNotOptimizeAway(data);
+        return a;
+    }
+
+    fn fillRead(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, data: Value, dims: []const usize, contents: Value, base: *usize, chars: bool) Error!void {
+        if (dims.len == 0) {
+            if (chars) {
+                if (!contents.isChar()) return b.typeFail(diag, loc, contents, "CHARACTER");
+                try b.rt.stringSetChar(data, base.*, contents.asChar());
+            } else Runtime.vectorPtr(data).items()[base.*] = contents;
+            base.* += 1;
+            return;
+        }
+        const n = try b.readSeqLength(diag, loc, contents, false);
+        if (n != dims[0]) return b.lengthFail(diag, loc, contents);
+        for (0..n) |i| try b.fillRead(diag, loc, data, dims[1..], arrays.seqElt(contents, i), base, chars);
     }
 
     fn labelsCell(b: *ValueBuilder) *Value {
@@ -338,6 +438,14 @@ pub const ValueBuilder = struct {
         return b.rt.makeVectorFromList(list.head, list.count);
     }
 };
+
+/// 要素の型が文字か（character・base-char・standard-char。それ以外は T に格上げする。make-array と同じ）
+fn isCharType(rt: *Runtime, t: Value) bool {
+    for ([_][]const u8{ "CHARACTER", "BASE-CHAR", "STANDARD-CHAR" }) |n| {
+        if (rt.findSymbol(rt.cl, n)) |f| if (f.symbol == t) return true;
+    }
+    return false;
+}
 
 /// obj の中（cons・単純ベクタ・配列の要素）の ph を val に置き換える。循環していてもよい（一度通ったものは見ない）
 fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {

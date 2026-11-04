@@ -1190,6 +1190,7 @@
   `(let ((*package* (find-package "COMMON-LISP-USER"))
          (*print-array* t) (*print-base* 10) (*print-case* :upcase) (*print-circle* nil) (*print-escape* t)
          (*print-gensym* t) (*print-length* nil) (*print-level* nil) (*print-lines* nil) (*print-miser-width* nil)
+         (*print-pprint-dispatch* zl-sys::*standard-pprint-dispatch-table*)
          (*print-pretty* nil) (*print-radix* nil) (*print-readably* t) (*print-right-margin* nil)
          (*read-base* 10) (*read-default-float-format* 'single-float) (*read-eval* t) (*read-suppress* nil)
          (*readtable* zl-sys::*standard-readtable*))

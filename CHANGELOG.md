@@ -89,9 +89,22 @@
   arrays, `*print-right-margin*`, `*print-miser-width*` and `*print-lines*`, and the `format` directives `~<...~:>`,
   `~_`, `~I` and `~:T`. `*print-pretty*` is T at startup, as in SBCL. Language tests `pretty.lisp` and
   `pretty-default.lisp` (same output as SBCL 2.6.7)
+- Phase 24 acceptance: the reader reads `#nA` and `#A(dimensions element-type . contents)`, and `*print-readably*`
+  writes arrays that `#nA` cannot represent (such as `(make-array '(0 3))`) in the `#A` form, as SBCL does. Objects
+  printed readably read back as `equalp` objects with and without the pretty printer. Language test `round-trip.lisp`
 
 ### Fixed
 - Bignums printed in bases 8 and 32 had wrong digits (Zig 0.17.0's `toStringAlloc`; now built from the base-2 digits)
+- Standard output and standard error were written at file positions from 0, so redirecting both to one file, or
+  appending with `>>`, overwrote earlier output (they are now written as streams)
+- Codex review (Phase 24), 8 issues: `format` copied list arguments where the GC could not see them, so a `~/name/`
+  function that cut the list could free later arguments; with the pretty printer, array elements printed by the
+  fallback lost `*print-circle*` labels (a circular vector overflowed the stack); `~:<...~:>` with a circular list did
+  not end; native constants were not written readably (`#A((0 3) T)` came back as `(0 0)`, constants that cannot be
+  read back now fail at `--emit-zig`); the `#A` form wrote `NIL`, `T` and `CHARACTER` without package prefixes; `~:*`,
+  `~@*` and `~@[` did not move back inside logical blocks; `~&` inside logical blocks used a stale line state (on a
+  pretty stream `fresh-line` and `~&` now always start a new line, as in SBCL); `with-standard-io-syntax` did not bind
+  `*print-pprint-dispatch*`
 - Codex review (Phase 23), 16 issues: `:if-exists :rename` and `:rename-and-delete` truncated the file instead of moving it
   to `name.bak`; the REPL and `*standard-input*` read standard input through different buffers, so input could be lost;
   CR LF was read as one newline on Windows (SBCL 2.6.7 does not translate it) and `read` on a Latin-1 stream decoded the

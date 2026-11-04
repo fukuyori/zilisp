@@ -21,7 +21,7 @@
 //!
 //! Phase 04 の範囲：quote、文字列、リスト（ドット対を含む）、#'、#(、#\、#:、#b #o #x #nR、
 //! backquote（zl-sys:quasiquote / unquote / unquote-splicing / unquote-nsplicing）、#+ / #-（*read-suppress*）。
-//! #S（Phase 26）、#C（Phase 20）、#A（Phase 21）は「未実装」の reader-error にする。
+//! #S（Phase 26）、#C（Phase 20）は「未実装」の reader-error にする。
 //!
 //! readtable（Phase 24）：Builder が charInfo・dispatchInfo を持てば、文字の構文とマクロをそれで引く（ユーザー定義の
 //! readtable）。持たないか null を返せば、標準の readtable の表（standardChar・standardSharp）を使う（速い経路）。
@@ -550,15 +550,21 @@ pub fn Reader(comptime Builder: type) type {
                     const obj = try self.readRequired(loc, "#P の後");
                     return try self.builder.pathname(&self.diagnostic, loc, obj);
                 },
-                .sharp_s, .sharp_c, .sharp_a => {
+                .sharp_a => {
+                    // #nA：続くオブジェクトを配列の中身にする（SBCL の sharp-A。Phase 24）
+                    const contents = try self.readRequired(loc, "#A の後");
+                    if (self.suppress) return try self.builder.nil(loc);
+                    if (comptime !@hasDecl(Builder, "array")) return self.fail(loc, "#A はここでは使えません");
+                    return try self.builder.array(&self.diagnostic, loc, arg, contents);
+                },
+                .sharp_s, .sharp_c => {
                     if (self.suppress) {
                         _ = try self.readRequired(loc, "# の後");
                         return try self.builder.nil(loc);
                     }
                     return self.fail(loc, switch (k) {
                         .sharp_s => "#S（構造体）は未実装です（Phase 26 で実装予定）",
-                        .sharp_c => "#C（複素数）は未実装です（Phase 20 で実装予定）",
-                        else => "#A（配列）は未実装です（Phase 21 で実装予定）",
+                        else => "#C（複素数）は未実装です（Phase 20 で実装予定）",
                     });
                 },
                 .sharp_dot => {

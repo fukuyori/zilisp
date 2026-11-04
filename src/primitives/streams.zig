@@ -503,7 +503,8 @@ pub fn takeStringOutput(th: *Thread, s: Value, out: *std.ArrayList(u8)) bool {
 /// 出力のストリームが行の先頭にいるか（fresh-line・~&）
 pub fn atLineStart(th: *Thread, stream: Value) bool {
     const s = resolveOutStream(th, stream) orelse return true;
-    if (prettyStateOf(s)) |ps| return ps.currentColumn() == 0;
+    // pretty stream は桁を答えない（SBCL の pretty-misc は charpos に NIL を返す）ので、fresh-line・~& は必ず改行する
+    if (prettyStateOf(s) != null) return false;
     if (kindOf(s) == .broadcast) {
         var x = ptr(s).ref;
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!atLineStart(th, Runtime.consPtr(x).car)) return false;

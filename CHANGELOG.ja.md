@@ -81,9 +81,21 @@
   特殊形式・マクロ・関数の呼び出し・quote と backquote・配列の SBCL と同じ標準の形、`*print-right-margin*`・
   `*print-miser-width*`・`*print-lines*`、`format` の `~<…~:>`・`~_`・`~I`・`~:T`。`*print-pretty*` の初期値は
   SBCL と同じ T。言語試験 `pretty.lisp`・`pretty-default.lisp`（SBCL 2.6.7 と同じ出力）
+- Phase 24 の受入：Reader が `#nA` と `#A(次元 要素の型 . 中身)` を読む。`*print-readably*` では、`#nA` で表せない配列
+  （`(make-array '(0 3))` など）を SBCL と同じく `#A` の形で書く。読み戻せる形で印字したものは、pretty printer の
+  有無によらず `equalp` なものとして読み戻せる。言語試験 `round-trip.lisp`
 
 ### Fixed
 - 基数 8 と 32 で印字する bignum の桁が誤っていた（Zig 0.17.0 の `toStringAlloc`。2 進の桁から作るようにした）
+- 標準出力と標準エラー出力を、ファイルの位置 0 から書いていたため、両方を1つのファイルにリダイレクトしたときや `>>` で
+  追記したときに、前の出力を上書きしていた（ストリームとして書くようにした）
+- Codex のレビュー（Phase 24）の指摘 8 件：`format` がリストの引数を GC から見えない所に写していたため、`~/名前/` の関数が
+  リストを切ると後ろの引数が回収された。pretty printer で、代わりの印字で書く配列の要素が `*print-circle*` の番号を失っていた
+  （循環するベクタでスタックがあふれた）。循環するリストを渡した `~:<…~:>` が終わらなかった。ネイティブの定数を readably で
+  書いていなかった（`#A((0 3) T)` が `(0 0)` になった。読み戻せない定数は `--emit-zig` でエラーにした）。`#A` の形の
+  `NIL`・`T`・`CHARACTER` をパッケージ修飾なしで書いていた。論理ブロックの中で `~:*`・`~@*`・`~@[` が引数の位置を戻さなかった。
+  論理ブロックの中の `~&` が古い行の状態を見ていた（pretty stream の上の `fresh-line` と `~&` は、SBCL と同じく必ず改行する）。
+  `with-standard-io-syntax` が `*print-pprint-dispatch*` を束縛していなかった
 - Codex のレビュー（Phase 23）の指摘 16 件：`:if-exists` の `:rename`・`:rename-and-delete` が、ファイルを「名前.bak」に移さずに
   切り詰めていた、REPL と `*standard-input*` が別のバッファで標準入力を読んでいたので、入力を取りこぼすことがあった、Windows で
   CR LF を1つの改行として読んでいた（SBCL 2.6.7 は変換しない）、Latin-1 のストリームの `read` がバイト列を UTF-8 として読んでいた、

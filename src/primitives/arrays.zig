@@ -208,7 +208,7 @@ fn totalOf(th: *Thread, dims: []const usize) ?usize {
 }
 
 /// 列（リスト・ベクタ・文字列）の要素の数と、i 番目の要素
-fn seqLength(v: Value) ?usize {
+pub fn seqLength(v: Value) ?usize {
     if (v.isList()) {
         var n: usize = 0;
         var x = v;
@@ -219,7 +219,7 @@ fn seqLength(v: Value) ?usize {
     return null;
 }
 
-fn seqElt(v: Value, i: usize) Value {
+pub fn seqElt(v: Value, i: usize) Value {
     if (v.isList()) {
         var x = v;
         var k = i;

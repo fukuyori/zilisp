@@ -374,10 +374,11 @@ pub fn runProgram(init: std.process.Init, prog: *const Program) !u8 {
     runtime.main_stack_top = @frameAddress();
     const io = init.io;
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
+    // 標準の出力は streaming で書く（positional ではファイルへのリダイレクトで先頭から上書きする）
+    var stdout_file_writer: Io.File.Writer = .initStreaming(.stdout(), io, &stdout_buffer);
     const stdout = &stdout_file_writer.interface;
     var stderr_buffer: [1024]u8 = undefined;
-    var stderr_file_writer: Io.File.Writer = .init(.stderr(), io, &stderr_buffer);
+    var stderr_file_writer: Io.File.Writer = .initStreaming(.stderr(), io, &stderr_buffer);
     const stderr = &stderr_file_writer.interface;
 
     // スタックの溢れの検査の境界：今の位置から（予約したスタックの大きさ − 余裕）だけ下

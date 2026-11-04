@@ -1194,3 +1194,33 @@
          (*read-base* 10) (*read-default-float-format* 'single-float) (*read-eval* t) (*read-suppress* nil)
          (*readtable* zl-sys::*standard-readtable*))
      ,@body))
+
+;; pretty printer（Phase 24）。(pprint-logical-block (stream-symbol object &key prefix per-line-prefix suffix) 本体...)
+;; 本体は (lambda (stream list state) …) にして zl-sys::%pprint-logical-block に渡す。pprint-pop と
+;; pprint-exit-if-list-exhausted は、その lambda が束縛する zl-sys::%pp-list・%pp-state と block zl-sys::%pp-block を使う
+;; （macrolet がないため。入れ子にしても内側の束縛が見える）。object がなければ %pp-list は zl-sys::%no-list
+(defmacro pprint-logical-block ((stream-symbol object &key (prefix nil prefix-p) (per-line-prefix nil per-line-p) (suffix ""))
+                                &body body)
+  (when (and prefix-p per-line-p)
+    (zl-sys::%unimplemented-error "PPRINT-LOGICAL-BLOCK に :prefix と :per-line-prefix の両方は指定できません" prefix))
+  (let ((stream-var (cond ((null stream-symbol) '*standard-output*)
+                          ((eq stream-symbol t) '*terminal-io*)
+                          (t stream-symbol))))
+    `(zl-sys::%pprint-logical-block
+      ,stream-symbol ,(if object object ''zl-sys::%no-list)
+      ,(if per-line-p per-line-prefix prefix) ,(if per-line-p t nil) ,suffix
+      (lambda (,stream-var zl-sys::%pp-list zl-sys::%pp-state)
+        (declare (ignorable ,stream-var zl-sys::%pp-list zl-sys::%pp-state))
+        (block zl-sys::%pp-block ,@body))
+      ,(if object t nil))))
+
+(defmacro pprint-exit-if-list-exhausted ()
+  '(when (or (null zl-sys::%pp-list) (eq zl-sys::%pp-list 'zl-sys::%no-list))
+     (return-from zl-sys::%pp-block nil)))
+
+(defmacro pprint-pop ()
+  '(if (eq zl-sys::%pp-list 'zl-sys::%no-list)
+       (if (zl-sys::%pprint-length-check* zl-sys::%pp-state) nil (return-from zl-sys::%pp-block nil))
+       (if (zl-sys::%pprint-length-check zl-sys::%pp-list zl-sys::%pp-state)
+           (pop zl-sys::%pp-list)
+           (return-from zl-sys::%pp-block nil))))

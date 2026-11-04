@@ -862,7 +862,7 @@ pub const Resolver = struct {
         const lam_form = try macros.macroLambda(r, args[1], args[2..], name);
         if (toplevel_form) {
             const b: macros.Builder = .{ .r = r };
-            const def_form = try b.list(&.{ r.rt.sys_defmacro, try b.quote(name), lam_form });
+            const def_form = try b.list(&.{ r.rt.sys_defmacro, try b.quote(name), lam_form, try b.quote(args[1]) });
             const eval_mod = @import("eval.zig");
             if (eval_mod.eval(r.th, def_form) == Value.unwind) return error.LispError;
         }
@@ -870,9 +870,11 @@ pub const Resolver = struct {
         const parts = try r.listItems(Runtime.consPtr(lam_form).cdr, "LAMBDA の形が正しくありません");
         // 暗黙の block は macroLambda が本体に付けた（コンパイル時の定義と同じ形）
         const l = try r.resolveLambdaParts(parts, name, .macro, scope, null);
-        const call_args = try r.arena.alloc(*Node, 2);
+        // 3つ目の引数はラムダリスト（pretty printer が &body の位置を使う。Phase 24）
+        const call_args = try r.arena.alloc(*Node, 3);
         call_args[0] = try r.node(.{ .constant = name });
         call_args[1] = try r.node(.{ .lambda = l });
+        call_args[2] = try r.node(.{ .constant = args[1] });
         return r.node(.{ .call_global = .{ .sym = r.rt.sys_defmacro, .args = call_args } });
     }
 

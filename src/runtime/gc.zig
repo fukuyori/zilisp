@@ -119,6 +119,11 @@ const Marker = struct {
                     const st: *object.Stream = @ptrFromInt(e);
                     m.markValue(st.ref);
                 },
+                .pprint_dispatch => {
+                    const t: *object.PprintDispatch = @ptrFromInt(e);
+                    m.markValue(t.entries);
+                    m.markValue(t.cons_entries);
+                },
                 .readtable => {
                     const t: *object.Readtable = @ptrFromInt(e);
                     m.markValue(t.macros);

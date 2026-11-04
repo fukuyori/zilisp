@@ -60,8 +60,10 @@ Implemented after 0.2.0 (in `main`, not yet released):
   functions, name-conflict detection, and `load`
 - Streams and files: `with-open-file`, `read-line`, `read`, `write-line`, string streams (`with-output-to-string`,
   `read-from-string`, ...), binary I/O, and pathnames (`#P`, `merge-pathnames`, `probe-file`, `directory`, ...)
+- Printing and reading: `format` with all its directives, the printer variables (`*print-base*`, `*print-circle*`, ...),
+  readtables and user reader macros, and the pretty printer (`pprint`, `pprint-logical-block`, `set-pprint-dispatch`)
 
-Not yet implemented (planned for later releases): the full `format`, the pretty printer, complex numbers, `defstruct`,
+Not yet implemented (planned for later releases): complex numbers, `defstruct`,
 CLOS, and the condition system (`handler-case`, restarts).
 
 Error messages are currently written in Japanese.

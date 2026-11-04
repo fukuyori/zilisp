@@ -21,6 +21,8 @@ const SF = object.StreamFlags;
 const Thread = @import("../runtime/thread.zig").Thread;
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const printer = @import("../printer/printer.zig");
+const pretty_mod = @import("../printer/pretty.zig");
+const pprint_mod = @import("../printer/pprint.zig");
 const reader = @import("../reader/reader.zig");
 const vb = @import("../reader/value_builder.zig");
 const arrays = @import("arrays.zig");
@@ -65,6 +67,8 @@ pub const StreamState = struct {
     delete_backup: bool = false,
     /// 開いた名前（:abort で元に戻すとき）
     path: ?[]u8 = null,
+    /// pretty stream の状態（kind が .pretty。Phase 24）
+    pretty: ?*pretty_mod.State = null,
 
     fn input(st: *StreamState) []const u8 {
         return if (st.kind == .stdin) st.in_list.items else st.in_buf;
@@ -150,6 +154,8 @@ fn closeState(rt: *Runtime, st: *StreamState) void {
         st.in_buf = &.{};
     }
     st.in_list.clearAndFree(rt.gpa);
+    if (st.pretty) |ps| ps.destroy();
+    st.pretty = null;
 }
 
 /// 退避したファイルの後始末：abort なら元に戻し（新しいファイルを消す）、:rename-and-delete なら消す
@@ -397,6 +403,11 @@ pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
             _ = th.outOfMemory();
             return false;
         },
+        .pretty => {
+            const ps = st.pretty orelse return true;
+            ps.writeUtf8(bytes) catch return false;
+            return true;
+        },
         .file => {
             if (st.latin1) {
                 // UTF-8 を Latin-1 にする。U+0100 以上は表せないので stream-error（SBCL 2.6.7 は stream-encoding-error。
@@ -429,6 +440,7 @@ pub fn emit(th: *Thread, stream: Value, bytes: []const u8) bool {
 /// 出力のストリームの今の桁（broadcast は最初のストリームの桁。わからなければ null。format の ~T）
 pub fn columnOf(th: *Thread, stream: Value) ?usize {
     const s = resolveOutStream(th, stream) orelse return null;
+    if (prettyStateOf(s)) |ps| return @intCast(@max(ps.currentColumn(), 0));
     if (kindOf(s) == .broadcast) {
         const x = ptr(s).ref;
         if (!x.isCons()) return null;
@@ -436,6 +448,38 @@ pub fn columnOf(th: *Thread, stream: Value) ?usize {
     }
     const st = stateOf(s) orelse return null;
     return st.column;
+}
+
+/// pretty stream を作る（target に書き出す。column は target の今の桁。Phase 24）
+pub fn makePrettyStream(th: *Thread, target: Value, column: usize) ?Value {
+    const s = makeStream(th, .pretty, SF.output | SF.open, target, true) orelse return null;
+    stateOf(s).?.pretty = pretty_mod.State.create(th, target, column) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    return s;
+}
+
+/// pretty stream を閉じる（状態を解放する。with-pretty-stream の終わり）
+pub fn closePrettyStream(th: *Thread, s: Value) void {
+    if (stateOf(s)) |st| {
+        if (st.pretty) |ps| ps.destroy();
+        st.pretty = null;
+    }
+    ptr(s).header.flags &= ~SF.open;
+    _ = th;
+}
+
+/// pretty stream の状態（pretty stream でなければ null）
+pub fn prettyStateOf(s: Value) ?*pretty_mod.State {
+    if (!isStream(s) or kindOf(s) != .pretty) return null;
+    const st = stateOf(s) orelse return null;
+    return st.pretty;
+}
+
+/// 何も書かないストリーム（*print-circle* の1回目の走査。中身のない broadcast と同じ）
+pub fn makeNullOutput(th: *Thread) ?Value {
+    return makeStream(th, .broadcast, SF.output | SF.open, Value.nil, false);
 }
 
 /// 文字列の出力ストリームを作る（format が使う）
@@ -459,6 +503,7 @@ pub fn takeStringOutput(th: *Thread, s: Value, out: *std.ArrayList(u8)) bool {
 /// 出力のストリームが行の先頭にいるか（fresh-line・~&）
 pub fn atLineStart(th: *Thread, stream: Value) bool {
     const s = resolveOutStream(th, stream) orelse return true;
+    if (prettyStateOf(s)) |ps| return ps.currentColumn() == 0;
     if (kindOf(s) == .broadcast) {
         var x = ptr(s).ref;
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!atLineStart(th, Runtime.consPtr(x).car)) return false;
@@ -469,10 +514,26 @@ pub fn atLineStart(th: *Thread, stream: Value) bool {
 }
 
 fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
+    if (prettyOn(th)) return printPretty(th, stream, v, escape);
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     if (!printTo(th, &buf.writer, v, escape)) return false;
     return emit(th, stream, buf.written());
+}
+
+fn prettyOn(th: *Thread) bool {
+    return th.rt.symbolPtr(th.rt.syms.@"*print-pretty*").value != Value.nil;
+}
+
+/// *print-pretty* が真のときの印字：escape を指定すれば *print-escape* を束縛する（princ は *print-readably* も偽にする）
+pub fn printPretty(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
+    const depth = th.binding_depth;
+    defer th.unbindTo(depth);
+    if (escape) |e| {
+        if (th.bind(th.rt.syms.@"*print-escape*", th.rt.boolean(e)) == Value.unwind) return false;
+        if (!e and th.bind(th.rt.syms.@"*print-readably*", Value.nil) == Value.unwind) return false;
+    }
+    return pprint_mod.printTop(th, stream, v);
 }
 
 /// 今の印字の変数に従って w に書く（escape が null なら *print-escape*）。
@@ -673,6 +734,11 @@ pub fn write(th: *Thread, args: []const Value) Value {
 }
 
 fn toString(th: *Thread, v: Value, escape: ?bool) Value {
+    if (prettyOn(th)) {
+        const s = makeStringOutput(th) orelse return Value.unwind;
+        if (!printPretty(th, s, v, escape)) return Value.unwind;
+        return getOutputStreamString(th, &.{s});
+    }
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     if (!printTo(th, &buf.writer, v, escape)) return Value.unwind;
@@ -1590,5 +1656,6 @@ pub fn printStream(rt: *Runtime, w: *Io.Writer, v: Value) Io.Writer.Error!void {
         },
         .two_way => try w.print("#<TWO-WAY-STREAM {{{X}}}>", .{addr}),
         .broadcast => try w.print("#<BROADCAST-STREAM {{{X}}}>", .{addr}),
+        .pretty => try w.print("#<PRETTY-STREAM {{{X}}}>", .{addr}),
     }
 }

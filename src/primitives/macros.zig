@@ -11,7 +11,8 @@ fn isSymbol(v: Value) bool {
     return v == Value.nil or (v.isOther() and Runtime.kindOf(v) == .symbol);
 }
 
-/// ZILISP-SYSTEM::%DEFMACRO 名前 展開関数：マクロを定義し、名前を返す
+/// ZILISP-SYSTEM::%DEFMACRO 名前 展開関数 [ラムダリスト]：マクロを定義し、名前を返す。
+/// ラムダリストは属性リストの ZILISP-SYSTEM::%MACRO-LAMBDA-LIST に置く（pretty printer が &body の位置を使う。Phase 24）
 pub fn sysDefmacro(th: *Thread, args: []const Value) Value {
     const name = args[0];
     if (!isSymbol(name) or name == Value.nil) return th.typeError(name, th.rt.syms.symbol);
@@ -22,6 +23,20 @@ pub fn sysDefmacro(th: *Thread, args: []const Value) Value {
     s.function = args[1];
     s.header.flags |= SymbolFlags.macro;
     s.header.flags &= ~SymbolFlags.unimplemented;
+    if (args.len > 2) {
+        const rt = th.rt;
+        const key = rt.intern(rt.sys, "%MACRO-LAMBDA-LIST") catch return th.outOfMemory();
+        // 属性リストの値を置き換える（なければ先頭に足す）
+        var x = s.plist;
+        while (x.isCons() and Runtime.consPtr(x).cdr.isCons()) : (x = Runtime.consPtr(Runtime.consPtr(x).cdr).cdr) {
+            if (Runtime.consPtr(x).car == key) {
+                Runtime.consPtr(Runtime.consPtr(x).cdr).car = args[2];
+                return name;
+            }
+        }
+        const tail = rt.cons(args[2], s.plist) catch return th.outOfMemory();
+        rt.symbolPtr(name).plist = rt.cons(key, tail) catch return th.outOfMemory();
+    }
     return name;
 }
 

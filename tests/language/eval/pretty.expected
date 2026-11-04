@@ -1,0 +1,231 @@
+
+(ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD
+ ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD ABCD) 
+(DEFUN FACT (N)
+  (IF (<= N 1)
+      1
+      (* N (FACT (- N 1))))) 
+(LET ((A 1) (B 2))
+  (SETQ A (+ A B))
+  (LIST A B 'QUOTE "string" #\c)) 
+('X #'F (QUOTE) (QUOTE A B) (FUNCTION)) 
+(A 'B #'C `(D ,E ,@F ,.G (H ,@(I J)))) 
+(DEFUN LONG-FUNCTION-NAME
+       (ALPHA BETA
+        &OPTIONAL (GAMMA 3)
+        &KEY DELTA
+        (EPSILON 5 EPSILON-P))
+  (DECLARE (IGNORE BETA))
+  (LIST ALPHA GAMMA DELTA EPSILON))
+(LET* ((ALPHA 1) (BETA (+ ALPHA 2)))
+  (WHEN (> ALPHA BETA)
+    (PRINT ALPHA)
+    (PRINT BETA))
+  (UNLESS NIL (INCF ALPHA)))
+(COND
+ ((= X 1) (PRINT "one") (PRINT "uno"))
+ ((= X 2) (PRINT "two"))
+ (T (PRINT "other")))
+(CASE X
+  ((1 2) (PRINT "small"))
+  (3 (PRINT "three") (PRINT "drei"))
+  (OTHERWISE (PRINT "big")))
+(DO ((I 0 (1+ I))
+     (J 10 (1- J)))
+    ((>= I J) (LIST I J))
+  (PRINT I)
+  (PRINT J))
+(DOLIST
+    (ITEM (LIST 1 2 3 4 5 6 7 8 9 10))
+  (PRINT ITEM)
+  (PRINT (* ITEM ITEM)))
+(DOTIMES (I 10) (PRINT I))
+(FLET ((SQUARE (X)
+         (* X X))
+       (CUBE (X)
+         (* X X X)))
+  (LIST (SQUARE 2) (CUBE 3)))
+(LABELS ((FIB (N)
+           (IF (< N 2)
+               N
+               (+ (FIB (- N 1))
+                  (FIB (- N 2))))))
+  (FIB 10))
+(LAMBDA (X Y &REST MORE)
+  (DECLARE (FIXNUM X))
+  (APPLY #'+ X Y MORE))
+(SETQ ALPHA 1
+      BETA 2
+      GAMMA (LIST ALPHA BETA)
+      DELTA (+ ALPHA BETA))
+(SETF (GETHASH KEY TABLE) VALUE
+      (AREF ARRAY 0) (CAR LIST))
+(TAGBODY
+ START
+  (PRINT 1)
+  (GO END)
+ MIDDLE
+  (PRINT 2)
+ END)
+(PROG ((X 1) (Y 2))
+ LOOP
+  (SETQ X (1+ X))
+  (WHEN (> X 5) (RETURN X))
+  (GO LOOP))
+(LOOP FOR I FROM 1 TO 10
+      WHEN (EVENP I)
+      COLLECT I INTO EVENS
+      FINALLY (RETURN EVENS))
+(LOOP (PRINT 1)
+      (RETURN 2))
+(DESTRUCTURING-BIND
+    (A B &OPTIONAL C)
+    (LIST 1 2)
+  (LIST A B C))
+(MULTIPLE-VALUE-BIND (Q R)
+    (FLOOR 17 5)
+  (LIST Q R))
+(BLOCK OUTER
+  (RETURN-FROM OUTER (VALUES 1 2)))
+(IF (AND ALPHA BETA GAMMA)
+    (PROGN (PRINT ALPHA) (PRINT BETA))
+    (PRINT GAMMA))
+(PROGN (PRINT 1) (PRINT 2) (PRINT 3))
+(DEFMACRO MY-WHEN (TEST &BODY BODY)
+  `(IF ,TEST
+       (PROGN ,@BODY)
+       NIL))
+(DEFVAR *SOME-VARIABLE*
+  (LIST 1 2 3)
+  "documentation")
+(DEFPACKAGE :MY-PACKAGE
+  (:USE :CL)
+  (:EXPORT #:ALPHA #:BETA #:GAMMA))
+(UNWIND-PROTECT
+    (PROGN (PRINT 1) (PRINT 2))
+  (PRINT "cleanup"))
+(EVAL-WHEN
+    (:COMPILE-TOPLEVEL :LOAD-TOPLEVEL
+     :EXECUTE)
+  (DEFUN F (X) X))
+(DECLARE (IGNORE A B)
+         (FIXNUM C)
+         (FUNCTION F))
+(WITH-OPEN-FILE
+    (S "file.txt" :DIRECTION :OUTPUT)
+  (PRINT 1 S))
+(WITH-THING (X (LIST 1 2 3 4 5 6 7 8))
+  (PRINT X)
+  (PRINT (LENGTH X)))
+(TWO-ARGS FIRST-ARGUMENT
+    SECOND-ARGUMENT
+  (PRINT 1)
+  (PRINT 2))
+(SOME-UNKNOWN-FUNCTION ALPHA-ARGUMENT
+ BETA-ARGUMENT GAMMA-ARGUMENT
+ DELTA-ARGUMENT)
+(LIST (LIST 1 2 3) (VECTOR 4 5 6)
+      (CONS 7 8) (LIST* 9 10 11))
+#(ALPHA BETA GAMMA DELTA
+  EPSILON ZETA ETA THETA IOTA)
+#2A((ELEMENT ELEMENT ELEMENT
+     ELEMENT)
+    (ELEMENT ELEMENT ELEMENT
+     ELEMENT)
+    (ELEMENT ELEMENT ELEMENT
+     ELEMENT))
+(ALPHA BETA GAMMA DELTA
+ EPSILON ZETA ETA THETA IOTA
+ KAPPA . LAMBDA)
+("a long string value"
+ "another long string"
+ "and a third one")
+((((((DEEPLY NESTED
+      LIST
+      STRUCTURE
+      HERE))))))
+#(1 2 3) 
+#2A((A B) (C D)) 
+"string" 
+(1 . 2) 
+(A (B #))
+(A B C ...)
+(DEFUN F ...)
+(DEFUN FACT (N)
+  (IF (<= N 1) ..))
+(WORD WORD WORD WORD WORD ..)
+(DEFUN FACT (N)
+  (IF (<= N 1)
+      1
+      (* N (FACT (- N 1)))))
+(#1=(1 2) #1#)
+#1=(A B C . #1#)
+(#1=(P) (#1# #1#)
+ #1#)
+#1=#(1 #1#)[ALPHA BETA GAMMA DELTA
+ EPSILON ZETA ETA THETA IOTA
+ KAPPA]
+[1 2 3]
+[]
+[A B . C]
+[A B C ...]
+;; 1 2 3 4 5 6 7 8 9 10
+;; 11 12
+(head
+   body-one
+    body-two
+                tail)
+name      age       city
+alice   30      tokyo   
+(ALPHA BETA GAMMA DELTA
+ EPSILON ZETA ETA THETA)
+ALPHA
+BETA
+GAMMA
+DELTA
+EPSILON
+ZETA
+ETA
+THETA
+(A       BB      CCC     DDDD
+ EEEEE   FFFFFF)
+
+"x" 
+"1" 
+"AAAA BBBB CCCC" 
+"(AAAA
+ BBBB
+ CCCC
+ DDDD)" 
+"(1 2 3 4 5 6 7 8 9
+ 10 11 12)" 
+"[ALPHA, BETA,
+ GAMMA, DELTA,
+ EPSILON, ZETA]" 
+"FIRST SECOND" 
+"ONE
+TWO
+THREE
+FOUR
+FIVE
+SIX
+SEVEN" 
+"(HEAD
+     BODY)" 
+"(A B . C)" 
+"'X (A B) (C D)" 
+"(1 2 3 ...)" 
+"NOT-A-LIST" 
+"(ABC DEF GHI)" 
+(ALPHA
+ BETA
+ GAMMA
+ DELTA)
+
+(<my-form 1 even:2 3> STR[hello] even:4 5 (OTHER)) 
+T 
+"plain" 
+(T NIL T) 
+(alpha beta (gamma delta)) 
+(QUOTE (A (QUOTE B) (FUNCTION C))) 
+(A B C)

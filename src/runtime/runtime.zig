@@ -131,7 +131,7 @@ pub const Syms = struct {
     @"long-float": Value,
 };
 
-/// 印字と読み取りの特殊変数の初期値（SBCL 2.6.7 と同じ。ただし *print-pretty* は、pretty printer を実装するまで NIL）
+/// 印字と読み取りの特殊変数の初期値（SBCL 2.6.7 と同じ）
 fn initPrinterVariables(rt: *Runtime) Error!void {
     const y = &rt.syms;
     const set = struct {
@@ -150,7 +150,7 @@ fn initPrinterVariables(rt: *Runtime) Error!void {
     set(rt, y.@"*print-lines*", Value.nil);
     set(rt, y.@"*print-miser-width*", Value.nil);
     set(rt, y.@"*print-pprint-dispatch*", Value.nil);
-    set(rt, y.@"*print-pretty*", Value.nil);
+    set(rt, y.@"*print-pretty*", rt.t);
     set(rt, y.@"*print-radix*", Value.nil);
     set(rt, y.@"*print-readably*", Value.nil);
     set(rt, y.@"*print-right-margin*", Value.nil);
@@ -248,6 +248,8 @@ pub const Runtime = struct {
     reader_builtins: [@typeInfo(@import("../reader/reader.zig").Builtin).@"enum".field_names.len]Value = @splat(Value.nil),
     /// ZILISP-SYSTEM::*STANDARD-READTABLE*（値が標準の readtable。Phase 24）
     standard_readtable: Value = Value.nil,
+    /// 標準の pretty printing の関数（pprint.Std の順。Phase 24）
+    pprint_builtins: [@typeInfo(@import("../printer/pprint.zig").Std).@"enum".field_names.len]Value = @splat(Value.nil),
     /// 標準ライブラリ（src/lisp/boot.lisp）を読み込んでいる間は真（CL のシンボルにマクロ・関数を定義してよい）
     booting: bool = false,
     /// 実行中のスレッド（GC のルートとして走査する。1.0 は単一スレッド）
@@ -387,6 +389,7 @@ pub const Runtime = struct {
         try rt.setStandardConstants();
         try initPrinterVariables(rt);
         try @import("../reader/readtable.zig").install(rt);
+        try @import("../printer/pprint.zig").install(rt);
 
         for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
             const s = try rt.intern(rt.sys, n);

@@ -125,7 +125,7 @@ since = "Phase 04"
 id = "reader-backquote-representation"
 description = "backquote を読んだ結果の表現"
 sbcl = "(SB-INT:QUASIQUOTE ...) と、コンマを表す構造体"
-zilisp = "(ZILISP-SYSTEM:QUASIQUOTE ...)、(ZILISP-SYSTEM:UNQUOTE x)、UNQUOTE-SPLICING、UNQUOTE-NSPLICING"
+zilisp = "(ZILISP-SYSTEM:QUASIQUOTE ...)、(ZILISP-SYSTEM:UNQUOTE x)、UNQUOTE-SPLICING、UNQUOTE-NSPLICING。*print-pretty* が偽なら、どちらもこの内部の形のまま印字する（真なら、どちらも `(A ,B ,@C) と書く。Phase 24）"
 clhs = "2.4.6 Backquote（読んだ結果の具体的な形は処理系依存）"
 since = "Phase 04"
 
@@ -248,3 +248,27 @@ sbcl = "正規化数と同じ桁数で書く（例：最小の正の single-floa
 zilisp = "読み戻せる最短の桁で書く（例：1.0e-45）。どちらも読み戻すと同じ値になる"
 clhs = "22.1.3.1.3 Printing Floats（※読み戻して同じ値になればよく、桁数は処理系に任されると推測される。原文では未確認）"
 since = "Phase 05（Phase 20 のレビューで確認）"
+
+[[items]]
+id = "pretty-stream-printed-form"
+description = "pretty printing のストリームの印字の形"
+sbcl = "#<SB-PRETTY:PRETTY-STREAM {1100DD87B3}>"
+zilisp = "#<PRETTY-STREAM {25B8DC44300}>（Phase 24）"
+clhs = "22.1.3.13 Printing Other Objects（#<...> の中身は処理系依存）"
+since = "Phase 24"
+
+[[items]]
+id = "print-lines-abbreviation"
+description = "*print-lines* の行数に達した後の印字"
+sbcl = "「 ..」と接尾辞を書き、catch に throw して、いちばん外側の pretty printing の印字を打ち切る（後の印字の関数は呼ばれない）"
+zilisp = "「 ..」と接尾辞を書いた後の出力を捨てる（出力は SBCL と同じ。印字の関数は最後まで呼ばれるので、その副作用は起こる。Phase 24）"
+clhs = "*print-lines*（打ち切った後の印字の関数の呼び出しは規定されていない）"
+since = "Phase 24"
+
+[[items]]
+id = "set-pprint-dispatch-type-specifiers"
+description = "set-pprint-dispatch・pprint-dispatch が扱う型指定子"
+sbcl = "すべての型指定子（typep と同じ）"
+zilisp = "T・NIL、CONS・LIST・SYMBOL・STRING・INTEGER・FLOAT・VECTOR・HASH-TABLE などの基本の型の名前と、(cons …)・(member …)・(eql …)・(and …)・(or …)・(not …)・(satisfies …)。それ以外は unimplemented のエラー（deftype・defstruct の型は後の Phase。Phase 24）"
+clhs = "set-pprint-dispatch（型指定子は任意の型指定子）"
+since = "Phase 24"

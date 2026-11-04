@@ -36,6 +36,8 @@ pub const ObjKind = enum(u8) {
     pathname,
     /// readtable（Phase 24。src/reader/readtable.zig）
     readtable,
+    /// pprint-dispatch の表（Phase 24。src/printer/pprint.zig）
+    pprint_dispatch,
     _,
 };
 
@@ -189,7 +191,7 @@ pub const Stream = extern struct {
     state: usize,
 };
 
-pub const StreamKind = enum(u16) { file, string_input, string_output, stdin, stdout, stderr, synonym, two_way, broadcast };
+pub const StreamKind = enum(u16) { file, string_input, string_output, stdin, stdout, stderr, synonym, two_way, broadcast, pretty };
 
 pub const StreamFlags = struct {
     pub const input: u8 = 1 << 0;
@@ -225,6 +227,16 @@ pub const Readtable = extern struct {
     dispatch: Value,
 
     pub const standard_flag: u8 = 1 << 0;
+};
+
+/// pprint-dispatch の表（Phase 24）。entries は ((優先度 型 関数) …)（優先度の高い順）、cons_entries は
+/// ((シンボル 優先度 型 関数) …)。header.flags の initial は「標準の表のまま」（振り分けを Zig で直接行う）
+pub const PprintDispatch = extern struct {
+    header: ObjHeader,
+    entries: Value,
+    cons_entries: Value,
+
+    pub const initial_flag: u8 = 1 << 0;
 };
 
 /// GC が中を走査しない数の配列。header.len は要素の数、header.aux は要素のバイト数（4 か 8）

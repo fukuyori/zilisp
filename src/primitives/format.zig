@@ -5,8 +5,8 @@
 //!   - 出力はいったん Out のバッファに溜め、format の終わりと、ユーザーの関数（~/名前/・関数の制御）を呼ぶ前に
 //!     ストリームに書く。~T のため、桁（column）を数える。
 //!   - ~F ~E ~G ~$ の桁は、SBCL の flonum-to-string を移植したもの（Burger と Dybvig の方法。多倍長整数で正確に丸める）。
-//!   - pretty printer に関わる指示子（~<…~:>・~W の :、~_・~I・~:T）は、pretty printer（P24d）までは、
-//!     pretty printing のストリームでない場合の動作（~_・~I・~:T は何もしない）か、未実装のエラー（~<…~:>）にする。
+//!   - pretty printer（P24d）：~<…~:> は論理ブロック（引数を pprint-pop と同じに取り出す）、~_ ~I ~:T と pretty stream の上の ~T は
+//!     条件付きの改行・字下げ・タブ。*print-pretty* が真なら、オブジェクトはストリームに pretty printer で書く。
 
 const std = @import("std");
 const Value = @import("../values/value.zig").Value;
@@ -18,6 +18,8 @@ const numbers = @import("numbers.zig");
 const arrays = @import("arrays.zig");
 const unicode = @import("../unicode/unicode.zig");
 const Big = std.math.big.int.Managed;
+const pretty = @import("../printer/pretty.zig");
+const pprint = @import("../printer/pprint.zig");
 const Allocator = std.mem.Allocator;
 
 /// Lisp：エラーを記録した（Value.unwind を返す）。Up・UpUp：~^・~:^ で抜ける
@@ -42,9 +44,24 @@ const Tok = union(enum) { text: []const u21, dir: Dir };
 const Args = struct {
     items: []const Value,
     pos: usize = 0,
+    /// 論理ブロック（~<…~:>）の引数：まだ取り出していないリストと、pprint-pop の状態（(数 . ストリーム)）
+    tail: Value = Value.nil,
+    state: ?Value = null,
 
     fn remaining(a: *const Args) usize {
+        if (a.state != null) {
+            var n: usize = 0;
+            var x = a.tail;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+            return n;
+        }
         return a.items.len - a.pos;
+    }
+
+    /// 引数が残っていないか（SBCL の (null args)）
+    fn empty(a: *const Args) bool {
+        if (a.state != null) return a.tail == Value.nil;
+        return a.pos >= a.items.len;
     }
 };
 
@@ -55,6 +72,8 @@ const Out = struct {
     /// バッファの先頭の桁（わからなければ null）と、行の先頭にいたか
     base_col: ?usize = 0,
     base_line_start: bool = true,
+    /// stream が pretty stream：溜めずに直接書く（条件付きの改行などとの順序を保つ）
+    direct: bool = false,
 
     fn column(o: *const Out) ?usize {
         if (std.mem.lastIndexOfScalar(u8, o.buf.items, '\n')) |i| return charCount(o.buf.items[i + 1 ..]);
@@ -89,6 +108,10 @@ const Ctx = struct {
     }
 
     fn write(c: *Ctx, o: *Out, bytes: []const u8) Fail!void {
+        if (o.direct) {
+            if (!streams.emit(c.th, o.stream.?, bytes)) return error.Lisp;
+            return;
+        }
         o.buf.appendSlice(c.gpa, bytes) catch return c.oom();
     }
 
@@ -119,6 +142,15 @@ const Ctx = struct {
     }
 
     fn nextArg(c: *Ctx, a: *Args) Fail!Value {
+        if (a.state) |stv| {
+            // 論理ブロックの中：pprint-pop と同じく、*print-length*・循環・リストでない尾を確かめてから取り出す
+            if (a.tail == Value.nil) return c.fail("FORMAT の引数が足りません");
+            if (!(pprint.lengthCheck(c.th, a.tail, stv) catch return error.Lisp)) return error.Up;
+            const v = Runtime.consPtr(a.tail).car;
+            a.tail = Runtime.consPtr(a.tail).cdr;
+            a.pos += 1;
+            return v;
+        }
         if (a.pos >= a.items.len) return c.fail("FORMAT の引数が足りません");
         const v = a.items[a.pos];
         a.pos += 1;
@@ -182,6 +214,23 @@ const Ctx = struct {
 
     /// 今の印字の変数に従って印字した UTF-8（arena）。base があれば *print-base* をそれに、*print-radix* を NIL にする
     fn printed(c: *Ctx, v: Value, escape: ?bool, base: ?u8) Fail![]const u8 {
+        if (prettyOn(c.th)) {
+            // pretty printer：新しい文字列のストリームに書く（SBCL の princ-to-string と同じ）
+            const th = c.th;
+            const depth = th.binding_depth;
+            defer th.unbindTo(depth);
+            if (base) |b| {
+                if (th.bind(th.rt.syms.@"*print-base*", Value.fromFixnum(b)) == Value.unwind) return error.Lisp;
+                if (th.bind(th.rt.syms.@"*print-radix*", Value.nil) == Value.unwind) return error.Lisp;
+            }
+            const ss = streams.makeStringOutput(th) orelse return error.Lisp;
+            if (!streams.printPretty(th, ss, v, escape)) return error.Lisp;
+            // takeStringOutput は gpa で確保するので、arena に写して解放する
+            var bytes: std.ArrayList(u8) = .empty;
+            defer bytes.deinit(c.gpa);
+            if (!streams.takeStringOutput(th, ss, &bytes)) return error.Lisp;
+            return c.arena.dupe(u8, bytes.items) catch c.oom();
+        }
         var buf: std.Io.Writer.Allocating = .init(c.arena);
         var s = printer.Settings.current(c.th.rt, escape);
         if (base) |b| {
@@ -199,6 +248,32 @@ const Ctx = struct {
         return buf.written();
     }
 };
+
+fn prettyOn(th: *Thread) bool {
+    return th.rt.symbolPtr(th.rt.syms.@"*print-pretty*").value != Value.nil;
+}
+
+/// オブジェクトを出力に書く（~A ~S ~W）。*print-pretty* が真なら、ストリームに pretty printer で書く（SBCL の princ・prin1 と同じ）
+fn printObj(c: *Ctx, o: *Out, v: Value, escape: ?bool) Fail!void {
+    if (prettyOn(c.th)) {
+        if (o.stream) |s| {
+            try c.flush(o);
+            if (!streams.printPretty(c.th, s, v, escape)) return error.Lisp;
+            try c.flush(o);
+            return;
+        }
+    }
+    try c.write(o, try c.printed(v, escape, null));
+}
+
+/// pretty printing を行うストリームなら、その状態（pretty stream で、*print-pretty* が真。SBCL の print-pretty-on-stream-p）
+fn prettyStream(c: *Ctx, o: *Out) Fail!?*pretty.State {
+    const s = o.stream orelse return null;
+    const ps = streams.prettyStateOf(s) orelse return null;
+    if (!prettyOn(c.th)) return null;
+    try c.flush(o);
+    return ps;
+}
 
 fn charCount(bytes: []const u8) usize {
     var n: usize = 0;
@@ -454,7 +529,7 @@ fn directive(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fa
                 if (th.bind(th.rt.syms.@"*print-level*", Value.nil) == Value.unwind) return error.Lisp;
                 if (th.bind(th.rt.syms.@"*print-length*", Value.nil) == Value.unwind) return error.Lisp;
             }
-            try c.write(o, try c.printed(try c.nextArg(a), null, null));
+            try printObj(c, o, try c.nextArg(a), null);
         },
         'D' => try dirInteger(c, o, d, a, 10),
         'B' => try dirInteger(c, o, d, a, 2),
@@ -500,10 +575,16 @@ fn directive(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) Fa
             _ = try c.params(d, a, 0);
         },
         'T' => try dirT(c, o, d, a),
-        '_' => _ = try c.params(d, a, 0), // pretty printing のストリームでなければ何もしない（P24d）
+        '_' => {
+            // 条件付きの改行（~_ linear、~:_ fill、~@_ miser、~:@_ mandatory）。pretty printing のストリームでなければ何もしない
+            _ = try c.params(d, a, 0);
+            if (try prettyStream(c, o)) |ps| ps.enqueueNewline(if (d.colon) (if (d.at) .mandatory else .fill) else (if (d.at) .miser else .linear)) catch return error.Lisp;
+        },
         'I' => {
             if (d.at) return c.fail("FORMAT の ~I に @ は使えません");
-            _ = try c.params(d, a, 1);
+            const p = try c.params(d, a, 1);
+            const n = try c.int(p[0], 0);
+            if (try prettyStream(c, o)) |ps| ps.enqueueIndent(if (d.colon) .current else .block, n) catch return error.Lisp;
         },
         '*' => try dirStar(c, d, a),
         '?' => {
@@ -554,7 +635,7 @@ fn dirAS(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
     }
     const arg = try c.nextArg(a);
     if (d.colon and arg == Value.nil) return c.write(o, "()");
-    try c.write(o, try c.printed(arg, escape, null));
+    try printObj(c, o, arg, escape);
 }
 
 /// 名前のある文字の名前（SBCL 2.6.7 の char-name と同じ。ASCII の制御文字）
@@ -774,8 +855,17 @@ fn dirP(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
 
 fn dirT(c: *Ctx, o: *Out, d: Dir, a: *Args) Fail!void {
     const p = try c.params(d, a, 2);
-    // ~:T は pretty printing のストリームでなければ何もしない（pprint-tab。P24d）
-    if (d.colon) return;
+    if (d.colon) {
+        // ~:T・~:@T は pprint-tab の :section・:section-relative（pretty printing のストリームでなければ何もしない）
+        if (try prettyStream(c, o)) |ps| ps.enqueueTab(if (d.at) .section_relative else .section, try c.int(p[0], 1), try c.int(p[1], 1)) catch return error.Lisp;
+        return;
+    }
+    // pretty stream の上では pprint-tab の :line・:line-relative（SBCL の format-absolute-tab・format-relative-tab）
+    if (o.stream) |s| if (streams.prettyStateOf(s)) |ps| {
+        try c.flush(o);
+        ps.enqueueTab(if (d.at) .line_relative else .line, try c.int(p[0], 1), try c.int(p[1], 1)) catch return error.Lisp;
+        return;
+    };
     if (d.at) {
         const colrel = try c.int(p[0], 1);
         const colinc = try c.int(p[1], 1);
@@ -1005,7 +1095,7 @@ fn dirIterate(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
         }
     }.run;
     loop: while (true) {
-        if (!closed_with_colon and loop_args.remaining() == 0) break;
+        if (!closed_with_colon and loop_args.empty()) break;
         if (max_count) |*m| {
             m.* -= 1;
             if (m.* < 0) break;
@@ -1026,7 +1116,7 @@ fn dirIterate(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
                 else => return err,
             };
         }
-        if (closed_with_colon and loop_args.remaining() == 0) break;
+        if (closed_with_colon and loop_args.empty()) break;
     }
     return i + 1 + close + 1;
 }
@@ -1040,7 +1130,7 @@ fn dirUp(c: *Ctx, d: Dir, a: *Args) Fail!void {
         const x = try c.int(p[0], 0);
         const y = try c.int(p[1], 0);
         break :blk x <= y and y <= try c.int(a3, 0);
-    } else if (p[1]) |a2| (p[0] != null and lispEql(p[0].?, a2)) else if (p[0]) |a1| a1 == Value.fromFixnum(0) else if (d.colon) (if (c.outside) |out| out.remaining() == 0 else true) else a.remaining() == 0;
+    } else if (p[1]) |a2| (p[0] != null and lispEql(p[0].?, a2)) else if (p[0]) |a1| a1 == Value.fromFixnum(0) else if (d.colon) (if (c.outside) |out| out.empty() else true) else a.empty();
     if (up) return if (d.colon) error.UpUp else error.Up;
 }
 
@@ -1065,7 +1155,10 @@ fn dirJustify(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
         }
         semis.append(c.arena, rest[k].dir) catch return c.oom();
     }
-    if (close.colon) return c.fail("FORMAT の ~<…~:>（pretty printer の論理ブロック）は未実装です（Phase 24 の P24d で実装予定）");
+    if (close.colon) {
+        try dirLogicalBlock(c, o, d, segments.items, semis.items, close, a);
+        return pos;
+    }
     if (close.at) return c.fail("FORMAT の左右揃えの ~> に @ は使えません");
     // 左右揃えの中では使えない指示子（CLHS 22.3.5.2）
     for (segments.items) |seg| for (seg) |t| if (t == .dir) switch (t.dir.ch) {
@@ -1117,6 +1210,106 @@ fn dirJustify(c: *Ctx, o: *Out, d: Dir, toks: []const Tok, i: usize, a: *Args) F
     };
     try justify(c, o, newline_prefix, extra_space, line_len, strings.items, d.colon, d.at, mincol, colinc, minpad, padchar);
     return pos;
+}
+
+/// ~<…~:>：論理ブロック（SBCL の interpret-format-logical-block）。節が2つなら接頭辞と本体、3つなら接頭辞・本体・接尾辞。
+/// ~@; なら行ごとの接頭辞、~:@> なら本体の文字の空白の後に ~:_ を入れる。~@< は残りの引数のすべてを1つのリストとして使う
+fn dirLogicalBlock(c: *Ctx, o: *Out, d: Dir, segments: []const []const Tok, semis: []const Dir, close: Dir, a: *Args) Fail!void {
+    var prefix: []const u21 = if (d.colon) &.{'('} else &.{};
+    var suffix: []const u21 = if (d.colon) &.{')'} else &.{};
+    var per_line = false;
+    var insides: []const Tok = undefined;
+    switch (segments.len) {
+        1 => insides = segments[0],
+        2, 3 => {
+            prefix = try segmentText(c, segments[0]);
+            per_line = semis[0].at;
+            insides = segments[1];
+            if (segments.len == 3) suffix = try segmentText(c, segments[2]);
+        },
+        else => return c.fail("FORMAT の ~<…~:> の節が多すぎます"),
+    }
+    _ = try c.params(d, a, 0);
+    if (close.at) insides = try addFillStyleNewlines(c, insides);
+    // 引数：~@< なら残りの引数（リストにする）、そうでなければ次の引数
+    const arg: Value = if (d.at) blk: {
+        if (a.state != null) {
+            const t = a.tail;
+            a.tail = Value.nil;
+            break :blk t;
+        }
+        var list = Value.nil;
+        var k = a.items.len;
+        while (k > a.pos) {
+            k -= 1;
+            list = c.th.rt.cons(a.items[k], list) catch return c.oom();
+        }
+        a.pos = a.items.len;
+        break :blk list;
+    } else try c.nextArg(a);
+
+    const Body = struct {
+        c: *Ctx,
+        insides: []const Tok,
+        arg: Value,
+        fn run(ctx: *anyopaque, th: *Thread, ps: Value, state: Value) pprint.Fail!void {
+            const b: *@This() = @ptrCast(@alignCast(ctx));
+            _ = th;
+            var inner: Out = .{ .stream = ps, .direct = true };
+            var items: std.ArrayList(Value) = .empty;
+            var x = b.arg;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) items.append(b.c.arena, Runtime.consPtr(x).car) catch return error.Lisp;
+            var args: Args = .{ .items = items.items, .tail = b.arg, .state = state };
+            interpret(b.c, &inner, b.insides, &args) catch |err| switch (err) {
+                error.Up => {},
+                error.UpUp, error.Lisp => return error.Lisp,
+            };
+        }
+    };
+    var body: Body = .{ .c = c, .insides = insides, .arg = arg };
+    const block_body: pprint.BlockBody = .{ .zig = .{ .ctx = &body, .f = Body.run } };
+    if (o.stream) |s| {
+        try c.flush(o);
+        pprint.formatLogicalBlock(c.th, s, arg, prefix, per_line, suffix, block_body) catch return error.Lisp;
+        try c.flush(o);
+        return;
+    }
+    // 文字列に書いている（~( の中など）：文字列のストリームに書いて取り込む
+    const ss = streams.makeStringOutput(c.th) orelse return error.Lisp;
+    pprint.formatLogicalBlock(c.th, ss, arg, prefix, per_line, suffix, block_body) catch return error.Lisp;
+    if (!streams.takeStringOutput(c.th, ss, &o.buf)) return error.Lisp;
+}
+
+/// 接頭辞・接尾辞の節（文字だけ）
+fn segmentText(c: *Ctx, seg: []const Tok) Fail![]const u21 {
+    if (seg.len == 0) return &.{};
+    if (seg.len != 1 or seg[0] != .text) return c.fail("FORMAT の ~<…~:> の接頭辞・接尾辞に指示子は書けません");
+    return seg[0].text;
+}
+
+/// 文字の空白の並びの後に ~:_ を入れる（SBCL の add-fill-style-newlines-aux。上の段の文字だけ）
+fn addFillStyleNewlines(c: *Ctx, toks: []const Tok) Fail![]const Tok {
+    var out: std.ArrayList(Tok) = .empty;
+    const fill_nl: Tok = .{ .dir = .{ .ch = '_', .params = &.{}, .colon = true, .at = false, .start = 0, .end = 0 } };
+    for (toks) |t| switch (t) {
+        .dir => out.append(c.arena, t) catch return c.oom(),
+        .text => |lit| {
+            var posn: usize = 0;
+            while (true) {
+                const blank = std.mem.indexOfScalarPos(u21, lit, posn, ' ') orelse {
+                    if (posn < lit.len) out.append(c.arena, .{ .text = lit[posn..] }) catch return c.oom();
+                    break;
+                };
+                var non_blank = blank;
+                while (non_blank < lit.len and lit[non_blank] == ' ') non_blank += 1;
+                out.append(c.arena, .{ .text = lit[posn..non_blank] }) catch return c.oom();
+                out.append(c.arena, fill_nl) catch return c.oom();
+                posn = non_blank;
+                if (posn == lit.len) break;
+            }
+        },
+    };
+    return out.items;
 }
 
 fn justify(c: *Ctx, o: *Out, newline_prefix: ?[]const u8, extra_space: i64, line_len: i64, strings: []const []const u8, pad_left: bool, pad_right: bool, mincol: i64, colinc: i64, minpad: i64, padchar: u21) Fail!void {
@@ -1614,19 +1807,23 @@ pub fn format(th: *Thread, args: []const Value) Value {
             return th.signal(.unimplemented, "FORMAT の出力先に文字列を使うのは未実装です", dest, Value.unbound);
         return th.typeError(dest, (rt.findSymbol(rt.cl, "STREAM") orelse unreachable).symbol);
     };
-    var o: Out = .{ .stream = out_stream };
+    const to_string = out_stream == null and prettyOn(th);
+    const target: ?Value = if (to_string) (streams.makeStringOutput(th) orelse return Value.unwind) else out_stream;
+    var o: Out = .{ .stream = target };
     defer o.buf.deinit(rt.gpa);
-    if (out_stream) |s| {
+    if (target) |s| {
         o.base_col = streams.columnOf(th, s);
         o.base_line_start = streams.atLineStart(th, s);
+        o.direct = streams.prettyStateOf(s) != null;
     }
     var a: Args = .{ .items = args[2..] };
     if (run(th, &o, control, &a)) |_| {} else |err| switch (err) {
         error.Lisp => return Value.unwind,
         else => unreachable,
     }
-    if (out_stream) |s| {
+    if (target) |s| {
         if (o.buf.items.len > 0 and !streams.emit(th, s, o.buf.items)) return Value.unwind;
+        if (to_string) return streams.getOutputStreamString(th, &.{s});
         return Value.nil;
     }
     return rt.makeString(o.buf.items) catch th.outOfMemory();
@@ -1654,7 +1851,7 @@ pub fn formatRest(th: *Thread, args: []const Value) Value {
     var arena_state = std.heap.ArenaAllocator.init(rt.gpa);
     defer arena_state.deinit();
     const items = (listItems(arena_state.allocator(), args[2]) catch return th.outOfMemory()) orelse return th.typeError(args[2], rt.syms.list);
-    var o: Out = .{ .stream = s, .base_col = streams.columnOf(th, s), .base_line_start = streams.atLineStart(th, s) };
+    var o: Out = .{ .stream = s, .base_col = streams.columnOf(th, s), .base_line_start = streams.atLineStart(th, s), .direct = streams.prettyStateOf(s) != null };
     defer o.buf.deinit(rt.gpa);
     var a: Args = .{ .items = items };
     run(th, &o, args[1], &a) catch return Value.unwind;
@@ -1663,4 +1860,26 @@ pub fn formatRest(th: *Thread, args: []const Value) Value {
     var x = args[2];
     for (0..a.pos) |_| x = Runtime.consPtr(x).cdr;
     return x;
+}
+
+/// Zig から制御文字列（UTF-8）を引数 args で解釈してストリームに書く（pretty printer の標準の印字関数が使う。
+/// SBCL の (funcall (formatter "…") stream …)）
+pub fn formatToStream(th: *Thread, s: Value, control: []const u8, args: []const Value) bool {
+    const rt = th.rt;
+    var arena_state = std.heap.ArenaAllocator.init(rt.gpa);
+    defer arena_state.deinit();
+    var c: Ctx = .{ .th = th, .gpa = rt.gpa, .arena = arena_state.allocator(), .control = Value.nil };
+    var chars: std.ArrayList(u21) = .empty;
+    var it = std.unicode.Utf8View.initUnchecked(control).iterator();
+    while (it.nextCodepoint()) |cp| chars.append(c.arena, cp) catch return th.outOfMemory() != Value.unwind;
+    const toks = tokenize(&c, chars.items) catch return false;
+    var o: Out = .{ .stream = s, .base_col = streams.columnOf(th, s), .base_line_start = streams.atLineStart(th, s), .direct = streams.prettyStateOf(s) != null };
+    defer o.buf.deinit(rt.gpa);
+    var a: Args = .{ .items = args };
+    interpret(&c, &o, toks, &a) catch |err| switch (err) {
+        error.Up, error.UpUp => {},
+        error.Lisp => return false,
+    };
+    if (o.buf.items.len > 0 and !streams.emit(th, s, o.buf.items)) return false;
+    return true;
 }

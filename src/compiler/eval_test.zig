@@ -1868,8 +1868,9 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         .{ "(let ((*readtable* (copy-readtable))) (set-macro-character #\\! (lambda (s c) (declare (ignore s c)) (car 1))) (read-from-string \"!\"))", .type_error },
         .{ "(read-delimited-list #\\] (make-string-input-stream \"1 2\"))", .end_of_file },
     }) |c| try expectError(&e, c[0], c[1]);
-    // ~<…~:>（pretty printer の論理ブロック）は P24d まで未実装
-    try expectError(&e, "(format nil \"~<a~:>\" nil)", .simple_error);
+    // ~<…~:>（pretty printer の論理ブロック。P24d）：引数がリストでなければ、そのまま書く
+    try expectValue(&e, "(format nil \"~<a~:>\" nil)", "\"a\"");
+    try expectValue(&e, "(format nil \"~:<~a~:>\" 5)", "\"5\"");
     // 束縛は印字の後に戻る
     try expectValue(&e, "(progn (write-to-string 1 :base 16) *print-base*)", "10");
     try expectValue(&e, "(let ((*print-base* 2)) (prin1-to-string 5))", "\"101\"");

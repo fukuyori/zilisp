@@ -53,8 +53,10 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `load`
 - ストリームとファイル：`with-open-file`・`read-line`・`read`・`write-line`、文字列のストリーム（`with-output-to-string`・
   `read-from-string` など）、バイナリの入出力、パス名（`#P`・`merge-pathnames`・`probe-file`・`directory` など）
+- 印字と読み取り：すべての指示子の `format`、印字の変数（`*print-base*`・`*print-circle*` など）、readtable と
+  ユーザー定義の reader macro、pretty printer（`pprint`・`pprint-logical-block`・`set-pprint-dispatch`）
 
-未実装（後の版で実装する予定）：`format` の全体・pretty printer・
+未実装（後の版で実装する予定）：
 複素数・`defstruct`・CLOS・condition
 （`handler-case`・restart）。
 

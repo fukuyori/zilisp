@@ -23,6 +23,7 @@ const streams = @import("streams.zig");
 const pathnames = @import("pathnames.zig");
 const format_mod = @import("format.zig");
 const readtable_mod = @import("../reader/readtable.zig");
+const pprint_mod = @import("../printer/pprint.zig");
 
 const any = function.any_args;
 
@@ -355,7 +356,17 @@ pub const table = [_]Entry{
     .{ .name = "MAKE-SYMBOL", .impl = packages.makeSymbol, .min = 1, .max = 1 },
     .{ .name = "LOAD", .impl = load_mod.load, .min = 1, .max = any },
     // ストリーム（Phase 23。streams.zig）
-    .{ .name = "PPRINT", .impl = streams.pprint, .min = 1, .max = 2 },
+    .{ .name = "PPRINT", .impl = pprint_mod.pprint, .min = 1, .max = 2 },
+    // pretty printer（Phase 24）
+    .{ .name = "PPRINT-NEWLINE", .impl = pprint_mod.pprintNewline, .min = 1, .max = 2 },
+    .{ .name = "PPRINT-INDENT", .impl = pprint_mod.pprintIndent, .min = 2, .max = 3 },
+    .{ .name = "PPRINT-TAB", .impl = pprint_mod.pprintTab, .min = 3, .max = 4 },
+    .{ .name = "PPRINT-FILL", .impl = pprint_mod.pprintFill, .min = 2, .max = 4 },
+    .{ .name = "PPRINT-LINEAR", .impl = pprint_mod.pprintLinear, .min = 2, .max = 4 },
+    .{ .name = "PPRINT-TABULAR", .impl = pprint_mod.pprintTabular, .min = 2, .max = 5 },
+    .{ .name = "PPRINT-DISPATCH", .impl = pprint_mod.pprintDispatch, .min = 1, .max = 2 },
+    .{ .name = "SET-PPRINT-DISPATCH", .impl = pprint_mod.setPprintDispatch, .min = 2, .max = 4 },
+    .{ .name = "COPY-PPRINT-DISPATCH", .impl = pprint_mod.copyPprintDispatch, .min = 0, .max = 1 },
     .{ .name = "WRITE", .impl = streams.write, .min = 1, .max = any },
     .{ .name = "FRESH-LINE", .impl = streams.freshLine, .min = 0, .max = 1 },
     .{ .name = "WRITE-CHAR", .impl = streams.writeChar, .min = 1, .max = 2 },
@@ -447,7 +458,7 @@ pub const table = [_]Entry{
 pub const sys_table = [_]Entry{
     .{ .name = "%DEFUN", .impl = functions.sysDefun, .min = 2, .max = 2 },
     .{ .name = "%PROCLAIM-SPECIAL", .impl = functions.sysProclaimSpecial, .min = 1, .max = 1 },
-    .{ .name = "%DEFMACRO", .impl = macros.sysDefmacro, .min = 2, .max = 2 },
+    .{ .name = "%DEFMACRO", .impl = macros.sysDefmacro, .min = 2, .max = 3 },
     .{ .name = "%DBIND-ERROR", .impl = macros.sysDbindError, .min = 2, .max = 2 },
     .{ .name = "%GETF-KEY", .impl = macros.sysGetfKey, .min = 2, .max = 2 },
     .{ .name = "%CHECK-KEYS", .impl = macros.sysCheckKeys, .min = 4, .max = 4 },
@@ -475,6 +486,10 @@ pub const sys_table = [_]Entry{
     .{ .name = "%DEFPACKAGE", .impl = packages.sysDefpackage, .min = 10, .max = 10 },
     .{ .name = "%FORMAT-REST", .impl = format_mod.formatRest, .min = 3, .max = 3 },
     .{ .name = "%SET-READTABLE-CASE", .impl = readtable_mod.setReadtableCase, .min = 2, .max = 2 },
+    .{ .name = "%PPRINT-LOGICAL-BLOCK", .impl = pprint_mod.sysLogicalBlock, .min = 7, .max = 7 },
+    .{ .name = "%PPRINT-LENGTH-CHECK", .impl = pprint_mod.sysLengthCheck, .min = 2, .max = 2 },
+    .{ .name = "%PPRINT-LENGTH-CHECK*", .impl = pprint_mod.sysLengthCheckStar, .min = 1, .max = 1 },
+    .{ .name = "%OUTPUT-UGLY-OBJECT", .impl = pprint_mod.sysOutputUgly, .min = 2, .max = 2 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {

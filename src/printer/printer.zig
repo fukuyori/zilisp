@@ -310,6 +310,10 @@ const P = struct {
                 if (p.s.readably) return p.notReadable(v);
                 return w.print("#<READTABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
             },
+            .pprint_dispatch => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<PPRINT-DISPATCH-TABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
             // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
             .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
         }

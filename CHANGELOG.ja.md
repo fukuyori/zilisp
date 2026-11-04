@@ -63,7 +63,7 @@
   `*print-circle*`（`#n=` と `#n#`）・`*print-readably*`（読み戻せないものは `print-not-readable`）・`*print-array*`・
   `*print-gensym*`・`*print-escape*`・`*read-default-float-format*` が、`prin1`・`princ`・`print`・`-to-string` の関数・
   `format` の `~A`・`~S`・REPL が印字する値に効く。`write`・`write-to-string` は、すべてのキーワードを受け取る。印字と
-  読み取りの変数の初期値は SBCL 2.6.7 と同じ（`*print-pretty*` は pretty printer まで NIL）。言語試験 `printer.lisp`
+  読み取りの変数の初期値は SBCL 2.6.7 と同じ（`*print-pretty*` は P24d の pretty printer で T に）。言語試験 `printer.lisp`
   （SBCL 2.6.7 と同じ出力）
 - Phase 24（P24b）：pretty printer 以外のすべての指示子の `format`（SBCL 2.6.7 と同じ）：`~A ~S ~W ~C`、`~D ~B ~O ~X ~R ~P`、
   `~F ~E ~G ~$`（SBCL の `flonum-to-string` を移植したので丸めも同じ）、`~% ~& ~| ~~ ~T`、`~* ~? ~( ~) ~[ ~; ~] ~{ ~} ~^`、
@@ -75,6 +75,12 @@
   `*read-eval*` に従う `#.`、`#n=` と `#n#`（循環も）、読み取りと印字の `readtable-case`、すべての read に効く
   `*read-base*`・`*read-default-float-format*`・`*read-suppress*`、`with-standard-io-syntax`。ネイティブのプログラムは
   循環する定数を保つ。言語試験 `readtable.lisp`
+- Phase 24（P24d）：pretty printer（SBCL 2.6.7 の `pprint.lisp` に倣う）。`pprint`・`pprint-logical-block`・`pprint-pop`・
+  `pprint-exit-if-list-exhausted`・`pprint-newline`・`pprint-indent`・`pprint-tab`・`pprint-fill`・`pprint-linear`・
+  `pprint-tabular`、`*print-pprint-dispatch*` と `pprint-dispatch`・`set-pprint-dispatch`・`copy-pprint-dispatch`、
+  特殊形式・マクロ・関数の呼び出し・quote と backquote・配列の SBCL と同じ標準の形、`*print-right-margin*`・
+  `*print-miser-width*`・`*print-lines*`、`format` の `~<…~:>`・`~_`・`~I`・`~:T`。`*print-pretty*` の初期値は
+  SBCL と同じ T。言語試験 `pretty.lisp`・`pretty-default.lisp`（SBCL 2.6.7 と同じ出力）
 
 ### Fixed
 - 基数 8 と 32 で印字する bignum の桁が誤っていた（Zig 0.17.0 の `toStringAlloc`。2 進の桁から作るようにした）

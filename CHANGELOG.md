@@ -71,7 +71,7 @@
   `*print-array*`, `*print-gensym*`, `*print-escape*` and `*read-default-float-format*` take effect in `prin1`, `princ`,
   `print`, the `-to-string` functions, `~A` and `~S` of `format`, and the values printed by the REPL. `write` and
   `write-to-string` take all their keywords. The printer and reader variables have SBCL 2.6.7's initial values
-  (`*print-pretty*` stays NIL until the pretty printer). Language test `printer.lisp` (same output as SBCL 2.6.7)
+  (`*print-pretty*` became T with the pretty printer in P24d). Language test `printer.lisp` (same output as SBCL 2.6.7)
 - Phase 24 (P24b): `format` with all directives except the pretty printer ones, following SBCL 2.6.7: `~A ~S ~W ~C`,
   `~D ~B ~O ~X ~R ~P`, `~F ~E ~G ~$` (SBCL's `flonum-to-string` ported, so rounding is the same), `~% ~& ~| ~~ ~T`,
   `~* ~? ~( ~) ~[ ~; ~] ~{ ~} ~^`, `~< ~>` justification and `~/name/`, with parameters (`v`, `#`, `'c`) and modifiers.
@@ -82,6 +82,13 @@
   with `*read-eval*`, `#n=` and `#n#` (also circular), `readtable-case` for reading and printing, `*read-base*`,
   `*read-default-float-format*` and `*read-suppress*` in every read, and `with-standard-io-syntax`. Native programs keep
   circular constants. Language test `readtable.lisp`
+- Phase 24 (P24d): the pretty printer, following SBCL 2.6.7's `pprint.lisp`. `pprint`, `pprint-logical-block`,
+  `pprint-pop`, `pprint-exit-if-list-exhausted`, `pprint-newline`, `pprint-indent`, `pprint-tab`, `pprint-fill`,
+  `pprint-linear`, `pprint-tabular`, `*print-pprint-dispatch*` with `pprint-dispatch`, `set-pprint-dispatch` and
+  `copy-pprint-dispatch`, SBCL's standard layouts for special forms, macros, function calls, quote and backquote, and
+  arrays, `*print-right-margin*`, `*print-miser-width*` and `*print-lines*`, and the `format` directives `~<...~:>`,
+  `~_`, `~I` and `~:T`. `*print-pretty*` is T at startup, as in SBCL. Language tests `pretty.lisp` and
+  `pretty-default.lisp` (same output as SBCL 2.6.7)
 
 ### Fixed
 - Bignums printed in bases 8 and 32 had wrong digits (Zig 0.17.0's `toStringAlloc`; now built from the base-2 digits)

@@ -56,3 +56,12 @@ NIL
   (LIST A B)) 
 (A B) 
 T 
+("RN") 
+T 
+(T NIL) 
+(0 0) 
+(0 0.0 0) 
+(7) 
+T 
+NIL 
+NIL 

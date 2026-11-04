@@ -502,6 +502,14 @@
                      ((symbolp pat) (bind pat nil))
                      ((consp pat) (bind-pattern (car pat)) (bind-pattern (cdr pat)))
                      (t (zl-sys::%macro-form-error "LOOP の変数が正しくありません" pat))))
+             ;; 初期値のない with：パターンの変数ごとに、型（パターンと同じ形の型のリストか、全体に1つの型）の既定値
+             (bind-defaults (pat type)
+               (cond ((null pat))
+                     ((symbolp pat) (bind pat (type-default type)))
+                     ((consp pat)
+                      (bind-defaults (car pat) (if (consp type) (car type) type))
+                      (bind-defaults (cdr pat) (if (consp type) (cdr type) type)))
+                     (t (zl-sys::%macro-form-error "LOOP の変数が正しくありません" pat))))
              ;; 分解して束縛する（with。パターンの変数を、初期値の一時変数の car・cdr で束縛する）
              (bind-destructuring (pat init)
                (cond ((null pat) (bind (gensym "IGNORE") init))
@@ -739,7 +747,8 @@
                         (progn (next) (setq forms (append forms (parse-selectable))) (go next))))
                  forms))
              (parse-conditional (kw)
-               (let ((test (need-form kw)) (saved it-var) (then nil) (else nil) (it (gensym "IT")))
+               ;; 条件の式も、外側の条件の直後の最初の句なら it を使える（SBCL と同じ。Codex のレビュー 0.3 修正 #5）
+               (let ((test (parse-form-or-it kw)) (saved it-var) (then nil) (else nil) (it (gensym "IT")))
                  (bind it nil)
                  (setq then (parse-clause-group it saved))
                  (if (at "ELSE") (progn (next) (setq else (parse-clause-group saved saved))))
@@ -762,15 +771,24 @@
             (let ((group nil))
               (tagbody
                more
-                 (let* ((var (next)) (type (skip-type)) (init (if (at "=") (progn (next) (need-form "WITH")) (type-default type))))
-                   (setq group (cons (list var init (gensym "WITH")) group)))
+                 (let* ((var (next)) (type (skip-type)))
+                   (if (at "=")
+                       (progn (next) (setq group (cons (list var (need-form "WITH") (gensym "WITH")) group)))
+                       ;; 初期値がなければ、パターンの変数ごとに型による既定値（(a b) of-type fixnum は 0 と 0。
+                       ;; SBCL の loop-make-var と同じ。Codex のレビュー 0.3 修正 #4）
+                       (setq group (cons (list var nil nil type) group))))
                  (if (at "AND") (progn (next) (go more))))
               (setq group (reverse group))
               (if (cdr group)
                   (progn
-                    (dolist (g group) (bind (car (cdr (cdr g))) (car (cdr g))))
-                    (dolist (g group) (bind-destructuring (car g) (car (cdr (cdr g))))))
-                  (bind-destructuring (car (car group)) (car (cdr (car group)))))))
+                    (dolist (g group) (if (car (cdr (cdr g))) (bind (car (cdr (cdr g))) (car (cdr g)))))
+                    (dolist (g group)
+                      (if (car (cdr (cdr g)))
+                          (bind-destructuring (car g) (car (cdr (cdr g))))
+                          (bind-defaults (car g) (car (cdr (cdr (cdr g))))))))
+                  (if (car (cdr (cdr (car group))))
+                      (bind-destructuring (car (car group)) (car (cdr (car group))))
+                      (bind-defaults (car (car group)) (car (cdr (cdr (cdr (car group))))))))))
            ((at "REPEAT")
             (next)
             (let ((c (gensym "COUNT")))

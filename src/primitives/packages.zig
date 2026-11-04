@@ -38,12 +38,9 @@ fn symbolHome(rt: *Runtime, v: Value) Value {
 fn setSymbolHome(rt: *Runtime, v: Value, pkg: Value) void {
     const so = rt.symbolPtr(v);
     const F = @import("../values/object.zig").SymbolFlags;
-    // KEYWORD に入るシンボルは、値が自分自身の定数になる。KEYWORD から出たシンボルは、ふつうのシンボルに戻る
-    // （keywordp とコンパイラ・set・progv の判定を合わせる。SBCL と同じ。agy のレビュー 0.3 #6）
-    if (pkg == rt.keyword.obj) {
-        so.value = v;
-        so.header.flags |= F.constant | F.keyword;
-    } else if (so.package == rt.keyword.obj and so.header.flags & F.keyword != 0) {
+    // KEYWORD から出たシンボル（unintern）は、ふつうのシンボルに戻す（値は残る。SBCL と同じ。agy のレビュー 0.3 #6）。
+    // KEYWORD に import したシンボルは、値も印も変えない（SBCL の import と同じ。Codex のレビュー 0.3 修正 #3）
+    if (pkg != rt.keyword.obj and so.package == rt.keyword.obj and so.header.flags & F.keyword != 0) {
         so.header.flags &= ~(F.constant | F.keyword);
     }
     so.package = pkg;
@@ -645,37 +642,31 @@ fn freeNames(gpa: std.mem.Allocator, names: [][]u8) void {
 }
 
 /// 別名から、重なるものとパッケージの名前と同じものを除く（SBCL と同じ。agy のレビュー 0.3 #13）。
-/// 元の配列は解放し、新しい配列を返す。メモリが足りなければ null（元の配列は解放しない）
+/// 元の配列は解放し、新しい配列を返す。メモリが足りなければ null（そのときも名前と配列はすべて解放する）
 fn uniqueNicknames(th: *Thread, nicks: [][]u8, name: []const u8) ?[][]u8 {
     const gpa = th.rt.gpa;
-    var keep: usize = 0;
-    for (nicks, 0..) |n, i| {
-        if (std.mem.eql(u8, n, name)) continue;
-        var dup = false;
-        for (nicks[0..i]) |m| if (std.mem.eql(u8, m, n)) {
-            dup = true;
-        };
-        if (!dup) keep += 1;
-    }
-    const out = gpa.alloc([]u8, keep) catch {
+    // 残す名前だけと比べる（除いた名前はすぐ解放するので、後の比較に使わない。Codex のレビュー 0.3 修正 #1）
+    var out: std.ArrayList([]u8) = .empty;
+    out.ensureTotalCapacityPrecise(gpa, nicks.len) catch {
         _ = th.outOfMemory();
+        freeNames(gpa, nicks);
+        gpa.free(nicks);
         return null;
     };
-    var k: usize = 0;
-    for (nicks, 0..) |n, i| {
+    for (nicks) |n| {
         var drop = std.mem.eql(u8, n, name);
-        if (!drop) for (nicks[0..i]) |m| if (std.mem.eql(u8, m, n)) {
+        if (!drop) for (out.items) |m| if (std.mem.eql(u8, m, n)) {
             drop = true;
         };
-        if (drop) {
-            gpa.free(n);
-        } else {
-            out[k] = n;
-            k += 1;
-        }
+        if (drop) gpa.free(n) else out.appendAssumeCapacity(n);
     }
     gpa.free(nicks);
-    return out;
+    return out.toOwnedSlice(gpa) catch {
+        _ = th.outOfMemory();
+        for (out.items) |n| gpa.free(n);
+        out.deinit(gpa);
+        return null;
+    };
 }
 
 /// 名前・別名が、ほかのパッケージ（except 以外）の名前・別名と重なれば package-error を記録して真
@@ -695,11 +686,7 @@ pub fn makePackage(th: *Thread, args: []const Value) Value {
     const name = designatorName(th, args[0]) orelse return Value.unwind;
     defer rt.gpa.free(name);
     var nicks = namesArg(th, kv[0] orelse Value.nil) orelse return Value.unwind;
-    nicks = uniqueNicknames(th, nicks, name) orelse {
-        freeNames(rt.gpa, nicks);
-        rt.gpa.free(nicks);
-        return Value.unwind;
-    };
+    nicks = uniqueNicknames(th, nicks, name) orelse return Value.unwind;
     defer {
         freeNames(rt.gpa, nicks);
         rt.gpa.free(nicks);
@@ -724,8 +711,6 @@ pub fn renamePackage(th: *Thread, args: []const Value) Value {
     };
     const nicks = uniqueNicknames(th, nicks0, name) orelse {
         rt.gpa.free(name);
-        freeNames(rt.gpa, nicks0);
-        rt.gpa.free(nicks0);
         return Value.unwind;
     };
     var ok = !nameTaken(th, name, p, args[1]);

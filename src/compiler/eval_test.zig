@@ -1913,6 +1913,9 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         .{ "(defpackage :review-ln (:local-nicknames (:cl :cl-user)))", .package_error },
         .{ "(format nil \"~0,0<abc~>\")", .division_by_zero },
         .{ "(read-delimited-list #\\] (make-string-input-stream \"a)\"))", .reader_error },
+        // その修正への Codex のレビュー：ディレクトリの形の誤りは simple-error（SBCL の import-directory と同じ）
+        .{ "(make-pathname :directory '(:bogus \"a\"))", .simple_error },
+        .{ "(make-pathname :directory '(:relative :bogus))", .simple_error },
     }) |c| try expectError(&e, c[0], c[1]);
     // 大きな列（言語試験の GC stress では遅いので、ここで確かめる）
     try expectValue(&e, "(length (mapcan #'list (loop for i from 1 to 70000 collect i)))", "70000");

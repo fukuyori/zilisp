@@ -129,6 +129,11 @@
     `#n=` labels (an uninterned symbol used by two constants stays the same symbol).
   - Language test `review-cases.lisp` (same output as SBCL 2.6.7; also a gc-stress version) and unit tests for 31
     error cases compared with SBCL.
+  - A Codex review of these fixes found 8 more issues, now fixed: removing duplicate package nicknames read freed
+    strings; strings copied by `make-pathname` were held where the GC could not see them; importing a symbol into
+    KEYWORD replaced its value; `with` destructuring without an initial value used the wrong defaults; `it` in the
+    test of a nested condition; a pathname without a directory against `(:absolute :wild-inferiors)`; malformed
+    directories in `make-pathname` (simple-error, as in SBCL); the second value of `parse-namestring` for streams.
 - Standard output and standard error were written at file positions from 0, so redirecting both to one file, or
   appending with `>>`, overwrote earlier output (they are now written as streams)
 - Codex review (Phase 24), 8 issues: `format` copied list arguments where the GC could not see them, so a `~/name/`

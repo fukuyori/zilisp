@@ -480,7 +480,8 @@ pub fn parseNamestring(th: *Thread, args: []const Value) Value {
     // パス名とファイルストリームは、そのパス名と :start（CLHS parse-namestring。agy のレビュー 0.3 #12）
     if (isPathname(thing) or (thing.isOther() and Runtime.kindOf(thing) == .stream)) {
         const pn = designator(th, thing) orelse return Value.unwind;
-        th.mv[1] = kv[0] orelse Value.fromFixnum(0);
+        // パス名なら :start、ストリームなら NIL（SBCL の %parse-namestring と同じ。Codex のレビュー 0.3 修正 #8）
+        th.mv[1] = if (isPathname(thing)) (kv[0] orelse Value.fromFixnum(0)) else Value.nil;
         th.mv_count = 2;
         return pn;
     }
@@ -515,41 +516,53 @@ fn directoryArg(th: *Thread, v: Value) ?Value {
     const rt = th.rt;
     if (v == Value.nil) return v;
     if (v.isCons()) {
-        // 要素の文字列は単純な文字列に写し、:back を取り除く。要素は文字列か :wild・:wild-inferiors・:up・:back
-        var items: std.ArrayList(Value) = .empty;
-        defer items.deinit(rt.gpa);
-        var x = v;
-        var first = true;
+        // 先頭は :absolute か :relative、後ろは文字列か :wild・:wild-inferiors・:up・:back。それ以外は simple-error
+        // （SBCL の import-directory と同じ。Codex のレビュー 0.3 修正 #7）。要素の文字列は単純な文字列に写して、
+        // すぐ新しいリストにつなぐ（写したものを GC から見える所に置く。Codex のレビュー 0.3 修正 #2）
+        const first = Runtime.consPtr(v).car;
+        if (first != (kw(th, "ABSOLUTE") orelse return null) and first != (kw(th, "RELATIVE") orelse return null)) {
+            _ = th.signal(.simple_error, "パス名のディレクトリの形が正しくありません", v, Value.unbound);
+            return null;
+        }
+        const allowed = [_]Value{
+            kw(th, "WILD") orelse return null,
+            kw(th, "WILD-INFERIORS") orelse return null,
+            kw(th, "UP") orelse return null,
+            kw(th, "BACK") orelse return null,
+        };
+        const head = rt.cons(first, Value.nil) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+        var tail = head;
+        var x = Runtime.consPtr(v).cdr;
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
             var e = Runtime.consPtr(x).car;
             if (arrays.isStringLike(e)) {
                 e = simpleString(th, e) orelse return null;
-            } else if (!(e.isOther() and Runtime.kindOf(e) == .symbol and rt.symbolPtr(e).package == rt.keyword.obj) or
-                (first and e != (kw(th, "ABSOLUTE") orelse return null) and e != (kw(th, "RELATIVE") orelse return null)))
-            {
-                _ = th.typeError(v, rt.syms.list);
-                return null;
+            } else {
+                var ok = false;
+                for (allowed) |a| if (e == a) {
+                    ok = true;
+                };
+                if (!ok) {
+                    _ = th.signal(.simple_error, "パス名のディレクトリの形が正しくありません", v, Value.unbound);
+                    return null;
+                }
             }
-            first = false;
-            items.append(rt.gpa, e) catch {
+            const c = rt.cons(e, Value.nil) catch {
                 _ = th.outOfMemory();
                 return null;
             };
+            Runtime.consPtr(tail).cdr = c;
+            tail = c;
         }
         if (x != Value.nil) {
             _ = th.typeError(v, rt.syms.list);
             return null;
         }
-        var list = Value.nil;
-        var i = items.items.len;
-        while (i > 0) {
-            i -= 1;
-            list = rt.cons(items.items[i], list) catch {
-                _ = th.outOfMemory();
-                return null;
-            };
-        }
-        return canonicalDirectory(th, list);
+        std.mem.doNotOptimizeAway(head);
+        return canonicalDirectory(th, head);
     }
     if (arrays.isStringLike(v)) {
         const abs = kw(th, "ABSOLUTE") orelse return null;
@@ -718,9 +731,24 @@ pub fn pathnameMatchP(th: *Thread, args: []const Value) Value {
     const wp = ptr(w);
     // ディレクトリのないパス名は (:relative) として照合する（"**/*.txt" は "foo.txt" に合う。SBCL と同じ。
     // agy のレビュー 0.3 #12）
-    const pdir = if (pp.directory == Value.nil) (th.rt.cons(kw(th, "RELATIVE") orelse return Value.unwind, Value.nil) catch return th.outOfMemory()) else pp.directory;
-    const dir_ok = wp.directory == Value.nil or wp.directory == (kw(th, "WILD") orelse return Value.unwind) or
-        (pdir.isCons() and directoryMatch(th, pdir, wp.directory));
+    // （:absolute でも :relative でも、残りが :wild-inferiors だけなら合う。SBCL の directory-components-match と同じ。
+    // Codex のレビュー 0.3 修正 #6）
+    var dir_ok = wp.directory == Value.nil or wp.directory == (kw(th, "WILD") orelse return Value.unwind);
+    if (!dir_ok) {
+        if (pp.directory == Value.nil) {
+            if (wp.directory.isCons()) {
+                const rest = Runtime.consPtr(wp.directory).cdr;
+                const wi = kw(th, "WILD-INFERIORS") orelse return Value.unwind;
+                dir_ok = rest == Value.nil and Runtime.consPtr(wp.directory).car == (kw(th, "RELATIVE") orelse return Value.unwind);
+                var y = rest;
+                var all_wi = rest != Value.nil;
+                while (y.isCons()) : (y = Runtime.consPtr(y).cdr) {
+                    if (Runtime.consPtr(y).car != wi) all_wi = false;
+                }
+                if (all_wi) dir_ok = true;
+            }
+        } else dir_ok = pp.directory.isCons() and directoryMatch(th, pp.directory, wp.directory);
+    }
     const version_ok = wp.version == (kw(th, "NEWEST") orelse return Value.unwind) or fieldMatch(th, pp.version, wp.version);
     return th.rt.boolean(fieldMatch(th, pp.device, wp.device) and dir_ok and
         fieldMatch(th, pp.name, wp.name) and fieldMatch(th, pp.type, wp.type) and version_ok);

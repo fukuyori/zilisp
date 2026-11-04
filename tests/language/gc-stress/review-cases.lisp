@@ -83,4 +83,16 @@
 (print (read-delimited-list #\] (make-string-input-stream "a b ]")))
 ;; 定数の中で共有する uninterned なシンボル（ネイティブでも同じ）
 (print (let ((x '(#1=#:g))) (eq (car x) '#1#)))
+;; 0.3 のレビューの修正への Codex のレビュー（8 件）
+(print (package-nicknames (make-package "REVIEW-PKG-3" :nicknames '("RN" "RN" "RN"))))
+(print (let* ((dirs (loop repeat 64 collect (make-array 1 :element-type 'character :adjustable t :initial-element #\a)))
+              (p (make-pathname :directory (cons :relative dirs))))
+         (every (lambda (s) (string= s "a")) (cdr (pathname-directory p)))))
+(print (let ((s (make-symbol "REVIEW-IMPORT"))) (set s 17) (import s :keyword) (list (eql (symbol-value s) 17) (eq (symbol-value s) s))))
+(print (loop with (a b) of-type fixnum return (list a b)))
+(print (loop with (a b) of-type (fixnum float) and c of-type fixnum return (list a b c)))
+(print (loop for x in '(7) when x when it collect it))
+(print (pathname-match-p (make-pathname :name "foo" :type "txt") (make-pathname :directory '(:absolute :wild-inferiors) :name :wild :type "txt")))
+(print (pathname-match-p (make-pathname :name "foo" :type "txt") (make-pathname :directory '(:absolute "x") :name :wild :type "txt")))
+(print (with-open-file (s (f "tmp.txt") :direction :output :if-exists :supersede) (nth-value 1 (parse-namestring s))))
 (terpri)

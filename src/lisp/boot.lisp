@@ -352,6 +352,13 @@
         (zl-sys::%macro-form-error "DO の終了の節はリストでなければなりません" end-clause))
     (dolist (s specs)
       (cond ((symbolp s) (setq bindings (cons s bindings)))
+            ;; (変数 [初期値 [更新]])：変数はシンボル、長さ 1〜3 の真のリスト（SBCL と同じくそれ以外はエラー）
+            ((and (consp s)
+                  (or (not (symbolp (car s)))
+                      (not (listp (cdr s)))
+                      (and (cdr s) (not (listp (cdr (cdr s)))))
+                      (and (cdr s) (cdr (cdr s)) (cdr (cdr (cdr s))))))
+             (zl-sys::%macro-form-error "DO の変数の指定が正しくありません" s))
             ((consp s)
              (setq bindings (cons (if (cdr s) (list (car s) (car (cdr s))) (list (car s))) bindings))
              (if (cdr (cdr s))
@@ -418,20 +425,21 @@
               (t (if tail (rplacd tail l) (setq result l))
                  (setq tail (last l))))))))
 
+;; 結果のリストを nconc でつなぐ（apply を使うと、要素の数が call-arguments-limit を超えられない。agy のレビュー 0.3 #6）
 (defun mapcan (function list &rest more-lists)
-  (apply #'nconc (apply #'mapcar function list more-lists)))
+  (let ((head nil) (tail nil))
+    (do ((rs (apply #'mapcar function list more-lists) (cdr rs)))
+        ((null rs) head)
+      (let ((l (car rs)))
+        (cond ((null (cdr rs)) (if tail (rplacd tail l) (setq head l)))
+              ((null l))
+              (t (if tail (rplacd tail l) (setq head l))
+                 (setq tail (last l))))))))
 
-;; 列の start〜end の要素のリスト
+;; 列の start〜end の要素のリスト。範囲と型は subseq が確かめる（SBCL と同じ type-error。agy のレビュー 0.3 #2）
 (defun zl-sys::%sequence-list (seq start end)
-  (let ((result nil) (i 0))
-    (if (listp seq)
-        (dolist (x seq)
-          (if (and (>= i start) (or (null end) (< i end))) (setq result (cons x result)))
-          (setq i (1+ i)))
-        (do ((j start (1+ j)))
-            ((>= j (or end (length seq))))
-          (setq result (cons (aref seq j) result))))
-    (nreverse result)))
+  (let ((s (subseq seq start end)))
+    (if (listp s) s (coerce s 'list))))
 
 (defun reduce (function sequence &key key from-end (start 0) end (initial-value nil initial-value-p))
   (let ((items (zl-sys::%sequence-list sequence start end)))
@@ -494,6 +502,20 @@
                      ((symbolp pat) (bind pat nil))
                      ((consp pat) (bind-pattern (car pat)) (bind-pattern (cdr pat)))
                      (t (zl-sys::%macro-form-error "LOOP の変数が正しくありません" pat))))
+             ;; 分解して束縛する（with。パターンの変数を、初期値の一時変数の car・cdr で束縛する）
+             (bind-destructuring (pat init)
+               (cond ((null pat) (bind (gensym "IGNORE") init))
+                     ((symbolp pat) (bind pat init))
+                     ((consp pat)
+                      (let ((g (gensym "WITH")))
+                        (bind g init)
+                        (labels ((walk (p e)
+                                   (cond ((null p))
+                                         ((symbolp p) (bind p e))
+                                         ((consp p) (walk (car p) `(car ,e)) (walk (cdr p) `(cdr ,e)))
+                                         (t (zl-sys::%macro-form-error "LOOP の変数が正しくありません" p)))))
+                          (walk pat g))))
+                     (t (zl-sys::%macro-form-error "LOOP の変数が正しくありません" pat))))
              (destructure (pat expr)
                (cond ((null pat) nil)
                      ((symbolp pat) (list (list 'setq pat expr)))
@@ -528,8 +550,9 @@
                    ((at "IN")
                     (next)
                     (let ((tail (gensym "TAIL")) (list-form (need-form "IN")) (by nil))
-                      (if (at "BY") (progn (next) (setq by (need-form "BY"))))
                       (bind tail list-form)
+                      ;; by の関数は初めに一度だけ評価する（SBCL と同じ。Codex のレビュー 0.3 #9）
+                      (if (at "BY") (let ((f (gensym "BY"))) (next) (bind f (need-form "BY")) (setq by f)))
                       (bind-pattern var)
                       (let ((test `(if (endp ,tail) (go zl-sys::%loop-end))))
                         (add-first (cons test (assign var `(car ,tail))))
@@ -538,8 +561,9 @@
                    ((at "ON")
                     (next)
                     (let ((tail (gensym "TAIL")) (list-form (need-form "ON")) (by nil))
-                      (if (at "BY") (progn (next) (setq by (need-form "BY"))))
                       (bind tail list-form)
+                      ;; by の関数は初めに一度だけ評価する（SBCL と同じ。Codex のレビュー 0.3 #9）
+                      (if (at "BY") (let ((f (gensym "BY"))) (next) (bind f (need-form "BY")) (setq by f)))
                       (bind-pattern var)
                       (let ((test `(if (atom ,tail) (go zl-sys::%loop-end))))
                         (add-first (cons test (assign var tail)))
@@ -574,7 +598,9 @@
                           (progn
                             (next)
                             (let ((u (next)))
-                              (if (not (and (consp u) (consp (cdr u))))
+                              ;; hash-keys には (hash-value 変数)、hash-values には (hash-key 変数)（SBCL と同じ）
+                              (if (not (and (consp u) (consp (cdr u)) (null (cdr (cdr u)))
+                                            (zl-sys::%loop-keyword-p (car u) (if keys '("HASH-VALUE" "HASH-VALUES") '("HASH-KEY" "HASH-KEYS")))))
                                   (zl-sys::%macro-form-error "LOOP の using の形が正しくありません" u))
                               (setq other (car (cdr u))))))
                       (bind-pattern var)
@@ -588,27 +614,38 @@
                     (parse-arithmetic var))
                    (t (zl-sys::%macro-form-error "LOOP の for の形が正しくありません" (peek))))
                  (no-and "FOR")))
+             ;; 部分節は書いた順に評価する（CLHS 6.1.2.1.1）。上り・下りの向きが矛盾すればエラー、by は正の数（SBCL と同じ。
+             ;; agy のレビュー 0.3 #4）
              (parse-arithmetic (var)
-               (let ((start 0) (limit nil) (has-limit nil) (inclusive t) (down nil) (by nil))
+               (let ((has-start nil) (has-limit nil) (has-by nil) (inclusive t) (start-dir nil) (limit-dir nil)
+                     (lim (gensym "LIMIT")) (stp (gensym "STEP")) (down nil) (test nil))
                  (if (not (and var (symbolp var)))
                      (zl-sys::%macro-form-error "LOOP の for の数の変数はシンボルでなければなりません" var))
                  (tagbody
                   next
-                    (cond ((at "FROM") (next) (setq start (need-form "FROM")))
-                          ((at "UPFROM") (next) (setq start (need-form "UPFROM")))
-                          ((at "DOWNFROM") (next) (setq start (need-form "DOWNFROM")) (setq down t))
-                          ((at "TO" "UPTO") (next) (setq limit (need-form "TO")) (setq has-limit t) (setq inclusive t))
-                          ((at "BELOW") (next) (setq limit (need-form "BELOW")) (setq has-limit t) (setq inclusive nil))
-                          ((at "DOWNTO") (next) (setq limit (need-form "DOWNTO")) (setq has-limit t) (setq inclusive t) (setq down t))
-                          ((at "ABOVE") (next) (setq limit (need-form "ABOVE")) (setq has-limit t) (setq inclusive nil) (setq down t))
-                          ((at "BY") (next) (setq by (need-form "BY")))
+                    (cond ((at "FROM" "UPFROM" "DOWNFROM")
+                           (if has-start (zl-sys::%macro-form-error "LOOP の for の開始の値が2つあります" (peek)))
+                           (setq start-dir (cond ((at "UPFROM") :up) ((at "DOWNFROM") :down) (t nil)))
+                           (next) (setq has-start t) (bind var (need-form "FROM")))
+                          ((at "TO" "UPTO" "BELOW" "DOWNTO" "ABOVE")
+                           (if has-limit (zl-sys::%macro-form-error "LOOP の for の終わりの値が2つあります" (peek)))
+                           (setq limit-dir (cond ((at "UPTO" "BELOW") :up) ((at "DOWNTO" "ABOVE") :down) (t nil)))
+                           (setq inclusive (not (at "BELOW" "ABOVE")))
+                           (next) (setq has-limit t) (bind lim (need-form "TO")))
+                          ((at "BY")
+                           (if has-by (zl-sys::%macro-form-error "LOOP の for の by が2つあります" (peek)))
+                           (next) (setq has-by t) (bind stp (need-form "BY")))
                           (t (go done)))
                     (go next)
                   done)
-                 (bind var start)
-                 (let ((lim (gensym "LIMIT")) (stp (gensym "STEP")) (test nil))
-                   (if has-limit (bind lim limit))
-                   (bind stp (if by by 1))
+                 (if (and start-dir limit-dir (not (eq start-dir limit-dir)))
+                     (zl-sys::%macro-form-error "LOOP の for の上り・下りの向きが矛盾しています" var))
+                 (setq down (or (eq start-dir :down) (eq limit-dir :down)))
+                 (if (not has-start) (bind var 0))
+                 (if has-by
+                     (add-first (list `(if (not (plusp ,stp)) (zl-sys::%type-error ,stp '(and real (satisfies plusp))))))
+                     (bind stp 1))
+                 (progn
                    (if has-limit
                        (setq test `(if ,(if down
                                             (if inclusive `(< ,var ,lim) `(<= ,var ,lim))
@@ -627,9 +664,15 @@
                        (setq default-return result-var)))
                  (dolist (e bound-accumulators)
                    (if (eq (car e) var) (setq entry e)))
-                 (if (null entry)
+                 ;; 同じ変数に、種類の違う集め方（リスト・数の和と数・最大と最小）は混ぜられない（SBCL と同じ。agy のレビュー 0.3 #5）
+                 (let ((category (cond ((zl-sys::%loop-keyword-p kind '("SUM" "SUMMING" "COUNT" "COUNTING")) :sum)
+                                       ((zl-sys::%loop-keyword-p kind '("MAXIMIZE" "MAXIMIZING" "MINIMIZE" "MINIMIZING")) :minmax)
+                                       (t :list))))
+                   (if (and entry (not (eq (car (cdr (cdr entry))) category)))
+                       (zl-sys::%macro-form-error "LOOP で種類の違う集め方を同じ変数に使っています" kind))
+                   (if (null entry) (setq entry (list var (gensym "TAIL") category))))
+                 (if (not (member entry bound-accumulators))
                      (progn
-                       (setq entry (list var (gensym "TAIL")))
                        (setq bound-accumulators (cons entry bound-accumulators))
                        (bind var (if (zl-sys::%loop-keyword-p kind '("SUM" "SUMMING" "COUNT" "COUNTING")) 0 nil))
                        (bind (car (cdr entry)) nil)))
@@ -684,8 +727,12 @@
                  ((at "WHEN" "IF" "UNLESS")
                   (list (parse-conditional (next))))
                  (t (zl-sys::%macro-form-error "LOOP の条件の中に置けない句です" (peek)))))
-             (parse-clause-group ()
+             ;; it は、条件の直後の最初の句の中でだけ使える（CLHS 6.1.6.2。and の後ろと else の後ろでは使えない。
+             ;; agy のレビュー 0.3 #5）
+             (parse-clause-group (it outer)
+               (setq it-var it)
                (let ((forms (parse-selectable)))
+                 (setq it-var outer)
                  (tagbody
                   next
                     (if (at "AND")
@@ -693,10 +740,9 @@
                  forms))
              (parse-conditional (kw)
                (let ((test (need-form kw)) (saved it-var) (then nil) (else nil) (it (gensym "IT")))
-                 (setq it-var it)
                  (bind it nil)
-                 (setq then (parse-clause-group))
-                 (if (at "ELSE") (progn (next) (setq else (parse-clause-group))))
+                 (setq then (parse-clause-group it saved))
+                 (if (at "ELSE") (progn (next) (setq else (parse-clause-group saved saved))))
                  (if (at "END") (next))
                  (setq it-var saved)
                  (let ((cond-form (if (zl-sys::%loop-keyword-p kw '("UNLESS")) `(not (setq ,it ,test)) `(setq ,it ,test))))
@@ -709,11 +755,22 @@
          (if (null rest) (go done))
          (cond
            ((at "FOR" "AS") (next) (parse-for))
+           ;; with 変数 [型] [= 初期値] {and …}：分解（(a b)・(a . b)・nil）と、and による並列の束縛（初期値をすべて
+           ;; 一時変数に入れてから変数を束縛する。CLHS 6.1.2.2。agy のレビュー 0.3 #3）
            ((at "WITH")
             (next)
-            (let* ((var (next)) (type (skip-type)))
-              (if (at "=") (progn (next) (bind var (need-form "WITH"))) (bind var (type-default type)))
-              (no-and "WITH")))
+            (let ((group nil))
+              (tagbody
+               more
+                 (let* ((var (next)) (type (skip-type)) (init (if (at "=") (progn (next) (need-form "WITH")) (type-default type))))
+                   (setq group (cons (list var init (gensym "WITH")) group)))
+                 (if (at "AND") (progn (next) (go more))))
+              (setq group (reverse group))
+              (if (cdr group)
+                  (progn
+                    (dolist (g group) (bind (car (cdr (cdr g))) (car (cdr g))))
+                    (dolist (g group) (bind-destructuring (car g) (car (cdr (cdr g))))))
+                  (bind-destructuring (car (car group)) (car (cdr (car group)))))))
            ((at "REPEAT")
             (next)
             (let ((c (gensym "COUNT")))
@@ -812,7 +869,10 @@
   (do ((x list (cdr x)) (n 0 (1+ n)))
       ((atom x) n)))
 
+;; n は負でない整数。0 ならドット対の末尾も保つ（SBCL と同じ。Codex のレビュー 0.3 #7・#10）
 (defun butlast (list &optional (n 1))
+  (if (not (and (integerp n) (>= n 0))) (zl-sys::%type-error n 'unsigned-byte))
+  (if (eql n 0) (return-from butlast (copy-list list)))
   (let ((len (zl-sys::%cons-count list)))
     (if (<= len n)
         nil
@@ -823,6 +883,8 @@
               (setq tail c x (cdr x))))))))
 
 (defun nbutlast (list &optional (n 1))
+  (if (not (and (integerp n) (>= n 0))) (zl-sys::%type-error n 'unsigned-byte))
+  (if (eql n 0) (return-from nbutlast list))
   (let ((len (zl-sys::%cons-count list)))
     (if (<= len n)
         nil
@@ -1084,8 +1146,12 @@
         (:use (setq use-p t use (append use (zl-sys::%defpackage-names opt))))
         (:shadow (setq shadow (append shadow (zl-sys::%defpackage-names opt))))
         (:shadowing-import-from
+         ;; パッケージの指定がなければエラー（agy のレビュー 0.3 #13）
+         (unless (consp (cdr opt)) (zl-sys::%macro-form-error "DEFPACKAGE の :shadowing-import-from にパッケージがありません" opt))
          (push (cons (string (cadr opt)) (mapcar #'string (cddr opt))) shadowing-imports))
         (:import-from
+         ;; パッケージの指定がなければエラー（agy のレビュー 0.3 #13）
+         (unless (consp (cdr opt)) (zl-sys::%macro-form-error "DEFPACKAGE の :import-from にパッケージがありません" opt))
          (push (cons (string (cadr opt)) (mapcar #'string (cddr opt))) imports))
         (:intern (setq interns (append interns (zl-sys::%defpackage-names opt))))
         (:export (setq exports (append exports (zl-sys::%defpackage-names opt))))

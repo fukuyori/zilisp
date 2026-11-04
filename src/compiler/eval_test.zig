@@ -1879,6 +1879,45 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         .{ "(read-from-string \"#A(x t)\")", .type_error },
         .{ "(read-from-string \"#2A((1 2) . 3)\")", .type_error },
     }) |c| try expectError(&e, c[0], c[1]);
+    // 0.3 のレビュー（agy・Codex）で直したエラー（SBCL 2.6.7 と同じ種類。SBCL の do・loop の形の誤りは simple-error・
+    // program-error だが、Zilisp は error がまだない（Phase 25）ので program-error）
+    for ([_]struct { []const u8, @import("../runtime/thread.zig").ErrorKind }{
+        .{ "(reduce #'+ '(1 2 3) :start -1 :end 10)", .type_error },
+        .{ "(reduce #'+ '(1 2 3) :start 2 :end 1)", .type_error },
+        .{ "(reduce #'+ #(1 2 3) :start 2 :end 1)", .type_error },
+        .{ "(reduce #'+ 123 :start 0 :end 0)", .type_error },
+        .{ "(loop for i upfrom 5 downto 1 collect i)", .program_error },
+        .{ "(loop for x in '(1 2) collect x sum x)", .program_error },
+        .{ "(let ((h (make-hash-table))) (loop for k being the hash-keys of h using (hash-key v) collect k))", .program_error },
+        .{ "(loop for x in '(10) when x do (identity x) and collect it)", .unbound_variable },
+        .{ "(loop for i from 1 to 5 by -1 collect i)", .type_error },
+        .{ "(do ((x 1 2 3)) (t x))", .program_error },
+        .{ "(make-sequence '(vector t -1) 0)", .simple_error },
+        .{ "(coerce '(1) '(string -1))", .simple_error },
+        .{ "(make-string 4294967296)", .storage_condition },
+        .{ "(butlast '(1 2) -1)", .type_error },
+        .{ "(adjust-array (make-array 2) 3 :initial-element 9 :initial-contents '(1 2 3))", .simple_error },
+        .{ "(make-array 2 :initial-element 9 :initial-contents '(1 2))", .simple_error },
+        .{ "(adjust-array (make-array 1 :element-type 'character) 2 :element-type t)", .simple_error },
+        .{ "(let ((v (make-array 5 :fill-pointer 4 :adjustable t))) (adjust-array v 2))", .simple_error },
+        .{ "(make-string 2 :element-type 'integer)", .simple_error },
+        .{ "(make-array 2 :initial-contents '(1 2 . 3))", .type_error },
+        .{ "(fresh-line (make-string-input-stream \"abc\"))", .type_error },
+        .{ "(let ((s (make-string-output-stream))) (close s) (fresh-line s))", .stream_error },
+        .{ "(let ((s (make-string-output-stream))) (close s) (format s \"~&\"))", .stream_error },
+        .{ "(let ((s (make-string-output-stream))) (close s) (clear-output s))", .stream_error },
+        .{ "(let ((s (make-string-output-stream))) (close s) (file-position s))", .stream_error },
+        .{ "(make-broadcast-stream (make-string-input-stream \"abc\"))", .type_error },
+        .{ "(make-two-way-stream (make-string-output-stream) (make-string-input-stream \"abc\"))", .type_error },
+        .{ "(make-pathname :name 123)", .type_error },
+        .{ "(defpackage :review-ln (:local-nicknames (:cl :cl-user)))", .package_error },
+        .{ "(format nil \"~0,0<abc~>\")", .division_by_zero },
+        .{ "(read-delimited-list #\\] (make-string-input-stream \"a)\"))", .reader_error },
+    }) |c| try expectError(&e, c[0], c[1]);
+    // 大きな列（言語試験の GC stress では遅いので、ここで確かめる）
+    try expectValue(&e, "(length (mapcan #'list (loop for i from 1 to 70000 collect i)))", "70000");
+    try expectValue(&e, "(length (make-array 20000 :initial-contents (make-list 20000 :initial-element 1)))", "20000");
+    try expectValue(&e, "(length (read-from-string (concatenate 'string \"#1A(\" (format nil \"~{~*0 ~}\" (make-list 20000)) \")\")))", "20000");
     // ~<…~:>（pretty printer の論理ブロック。P24d）：引数がリストでなければ、そのまま書く
     try expectValue(&e, "(format nil \"~<a~:>\" nil)", "\"a\"");
     try expectValue(&e, "(format nil \"~:<~a~:>\" 5)", "\"5\"");

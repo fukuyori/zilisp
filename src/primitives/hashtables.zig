@@ -154,8 +154,28 @@ pub fn tablesEqualp(th: *Thread, x: Value, y: Value) ?bool {
 
 /// (sxhash オブジェクト)：equal で等しいものは同じ値になる、負でない fixnum（CLHS sxhash）
 pub fn sxhash(th: *Thread, args: []const Value) Value {
-    _ = th;
-    return Value.fromFixnum(@intCast(hashEqual(args[0], 4) & ((1 << 60) - 1)));
+    return Value.fromFixnum(@intCast(hashSx(th.rt, args[0], 4) & ((1 << 60) - 1)));
+}
+
+/// sxhash の値：equal のハッシュ値と同じだが、シンボルはアドレスではなく名前から求める（CLHS sxhash は、似たものに
+/// 同じ値を求める。別のプロセスでも同じ値になる。SBCL も名前から。Codex のレビュー 0.3 #3）
+fn hashSx(rt: *Runtime, v: Value, depth: u32) u64 {
+    if (v.isCons()) {
+        if (depth == 0) return 0x9e3779b97f4a7c15;
+        const c = Runtime.consPtr(v);
+        return mix(hashSx(rt, c.car, depth - 1) *% 31 +% hashSx(rt, c.cdr, depth - 1));
+    }
+    if (v == Value.nil or (v.isOther() and Runtime.kindOf(v) == .symbol)) {
+        const name = if (v == Value.nil) rt.nil_symbol.name else rt.symbolPtr(v).name;
+        return mix(hashEqual(name, 1) ^ 0x53594d42);
+    }
+    if (v.isOther() and Runtime.kindOf(v) == .pathname) {
+        const p: *const object.Pathname = @ptrCast(@alignCast(v.pointer()));
+        var h: u64 = 0x50415448;
+        for ([_]Value{ p.device, p.directory, p.name, p.type }) |x| h = mix(h *% 31 +% hashSx(rt, x, 4));
+        return h;
+    }
+    return hashEqual(v, depth);
 }
 
 // ---------------------------------------------------------------------------

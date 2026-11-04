@@ -28,6 +28,10 @@ pub const ToplevelForm = struct {
     lambda: *Lambda,
     line: u32,
     col: u32,
+    /// このフォームまでに使う定数と lambda の数（起動時に一度に読まず、フォームを実行する直前に読む。
+    /// 後ろのフォームのシンボルを先に intern しない。agy のレビュー 0.3 #4）
+    nconsts: u32 = 0,
+    nlambdas: u32 = 0,
 };
 
 const LambdaInfo = struct {
@@ -145,17 +149,15 @@ pub const Emitter = struct {
         settings.readably = true;
         settings.array = true;
         settings.gensym = true;
-        for (e.consts.items) |v| {
-            var bad: Value = Value.nil;
-            printer.writeObject(e.rt, &text.writer, v, settings, &bad) catch |err| switch (err) {
-                error.NotReadable => {
-                    e.not_readable = bad;
-                    return error.NotReadable;
-                },
-                error.WriteFailed => return error.WriteFailed,
-            };
-            try text.writer.writeByte('\n');
-        }
+        var bad: Value = Value.nil;
+        var index: usize = 0;
+        printer.writeObjects(e.rt, &text.writer, e.consts.items, settings, &bad, &index) catch |err| switch (err) {
+            error.NotReadable => {
+                e.not_readable = bad;
+                return error.NotReadable;
+            },
+            error.WriteFailed => return error.WriteFailed,
+        };
         try w.writeAll("const constants_text = ");
         try writeZigString(w, text.written());
         try w.writeAll(";\n\nconst lambdas = [_]N.LambdaSpec{\n");
@@ -181,7 +183,7 @@ pub const Emitter = struct {
         try w.writeAll("};\n\nconst toplevels = [_]N.Toplevel{\n");
         for (toplevels) |t| {
             const id = e.lambda_ids.get(t.lambda).?;
-            try w.print("    .{{ .entry = &@\"{s}\", .line = {d}, .col = {d} }},\n", .{ e.lambdas.items[id].fn_name, t.line, t.col });
+            try w.print("    .{{ .entry = &@\"{s}\", .line = {d}, .col = {d}, .nconsts = {d}, .nlambdas = {d} }},\n", .{ e.lambdas.items[id].fn_name, t.line, t.col, t.nconsts, t.nlambdas });
         }
         try w.writeAll("};\n\nconst program: N.Program = .{\n    .file = ");
         try writeZigString(w, file);
@@ -196,7 +198,12 @@ pub const Emitter = struct {
 
     /// lambda の名前の定数を、finish の前に登録する（定数のテキストに含めるため）
     pub fn registerNames(e: *Emitter) Error!void {
-        for (e.lambdas.items) |li| {
+        return e.registerNamesFrom(0);
+    }
+
+    /// start 番目からの lambda の名前の定数を登録する（トップレベルのフォームごと）
+    pub fn registerNamesFrom(e: *Emitter, start: usize) Error!void {
+        for (e.lambdas.items[start..]) |li| {
             const l = li.lambda;
             _ = try e.constant(if (l.fn_kind == .none) l.name else l.fn_name);
         }

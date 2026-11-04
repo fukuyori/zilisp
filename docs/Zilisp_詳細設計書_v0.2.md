@@ -1352,6 +1352,14 @@ Phase 24 は4つに分けて進める：P24a 印字の変数、P24b `format`、P
   - ネイティブのプログラム：定数を `*print-readably*` で書くようにした（次元と要素の型が保たれる）。読み戻せない定数（`#.` で作ったハッシュ表・関数など）は、壊れたプログラムを作らずに `--emit-zig` でエラーにする。
   - `*print-readably*` のとき、`#nA` で表せない配列（文字の配列と、`(make-array '(0 3))` のように長さ 0 の軸の後ろに長さが 0 でない軸があるもの）は `#A((0 3) T)` の形で書く（SBCL の `array-readably-printable-p` と `output-unreadable-array-readably`。pretty printer では、SBCL と同じくそのリストを pretty printer で書く）。
 
+**0.3 の変更のレビュー（2026-11-04）**
+Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回のうち 2 回で利用の上限に達した）と Codex（残りの 3 回）にレビューしてもらった。Zilisp と SBCL 2.6.7 で再現した 41 件を直した（一覧は CHANGELOG.ja.md の Fixed）。そのうち設計に関わるもの：
+- ネイティブのプログラムは、トップレベルのフォームの定数を、そのフォームを実行する直前に読む（`Toplevel.nconsts`・`nlambdas`、`rt.zig` の `loadUpTo`。fasl と同じ）。定数表の全体を、1組の `*print-circle*` の番号で書き（`printer.writeObjects`）、Reader は定数をまたいでラベルを保つ。
+- `reader.Source` に読み足しの口を設けた：標準入力から読むとき、続きが要ればフォームを読み直さずに同じ読み取りを続ける。
+- 読み飛ばしの最中（`#+`・`*read-suppress*`）に呼ぶ reader macro は、`*read-suppress*` を T に束縛して呼び、値は NIL にする。reader macro の中の recursive な `read` は、外側の read の backquote の深さを引き継ぐ（`ValueBuilder.bq_depth`）。
+- オブジェクトを作る関数は、ヘッダの 32 ビットの長さに入らない長さを拒む（OutOfMemory。storage-condition になる）。
+- `do`・`loop` の形の誤りは program-error（SBCL は一部を simple-error にする。`error` は Phase 25）。
+
 ### 11.3 標準ライブラリのビルド
 
 - **Phase 08〜11**：Lisp の標準ライブラリを `@embedFile` で埋め込み、起動のたびに VM 向けにコンパイルする（ネイティブバックエンドができる前の暫定）。

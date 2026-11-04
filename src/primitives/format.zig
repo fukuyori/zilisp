@@ -1367,6 +1367,11 @@ fn justify(c: *Ctx, o: *Out, newline_prefix: ?[]const u8, extra_space: i64, line
     var num_gaps: i64 = @as(i64, @intCast(strings.len)) - 1 + @as(i64, @intFromBool(pad_left)) + @as(i64, @intFromBool(pad_right));
     var chars: i64 = num_gaps * minpad;
     for (strings) |s| chars += @intCast(charCount(s));
+    // colinc が 0 なら、SBCL と同じく division-by-zero（panic にしない。Codex のレビュー 0.3 #2）
+    if (chars > mincol and colinc == 0) {
+        _ = c.th.signal(.division_by_zero, "FORMAT の ~< の colinc が 0 です", c.control, Value.unbound);
+        return error.Lisp;
+    }
     const length = if (chars > mincol) mincol + @divFloor(chars - mincol + colinc - 1, colinc) * colinc else mincol;
     var padding = length - chars + num_gaps * minpad;
     if (newline_prefix) |nl| {
@@ -1853,7 +1858,7 @@ pub fn format(th: *Thread, args: []const Value) Value {
     const rt = th.rt;
     const dest = args[0];
     const control = args[1];
-    const out_stream: ?Value = if (dest == Value.nil) null else if (dest == rt.t) (streams.outputDesignator(th, Value.nil) orelse return Value.unwind) else if (streams.isStream(dest)) dest else {
+    const out_stream: ?Value = if (dest == Value.nil) null else if (dest == rt.t) (streams.outputDesignator(th, Value.nil) orelse return Value.unwind) else if (streams.isStream(dest)) (streams.outputDesignator(th, dest) orelse return Value.unwind) else {
         if (arrays.isStringLike(dest))
             return th.signal(.unimplemented, "FORMAT の出力先に文字列を使うのは未実装です", dest, Value.unbound);
         return th.typeError(dest, (rt.findSymbol(rt.cl, "STREAM") orelse unreachable).symbol);

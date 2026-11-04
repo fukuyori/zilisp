@@ -468,6 +468,15 @@ pub fn makeString(th: *Thread, args: []const Value) Value {
     if (!keyargs.parse(th, args[1..], &.{ "INITIAL-ELEMENT", "ELEMENT-TYPE" }, &kv)) return Value.unwind;
     const n = args[0];
     if (!n.isFixnum() or n.asFixnum() < 0) return th.typeError(n, cl(th, "UNSIGNED-BYTE"));
+    // :element-type は文字の型だけ（character・base-char・standard-char。SBCL と同じく、それ以外は simple-error。
+    // Codex のレビュー 0.3 #12）
+    if (kv[1]) |et| {
+        var ok = false;
+        for ([_][]const u8{ "CHARACTER", "BASE-CHAR", "STANDARD-CHAR" }) |name| if (et == cl(th, name)) {
+            ok = true;
+        };
+        if (!ok) return th.signal(.simple_error, "MAKE-STRING の :element-type は文字の型でなければなりません", et, Value.unbound);
+    }
     var c: u21 = 0;
     if (kv[0]) |v| c = charArg(th, v) orelse return Value.unwind;
     return th.rt.makeStringFilled(@intCast(n.asFixnum()), c) catch th.outOfMemory();

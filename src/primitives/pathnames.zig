@@ -195,11 +195,78 @@ pub fn designator(th: *Thread, v: Value) ?Value {
         };
     }
     if (v.isOther() and Runtime.kindOf(v) == .stream) {
-        const st: *object.Stream = @ptrCast(@alignCast(v.pointer()));
-        if (@as(object.StreamKind, @fromBackingInt(@intCast(st.header.aux))) == .file and isPathname(st.ref)) return st.ref;
+        // ファイルのストリームを指す synonym ストリームも（CLHS のパス名指定子。agy のレビュー 0.3 #12）
+        var x = v;
+        var depth: usize = 0;
+        while (depth < 64) : (depth += 1) {
+            if (!(x.isOther() and Runtime.kindOf(x) == .stream)) break;
+            const st: *object.Stream = @ptrCast(@alignCast(x.pointer()));
+            const k: object.StreamKind = @fromBackingInt(@intCast(st.header.aux));
+            if (k == .file and isPathname(st.ref)) return st.ref;
+            if (k != .synonym) break;
+            x = th.rt.symbolPtr(st.ref).value;
+        }
     }
     _ = th.typeError(v, cl(th, "PATHNAME"));
     return null;
+}
+
+/// 単純でない文字列を、単純な文字列に写す（パス名の欄は単純な文字列。agy のレビュー 0.3 #12）
+fn simpleString(th: *Thread, v: Value) ?Value {
+    if (isString(v)) return v;
+    const text = stringUtf8(th.rt.gpa, v) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    defer th.rt.gpa.free(text);
+    return th.rt.makeString(text) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+}
+
+/// make-pathname の名前・型・装置の欄：文字列（単純な文字列に写す）・NIL・:wild・:unspecific。それ以外は type-error
+fn componentArg(th: *Thread, v: Value) ?Value {
+    if (v == Value.nil) return v;
+    if (arrays.isStringLike(v)) return simpleString(th, v);
+    if (v == (kw(th, "WILD") orelse return null) or v == (kw(th, "UNSPECIFIC") orelse return null)) return v;
+    _ = th.typeError(v, cl(th, "STRING"));
+    return null;
+}
+
+/// ディレクトリの :back を、直前の名前と一緒に取り除く（make-pathname・merge-pathnames。SBCL と同じ。
+/// agy のレビュー 0.3 #12）
+fn canonicalDirectory(th: *Thread, dir: Value) ?Value {
+    if (!dir.isCons()) return dir;
+    const rt = th.rt;
+    const back = kw(th, "BACK") orelse return null;
+    var items: std.ArrayList(Value) = .empty;
+    defer items.deinit(rt.gpa);
+    var changed = false;
+    var x = dir;
+    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+        const e = Runtime.consPtr(x).car;
+        if (e == back and items.items.len > 1 and isString(items.items[items.items.len - 1])) {
+            _ = items.pop();
+            changed = true;
+            continue;
+        }
+        items.append(rt.gpa, e) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+    }
+    if (!changed) return dir;
+    var list = Value.nil;
+    var i = items.items.len;
+    while (i > 0) {
+        i -= 1;
+        list = rt.cons(items.items[i], list) catch {
+            _ = th.outOfMemory();
+            return null;
+        };
+    }
+    return list;
 }
 
 fn defaultsValue(th: *Thread) Value {
@@ -217,6 +284,8 @@ pub fn merge(th: *Thread, pv: Value, dv: Value, default_version: Value) ?Value {
     var directory = p.directory;
     if (directory == Value.nil) {
         directory = d.directory;
+    } else if (!d.directory.isCons()) {
+        directory = canonicalDirectory(th, directory) orelse return null;
     } else if (Runtime.consPtr(directory).car == relative and d.directory.isCons()) {
         // 既定のディレクトリの後ろに、相対のディレクトリの要素を足す
         var items: std.ArrayList(Value) = .empty;
@@ -408,10 +477,12 @@ pub fn parseNamestring(th: *Thread, args: []const Value) Value {
     var kv: [3]?Value = .{ null, null, null };
     if (args.len > 3 and !keyargs.parse(th, args[3..], &.{ "START", "END", "JUNK-ALLOWED" }, &kv)) return Value.unwind;
     const thing = args[0];
-    if (isPathname(thing)) {
-        th.mv[1] = Value.fromFixnum(0);
+    // パス名とファイルストリームは、そのパス名と :start（CLHS parse-namestring。agy のレビュー 0.3 #12）
+    if (isPathname(thing) or (thing.isOther() and Runtime.kindOf(thing) == .stream)) {
+        const pn = designator(th, thing) orelse return Value.unwind;
+        th.mv[1] = kv[0] orelse Value.fromFixnum(0);
         th.mv_count = 2;
-        return thing;
+        return pn;
     }
     if (!arrays.isStringLike(thing)) return th.typeError(thing, cl(th, "STRING"));
     const view = arrays.vectorView(thing).?;
@@ -442,10 +513,48 @@ pub fn mergePathnames(th: *Thread, args: []const Value) Value {
 
 fn directoryArg(th: *Thread, v: Value) ?Value {
     const rt = th.rt;
-    if (v == Value.nil or v.isCons()) return v;
+    if (v == Value.nil) return v;
+    if (v.isCons()) {
+        // 要素の文字列は単純な文字列に写し、:back を取り除く。要素は文字列か :wild・:wild-inferiors・:up・:back
+        var items: std.ArrayList(Value) = .empty;
+        defer items.deinit(rt.gpa);
+        var x = v;
+        var first = true;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            var e = Runtime.consPtr(x).car;
+            if (arrays.isStringLike(e)) {
+                e = simpleString(th, e) orelse return null;
+            } else if (!(e.isOther() and Runtime.kindOf(e) == .symbol and rt.symbolPtr(e).package == rt.keyword.obj) or
+                (first and e != (kw(th, "ABSOLUTE") orelse return null) and e != (kw(th, "RELATIVE") orelse return null)))
+            {
+                _ = th.typeError(v, rt.syms.list);
+                return null;
+            }
+            first = false;
+            items.append(rt.gpa, e) catch {
+                _ = th.outOfMemory();
+                return null;
+            };
+        }
+        if (x != Value.nil) {
+            _ = th.typeError(v, rt.syms.list);
+            return null;
+        }
+        var list = Value.nil;
+        var i = items.items.len;
+        while (i > 0) {
+            i -= 1;
+            list = rt.cons(items.items[i], list) catch {
+                _ = th.outOfMemory();
+                return null;
+            };
+        }
+        return canonicalDirectory(th, list);
+    }
     if (arrays.isStringLike(v)) {
         const abs = kw(th, "ABSOLUTE") orelse return null;
-        const tail = rt.cons(v, Value.nil) catch {
+        const sv = simpleString(th, v) orelse return null;
+        const tail = rt.cons(sv, Value.nil) catch {
             _ = th.outOfMemory();
             return null;
         };
@@ -475,10 +584,10 @@ pub fn makePathname(th: *Thread, args: []const Value) Value {
     var kv: [8]?Value = undefined;
     if (!keyargs.parse(th, args, &.{ "HOST", "DEVICE", "DIRECTORY", "NAME", "TYPE", "VERSION", "DEFAULTS", "CASE" }, &kv)) return Value.unwind;
     const d: ?*object.Pathname = if (kv[6]) |dv| ptr(designator(th, dv) orelse return Value.unwind) else null;
-    const device = kv[1] orelse if (d) |dd| dd.device else Value.nil;
+    const device = if (kv[1]) |v| (componentArg(th, v) orelse return Value.unwind) else if (d) |dd| dd.device else Value.nil;
     const directory = if (kv[2]) |dir| (directoryArg(th, dir) orelse return Value.unwind) else if (d) |dd| dd.directory else Value.nil;
-    const name = kv[3] orelse if (d) |dd| dd.name else Value.nil;
-    const typ = kv[4] orelse if (d) |dd| dd.type else Value.nil;
+    const name = if (kv[3]) |v| (componentArg(th, v) orelse return Value.unwind) else if (d) |dd| dd.name else Value.nil;
+    const typ = if (kv[4]) |v| (componentArg(th, v) orelse return Value.unwind) else if (d) |dd| dd.type else Value.nil;
     // 版：指定がなければ :defaults の版、:defaults もなければ NIL（SBCL 2.6.7 の make-pathname と同じ）
     const version = kv[5] orelse if (d) |dd| dd.version else Value.nil;
     return make(th.rt, Value.nil, device, directory, name, typ, version) catch th.outOfMemory();
@@ -607,8 +716,11 @@ pub fn pathnameMatchP(th: *Thread, args: []const Value) Value {
     const w = designator(th, args[1]) orelse return Value.unwind;
     const pp = ptr(p);
     const wp = ptr(w);
+    // ディレクトリのないパス名は (:relative) として照合する（"**/*.txt" は "foo.txt" に合う。SBCL と同じ。
+    // agy のレビュー 0.3 #12）
+    const pdir = if (pp.directory == Value.nil) (th.rt.cons(kw(th, "RELATIVE") orelse return Value.unwind, Value.nil) catch return th.outOfMemory()) else pp.directory;
     const dir_ok = wp.directory == Value.nil or wp.directory == (kw(th, "WILD") orelse return Value.unwind) or
-        (pp.directory.isCons() and directoryMatch(th, pp.directory, wp.directory));
+        (pdir.isCons() and directoryMatch(th, pdir, wp.directory));
     const version_ok = wp.version == (kw(th, "NEWEST") orelse return Value.unwind) or fieldMatch(th, pp.version, wp.version);
     return th.rt.boolean(fieldMatch(th, pp.device, wp.device) and dir_ok and
         fieldMatch(th, pp.name, wp.name) and fieldMatch(th, pp.type, wp.type) and version_ok);
@@ -639,8 +751,11 @@ pub fn fileWriteDate(th: *Thread, args: []const Value) Value {
     const io = ioOf(th, args[0]) orelse return Value.unwind;
     const stat = Io.Dir.cwd().statFile(io, name, .{}) catch return fileError(th, "ファイルの情報を読めません", args[0]);
     const secs = @divFloor(stat.mtime.nanoseconds, std.time.ns_per_s);
-    // universal time は 1900-01-01 からの秒数
-    return Value.fromFixnum(@intCast(secs + 2208988800));
+    // universal time は 1900-01-01 からの秒数。表せない（1900 年より前・fixnum を超える）なら NIL（CLHS file-write-date。
+    // agy のレビュー 0.3 #15）
+    const univ = secs + 2208988800;
+    if (univ < 0 or univ > std.math.maxInt(i62) / 2) return Value.nil;
+    return Value.fromFixnum(@intCast(univ));
 }
 
 /// (delete-file パス名)：消して T。なければ file-error

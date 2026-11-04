@@ -1659,6 +1659,9 @@ fn expandInitial(th: *Thread, t: Value) error{OutOfMemory}!void {
     const rt = th.rt;
     tablePtr(t).header.flags &= ~object.PprintDispatch.initial_flag;
     const low = Value.fromSingle(-std.math.inf(f32));
+    // 特別な形の項目は most-negative-single-float、型の項目は負の無限大（SBCL と同じ。型の項目に負けないように。
+    // Codex のレビュー 0.3 #5）
+    const magic = Value.fromSingle(-std.math.floatMax(f32));
     const member_sym = sym(th, "MEMBER");
     const cons_sym = sym(th, "CONS");
     // cons の特別な形
@@ -1666,14 +1669,14 @@ fn expandInitial(th: *Thread, t: Value) error{OutOfMemory}!void {
         const f = stdFunction(th, m.k);
         for (m.names) |n| {
             const s = (rt.findSymbol(rt.cl, n) orelse continue).symbol;
-            try addConsEntry(rt, t, s, low, cons_sym, member_sym, f);
+            try addConsEntry(rt, t, s, magic, cons_sym, member_sym, f);
         }
     }
     // quasiquote と , の形
     for ([_][]const u8{ "QUASIQUOTE", "UNQUOTE", "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |n| {
         const s = (rt.findSymbol(rt.sys, n) orelse continue).symbol;
         const f = stdFunction(th, if (std.mem.eql(u8, n, "QUASIQUOTE")) .quote else .unquote);
-        try addConsEntry(rt, t, s, low, cons_sym, member_sym, f);
+        try addConsEntry(rt, t, s, magic, cons_sym, member_sym, f);
     }
     // 型の項目：配列（文字列以外）、fboundp のシンボルで始まる cons、cons（SBCL の初めの項目と同じ順）
     const not_string = try rt.cons(sym(th, "NOT"), try rt.cons(sym(th, "STRING"), Value.nil));

@@ -18,12 +18,21 @@ pub const Char = struct {
     len: u3,
 };
 
+/// テキストの終わりで、続きを読み足す（標準入力。読み足したテキスト全体を返す。もうなければ null）
+pub const Refill = struct {
+    ctx: *anyopaque,
+    f: *const fn (ctx: *anyopaque) ?[]const u8,
+};
+
 pub const Source = struct {
     text: []const u8,
     file: u32 = 0,
     pos: usize = 0,
     line: u32 = 1,
     col: u32 = 1,
+    /// テキストの終わりで続きを読み足す（標準入力。読み直すと #. や reader macro の副作用が2回起きるので、
+    /// 読みかけのまま続ける。Codex のレビュー 0.3 #2）
+    refill: ?Refill = null,
 
     pub fn init(text: []const u8, file: u32) Source {
         return .{ .text = text, .file = file };
@@ -34,10 +43,16 @@ pub const Source = struct {
     }
 
     /// 次の文字を読まずに返す。テキストの終わりなら null。
-    pub fn peek(s: *const Source) error{InvalidUtf8}!?Char {
-        if (s.pos >= s.text.len) return null;
+    pub fn peek(s: *Source) error{InvalidUtf8}!?Char {
+        while (s.pos >= s.text.len) {
+            const r = s.refill orelse return null;
+            s.text = r.f(r.ctx) orelse return null;
+        }
         const len = std.unicode.utf8ByteSequenceLength(s.text[s.pos]) catch return error.InvalidUtf8;
-        if (s.pos + len > s.text.len) return error.InvalidUtf8;
+        while (s.pos + len > s.text.len) {
+            const r = s.refill orelse return error.InvalidUtf8;
+            s.text = r.f(r.ctx) orelse return error.InvalidUtf8;
+        }
         const cp = std.unicode.utf8Decode(s.text[s.pos .. s.pos + len]) catch return error.InvalidUtf8;
         return .{ .cp = cp, .len = len };
     }

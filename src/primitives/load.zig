@@ -48,6 +48,8 @@ pub fn load(th: *Thread, args: []const Value) Value {
     const depth = th.binding_depth;
     if (th.bind(rt.package_sym, rt.symbolPtr(rt.package_sym).value) == Value.unwind) return Value.unwind;
     defer th.unbindTo(depth);
+    // *readtable* も束縛する（CLHS load。ファイルの中で変えた readtable は呼び出し元に残らない。agy のレビュー 0.3 #3）
+    if (th.bind(rt.syms.@"*readtable*", rt.symbolPtr(rt.syms.@"*readtable*").value) == Value.unwind) return Value.unwind;
 
     var src = reader.Source.init(text, 0);
     var b: vb.ValueBuilder = .{ .rt = rt, .th = th };

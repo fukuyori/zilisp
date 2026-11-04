@@ -198,7 +198,8 @@ fn totalOf(th: *Thread, dims: []const usize) ?usize {
     var n: usize = 1;
     for (dims) |d| {
         const m = @mulWithOverflow(n, d);
-        if (m[1] != 0 or m[0] > (1 << 40)) {
+        // 要素の数はヘッダの u32 に入る範囲まで（Codex のレビュー 0.3 #2）
+        if (m[1] != 0 or m[0] > std.math.maxInt(u32)) {
             _ = th.signal(.storage_condition, "配列が大きすぎます", Value.unbound, Value.unbound);
             return null;
         }
@@ -237,6 +238,26 @@ fn fillContents(th: *Thread, data: Value, dims: []const usize, contents: Value, 
         base.* += 1;
         return true;
     }
+    // リストは先頭からたどる（要素ごとに先頭から数え直すと二乗の時間になる。ドット対で終わるリストは type-error。
+    // Codex のレビュー 0.3 #9・#13）
+    if (contents.isList()) {
+        var n: usize = 0;
+        var x = contents;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+        if (x != Value.nil) {
+            _ = th.typeError(contents, th.rt.syms.list);
+            return false;
+        }
+        if (n != dims[0]) {
+            _ = th.signal(.simple_error, ":initial-contents の長さが次元と違います", contents, Value.unbound);
+            return false;
+        }
+        x = contents;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            if (!fillContents(th, data, dims[1..], Runtime.consPtr(x).car, base)) return false;
+        }
+        return true;
+    }
     const n = seqLength(contents) orelse {
         _ = th.typeError(contents, cl(th, "SEQUENCE"));
         return false;
@@ -272,7 +293,7 @@ pub fn makeArray(th: *Thread, args: []const Value) Value {
     if (kv[5] != null and kv[5].? != Value.nil)
         return th.signal(.unimplemented, "displaced な配列は未実装です", kv[5].?, Value.unbound);
     if (kv[1] != null and kv[2] != null)
-        return th.signal(.program_error, ":initial-element と :initial-contents は同時に指定できません", Value.unbound, Value.unbound);
+        return th.signal(.simple_error, ":initial-element と :initial-contents は同時に指定できません", Value.unbound, Value.unbound);
     var dims: std.ArrayList(usize) = .empty;
     defer dims.deinit(th.rt.gpa);
     if (!parseDims(th, args[0], &dims)) return Value.unwind;
@@ -499,7 +520,7 @@ pub fn vectorPushExtend(th: *Thread, args: []const Value) Value {
         if (data == Value.unwind) return data;
         // 確保の間に GC が起きても、配列は引数（VM の値スタック）にあるので動かない。ポインタは引き直す
         const b = Runtime.arrayPtr(v);
-        for (0..old) |i| _ = storageSet(th, data, i, storageGet(b.data, i));
+        for (0..old) |i| if (storageSet(th, data, i, storageGet(b.data, i)) == Value.unwind) return Value.unwind;
         b.data = data;
         b.dims()[0] = old + extra;
     }
@@ -525,8 +546,17 @@ pub fn adjustArray(th: *Thread, args: []const Value) Value {
     // :fill-pointer を指定できるのは、fill-pointer のある配列だけ（CLHS adjust-array。SBCL 2.6.7 は type-error。
     // Codex のレビュー P21 #1）
     if (kv[3]) |fp| if (fp != Value.nil and !hasFillPointer(a)) return th.typeError(a, cl(th, "VECTOR"));
-    const total = totalOf(th, dims.items) orelse return Value.unwind;
+    // :initial-element と :initial-contents は同時に指定できない。:element-type は今の要素の型と同じでなければならない
+    // （SBCL と同じく simple-error）
+    if (kv[1] != null and kv[2] != null)
+        return th.signal(.simple_error, ":initial-element と :initial-contents は同時に指定できません", Value.unbound, Value.unbound);
     const chars = isSimpleString(dataOf(a));
+    if (kv[0]) |et| if (isCharacterType(th, et) != chars)
+        return th.signal(.simple_error, "adjust-array の :element-type が配列の要素の型と違います", et, Value.unbound);
+    // fill-pointer を指定しなければ、今の fill-pointer より短くはできない
+    if ((kv[3] == null or kv[3].? == Value.nil) and hasFillPointer(a) and Runtime.arrayPtr(a).fill_pointer > dims.items[0])
+        return th.signal(.simple_error, "adjust-array で今の fill-pointer より小さくはできません", args[1], Value.unbound);
+    const total = totalOf(th, dims.items) orelse return Value.unwind;
     const data = makeStorage(th, total, chars, kv[1]);
     if (data == Value.unwind) return data;
     if (kv[2]) |contents| {
@@ -553,7 +583,7 @@ pub fn adjustArray(th: *Thread, args: []const Value) Value {
                 if (s >= d) inside = false;
                 old_index = old_index * d + s;
             }
-            if (inside) _ = storageSet(th, data, k, storageGet(old, old_index));
+            if (inside) if (storageSet(th, data, k, storageGet(old, old_index)) == Value.unwind) return Value.unwind;
         }
     }
     var flags: u8 = if (isArrayObject(a)) Runtime.arrayPtr(a).header.flags else 0;
@@ -616,7 +646,7 @@ pub fn copySeq(th: *Thread, args: []const Value) Value {
     const out = makeStorage(th, view.len, chars, if (chars) Value.fromChar(0) else Value.nil);
     if (out == Value.unwind) return out;
     const src = dataOf(x);
-    for (0..view.len) |i| _ = storageSet(th, out, i, storageGet(src, i));
+    for (0..view.len) |i| if (storageSet(th, out, i, storageGet(src, i)) == Value.unwind) return Value.unwind;
     return out;
 }
 

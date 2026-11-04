@@ -1146,9 +1146,10 @@ pub fn expt(th: *Thread, args: []const Value) Value {
         if (sign(p) < 0) return divisionByZero(th);
         return floatResult(th, is_double, 0);
     }
-    if (sign(b) < 0) return complexError(th);
     const bf = toF64(th, b) orelse return Value.unwind;
     const pf = toF64(th, p) orelse return Value.unwind;
+    // 負の底でも、指数が整数の値の浮動小数なら実数になる（(expt -2 2.0) は 4.0。SBCL と同じ。Codex のレビュー 0.3 #8）
+    if (sign(b) < 0 and !((p == .single or p == .double) and std.math.isFinite(pf) and @trunc(pf) == pf)) return complexError(th);
     return floatResult(th, is_double, std.math.pow(f64, bf, pf));
 }
 

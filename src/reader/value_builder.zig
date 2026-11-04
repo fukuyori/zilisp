@@ -21,6 +21,8 @@ pub const ValueBuilder = struct {
     create_packages: bool = false,
     /// reader macro・#. を呼ぶスレッド（なければ使えない。Phase 24）
     th: ?*Thread = null,
+    /// ユーザーの reader macro を呼んでいる間の、外側の Reader の backquote の深さ（recursive な read が引き継ぐ）
+    bq_depth: usize = 0,
     /// 今の *readtable*（標準の構文なら NIL：Reader は標準の表で読む）
     readtable: Value = Value.nil,
     /// Source が読んでいるストリーム（reader macro に渡す）と、Source の先頭のストリームの中の位置
@@ -100,7 +102,9 @@ pub const ValueBuilder = struct {
 
     /// ユーザー定義の reader macro を呼ぶ（Phase 24）。(関数 ストリーム 文字) か、dispatch なら (関数 ストリーム 文字 引数)。
     /// ストリームの位置を Source の位置に合わせてから呼び、呼んだ後の位置まで Source を進める。値がなければ null
-    pub fn callMacro(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, f_raw: u64, cp: u21, arg: ?usize, dispatch: bool) Error!?Value {
+    /// suppress（読み飛ばしの最中）なら、*read-suppress* を真に束縛して呼び（マクロの中の read も読み飛ばす）、値は NIL にする
+    /// （SBCL と同じ。#+ で読み飛ばす中の #. を評価しない。Codex のレビュー 0.3 #1・#6）
+    pub fn callMacro(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, f_raw: u64, cp: u21, arg: ?usize, dispatch: bool, suppress: bool, bq_depth: usize) Error!?Value {
         const th = b.th orelse return fail(diag, loc, "ここではユーザー定義の reader macro を使えません");
         const streams = @import("../primitives/streams.zig");
         if (b.stream == Value.nil) {
@@ -115,8 +119,15 @@ pub const ValueBuilder = struct {
         const saved = th.read_builder;
         th.read_builder = b;
         defer th.read_builder = saved;
+        // マクロの中の recursive な read は、外側の backquote の深さで読む（Codex のレビュー 0.3 #4）
+        const saved_bq = b.bq_depth;
+        b.bq_depth = bq_depth;
+        defer b.bq_depth = saved_bq;
+        const depth = th.binding_depth;
+        if (suppress and th.bind(b.rt.syms.@"*read-suppress*", b.rt.t) == Value.unwind) return error.LispError;
         th.mv_count = 1;
         const r = th.call(Value.fromRaw(f_raw), argv[0..if (dispatch) 3 else 2]);
+        th.unbindTo(depth);
         if (r == Value.unwind) return error.LispError;
         const count = th.mv_count;
         // 標準入力は読み足すとバッファが動くので、Source のテキストを取り直す
@@ -125,6 +136,7 @@ pub const ValueBuilder = struct {
         };
         src.seekTo(b.fromStreamPos(src, streams.readPosition(s)));
         if (count == 0) return null;
+        if (suppress) return Value.nil;
         return r;
     }
 
@@ -234,6 +246,12 @@ pub const ValueBuilder = struct {
         }
         const n = try b.readSeqLength(diag, loc, contents, false);
         if (n != dims[0]) return b.lengthFail(diag, loc, contents);
+        // リストは先頭からたどる（要素ごとに先頭から数え直すと二乗の時間になる。Codex のレビュー 0.3 #7）
+        if (contents.isList()) {
+            var x = contents;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) try b.fillRead(diag, loc, data, dims[1..], Runtime.consPtr(x).car, base, chars);
+            return;
+        }
         for (0..n) |i| try b.fillRead(diag, loc, data, dims[1..], arrays.seqElt(contents, i), base, chars);
     }
 

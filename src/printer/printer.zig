@@ -145,6 +145,20 @@ pub fn writeObject(rt: *Runtime, w: *Writer, v: Value, s: Settings, bad: *Value)
     return p.obj(v, 0);
 }
 
+/// 複数のオブジェクトを順に書く（それぞれの後ろに改行）。*print-circle* の #n= の番号は全体で共有する
+/// （ネイティブの定数表。別の定数の中の同じオブジェクトも、読み戻すと同じになる。Codex のレビュー 0.3 #5）。
+/// 書けなかったオブジェクトの番号を index に入れる
+pub fn writeObjects(rt: *Runtime, w: *Writer, vs: []const Value, s: Settings, bad: *Value, index: *usize) Error!void {
+    var p: P = .{ .rt = rt, .w = w, .s = s, .bad = bad };
+    defer p.labels.deinit(rt.gpa);
+    if (s.circle) for (vs) |v| try p.scan(v, 0);
+    for (vs, 0..) |v, i| {
+        index.* = i;
+        try p.obj(v, 0);
+        try w.writeByte('\n');
+    }
+}
+
 /// 印字の状態
 const P = struct {
     rt: *Runtime,
@@ -607,7 +621,8 @@ const P = struct {
         if (qualify_all) return w.writeAll("COMMON-LISP::NIL");
         const cur = rt.currentPackage();
         const visible = if (cur) |c| (if (rt.findSymbol(c, "NIL")) |f| f.symbol == Value.nil else false) else false;
-        if (visible) return writeCased(w, "NIL", p.s.case, p.s.rt_case);
+        // 名前は、ほかのシンボルと同じく readtable に従って囲む（:downcase なら |NIL|。Codex のレビュー 0.3 #3）
+        if (visible) return writeSymbolName(rt, w, "NIL", &p.s);
         var prefix: []const u8 = rt.cl.name;
         if (cur) |c| for (c.local_nicknames.items) |n| if (n.pkg == rt.cl) {
             prefix = n.name;
@@ -615,7 +630,7 @@ const P = struct {
         };
         try writeSymbolName(rt, w, prefix, &p.s);
         try w.writeByte(':');
-        return writeCased(w, "NIL", p.s.case, p.s.rt_case);
+        return writeSymbolName(rt, w, "NIL", &p.s);
     }
 };
 

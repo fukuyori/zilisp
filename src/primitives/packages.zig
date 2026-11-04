@@ -36,7 +36,17 @@ fn symbolHome(rt: *Runtime, v: Value) Value {
 }
 
 fn setSymbolHome(rt: *Runtime, v: Value, pkg: Value) void {
-    rt.symbolPtr(v).package = pkg;
+    const so = rt.symbolPtr(v);
+    const F = @import("../values/object.zig").SymbolFlags;
+    // KEYWORD に入るシンボルは、値が自分自身の定数になる。KEYWORD から出たシンボルは、ふつうのシンボルに戻る
+    // （keywordp とコンパイラ・set・progv の判定を合わせる。SBCL と同じ。agy のレビュー 0.3 #6）
+    if (pkg == rt.keyword.obj) {
+        so.value = v;
+        so.header.flags |= F.constant | F.keyword;
+    } else if (so.package == rt.keyword.obj and so.header.flags & F.keyword != 0) {
+        so.header.flags &= ~(F.constant | F.keyword);
+    }
+    so.package = pkg;
 }
 
 /// 文字列の内容を UTF-8 にする（呼び出し側が gpa で解放する）
@@ -491,6 +501,8 @@ pub fn shadow(th: *Thread, args: []const Value) Value {
         const name = designatorName(th, it) orelse return Value.unwind;
         defer rt.gpa.free(name);
         const sym = if (p.present(name)) |f| f.symbol else blk: {
+            // KEYWORD のシンボルは外部シンボルで、値が自分自身の定数（internKeyword）
+            if (p == rt.keyword) break :blk rt.internKeyword(name) catch return oom(th);
             const s = rt.makeSymbolWithPackage(name, p.obj) catch return oom(th);
             rt.putSymbol(&p.internal, name, s) catch return oom(th);
             break :blk s;
@@ -632,6 +644,40 @@ fn freeNames(gpa: std.mem.Allocator, names: [][]u8) void {
     for (names) |n| gpa.free(n);
 }
 
+/// 別名から、重なるものとパッケージの名前と同じものを除く（SBCL と同じ。agy のレビュー 0.3 #13）。
+/// 元の配列は解放し、新しい配列を返す。メモリが足りなければ null（元の配列は解放しない）
+fn uniqueNicknames(th: *Thread, nicks: [][]u8, name: []const u8) ?[][]u8 {
+    const gpa = th.rt.gpa;
+    var keep: usize = 0;
+    for (nicks, 0..) |n, i| {
+        if (std.mem.eql(u8, n, name)) continue;
+        var dup = false;
+        for (nicks[0..i]) |m| if (std.mem.eql(u8, m, n)) {
+            dup = true;
+        };
+        if (!dup) keep += 1;
+    }
+    const out = gpa.alloc([]u8, keep) catch {
+        _ = th.outOfMemory();
+        return null;
+    };
+    var k: usize = 0;
+    for (nicks, 0..) |n, i| {
+        var drop = std.mem.eql(u8, n, name);
+        if (!drop) for (nicks[0..i]) |m| if (std.mem.eql(u8, m, n)) {
+            drop = true;
+        };
+        if (drop) {
+            gpa.free(n);
+        } else {
+            out[k] = n;
+            k += 1;
+        }
+    }
+    gpa.free(nicks);
+    return out;
+}
+
 /// 名前・別名が、ほかのパッケージ（except 以外）の名前・別名と重なれば package-error を記録して真
 fn nameTaken(th: *Thread, name: []const u8, except: ?*PackageData, datum: Value) bool {
     if (th.rt.findPackageGlobal(name)) |q| if (q != except) {
@@ -648,7 +694,12 @@ pub fn makePackage(th: *Thread, args: []const Value) Value {
     if (!keyargs.parse(th, args[1..], &.{ "NICKNAMES", "USE" }, &kv)) return Value.unwind;
     const name = designatorName(th, args[0]) orelse return Value.unwind;
     defer rt.gpa.free(name);
-    const nicks = namesArg(th, kv[0] orelse Value.nil) orelse return Value.unwind;
+    var nicks = namesArg(th, kv[0] orelse Value.nil) orelse return Value.unwind;
+    nicks = uniqueNicknames(th, nicks, name) orelse {
+        freeNames(rt.gpa, nicks);
+        rt.gpa.free(nicks);
+        return Value.unwind;
+    };
     defer {
         freeNames(rt.gpa, nicks);
         rt.gpa.free(nicks);
@@ -667,8 +718,14 @@ pub fn renamePackage(th: *Thread, args: []const Value) Value {
     const rt = th.rt;
     const p = packageArg(th, args[0]) orelse return Value.unwind;
     const name = designatorName(th, args[1]) orelse return Value.unwind;
-    const nicks = namesArg(th, if (args.len > 2) args[2] else Value.nil) orelse {
+    const nicks0 = namesArg(th, if (args.len > 2) args[2] else Value.nil) orelse {
         rt.gpa.free(name);
+        return Value.unwind;
+    };
+    const nicks = uniqueNicknames(th, nicks0, name) orelse {
+        rt.gpa.free(name);
+        freeNames(rt.gpa, nicks0);
+        rt.gpa.free(nicks0);
         return Value.unwind;
     };
     var ok = !nameTaken(th, name, p, args[1]);
@@ -831,7 +888,30 @@ pub fn sysDefpackage(th: *Thread, args: []const Value) Value {
     }
     var x_ln = args[9];
     while (x_ln.isCons()) : (x_ln = Runtime.consPtr(x_ln).cdr) {
-        _ = packageArg(th, Runtime.consPtr(Runtime.consPtr(x_ln).car).cdr) orelse return Value.unwind;
+        const pair = Runtime.consPtr(x_ln).car;
+        const target = packageArg(th, Runtime.consPtr(pair).cdr) orelse return Value.unwind;
+        // 別名に CL・COMMON-LISP・KEYWORD と、そのパッケージ自身の名前・別名は使えない。同じ別名に別のパッケージも
+        // 付けられない（SBCL と同じく package-error。agy のレビュー 0.3 #13）
+        const nick = designatorName(th, Runtime.consPtr(pair).car) orelse return Value.unwind;
+        defer rt.gpa.free(nick);
+        var bad = std.mem.eql(u8, nick, name);
+        for ([_][]const u8{ "CL", "COMMON-LISP", "KEYWORD" }) |r| if (std.mem.eql(u8, nick, r)) {
+            bad = true;
+        };
+        for (nicks) |n| if (std.mem.eql(u8, nick, n)) {
+            bad = true;
+        };
+        var y = args[9];
+        while (y != x_ln) : (y = Runtime.consPtr(y).cdr) {
+            const other = Runtime.consPtr(y).car;
+            const on = designatorName(th, Runtime.consPtr(other).car) orelse return Value.unwind;
+            defer rt.gpa.free(on);
+            if (std.mem.eql(u8, on, nick)) {
+                const ot = packageArg(th, Runtime.consPtr(other).cdr) orelse return Value.unwind;
+                if (ot != target) bad = true;
+            }
+        }
+        if (bad) return th.signal(.package_error, "この別名はローカルな別名に使えません", Runtime.consPtr(pair).car, Value.unbound);
     }
 
     const p = rt.findPackageGlobal(name) orelse blk: {
@@ -841,6 +921,7 @@ pub fn sysDefpackage(th: *Thread, args: []const Value) Value {
     };
     // 別名（既にあるものに足す）
     for (nicks) |n| {
+        if (std.mem.eql(u8, n, p.name)) continue;
         if (nameTaken(th, n, p, args[0])) return Value.unwind;
         var found = false;
         for (p.nicknames) |m| if (std.mem.eql(u8, m, n)) {

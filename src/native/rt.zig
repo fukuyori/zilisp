@@ -306,6 +306,9 @@ pub const Toplevel = struct {
     entry: Entry,
     line: u32,
     col: u32,
+    /// このフォームまでに使う定数と lambda の数（このフォームの直前に、そこまで読む）
+    nconsts: u32,
+    nlambdas: u32,
 };
 
 pub const Program = struct {
@@ -330,16 +333,28 @@ fn buildConstants(th: *Thread, prog: *const Program) !void {
     const table = try rt.makeVector(items);
     _ = try rt.roots.register(table);
     K = Runtime.vectorPtr(table).items();
+}
 
-    var src = reader.Source.init(prog.constants_text, 0);
-    // 定数は「パッケージ::名前」の形で書いてある（emit.zig）。まだ defpackage を実行していないパッケージは空のまま作る
-    var b: vb.ValueBuilder = .{ .rt = rt, .create_packages = true };
-    var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{});
+/// 定数と lambda を、トップレベルのフォームの直前に、そのフォームの分まで読む（SBCL の fasl と同じく、後ろのフォームの
+/// シンボルは、前のフォームを実行した後で intern する。agy のレビュー 0.3 #4）
+const Loader = struct {
+    src: reader.Source,
+    b: vb.ValueBuilder,
+    /// #n= のラベル（定数表全体で番号を共有するので、読むたびに消さない）
+    labels: Value = Value.nil,
+    next_const: usize = 0,
+    next_lambda: usize = 0,
+};
+
+fn loadUpTo(th: *Thread, prog: *const Program, ld: *Loader, nconsts: usize, nlambdas: usize) !void {
+    const rt = th.rt;
+    ld.b.labels_ptr = &ld.labels;
+    var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &ld.src, &ld.b, .{});
     defer r.deinit();
-    var i: usize = 0;
-    while (try r.read()) |v| : (i += 1) K[i] = v;
-
-    for (prog.lambdas) |l| {
+    while (ld.next_const < nconsts) : (ld.next_const += 1) {
+        K[ld.next_const] = (try r.read()) orelse return error.EndOfFile;
+    }
+    for (prog.lambdas[ld.next_lambda..nlambdas]) |l| {
         var name = K[l.name_k];
         switch (l.kind) {
             .global => {},
@@ -367,6 +382,7 @@ fn buildConstants(th: *Thread, prog: *const Program) !void {
         });
         if (l.closure_k) |ck| K[ck] = try function.makeClosure(rt, K[l.code_k], l.entry, &.{});
     }
+    ld.next_lambda = nlambdas;
 }
 
 /// 生成したプログラムを実行する。トップレベルのフォームを順に実行し、エラーで止まる（--script と同じ）
@@ -395,8 +411,11 @@ pub fn runProgram(init: std.process.Init, prog: *const Program) !u8 {
     const th = try Thread.create(rt, stdout, .{});
     defer th.destroy();
     try buildConstants(th, prog);
+    // 定数は「パッケージ::名前」の形で書いてある（emit.zig）。まだ defpackage を実行していないパッケージは空のまま作る
+    var loader: Loader = .{ .src = reader.Source.init(prog.constants_text, 0), .b = .{ .rt = rt, .create_packages = true } };
 
     for (prog.toplevels) |t| {
+        try loadUpTo(th, prog, &loader, t.nconsts, t.nlambdas);
         // エラーで抜けたときは、このフォームの中で作った動的束縛を戻す（VM の run と同じ。§6.5）
         const depth = th.binding_depth;
         const v = t.entry(th, Value.nil, &[_]Value{}, 0);

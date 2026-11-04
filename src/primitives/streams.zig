@@ -45,6 +45,9 @@ pub const StreamState = struct {
     /// 最後に read-char で読んだ文字のバイト数（unread-char が戻る）
     last_len: usize = 0,
     stdin_eof: bool = false,
+    /// 標準入力を読み足すときにメモリが足りなかった（エラーは記録済み。終わりの扱いの代わりに巻き戻す。
+    /// agy のレビュー 0.3 #14）
+    stdin_oom: bool = false,
     /// 出力のバイト列（文字列の出力ストリームは全体、ファイルはまだ書き出していない分）
     out: std.ArrayList(u8) = .empty,
     /// 標準出力の書き先（th.out）
@@ -343,6 +346,9 @@ pub fn outputDesignator(th: *Thread, v: ?Value) ?Value {
     const d = v orelse Value.nil;
     const s = if (d == Value.nil) rt.symbolPtr(rt.syms.@"*standard-output*").value else if (d == rt.t) rt.symbolPtr(rt.syms.@"*terminal-io*").value else d;
     if (!isStream(s)) return streamDesignatorError(th, s);
+    // 閉じたストリーム・入力だけのストリームはここでエラーにする（何も書かない fresh-line・(format s "~&")・clear-output
+    // でも SBCL と同じくエラー。agy のレビュー 0.3 #1）
+    _ = resolveOutStream(th, s) orelse return null;
     return s;
 }
 
@@ -785,7 +791,7 @@ fn fillStdin(th: *Thread, st: *StreamState) bool {
             st.stdin_eof = true;
             return false;
         }
-        st.in_list.appendSlice(th.rt.gpa, l) catch return false;
+        st.in_list.appendSlice(th.rt.gpa, l) catch return stdinOom(th, st);
         return true;
     }
     const io = th.rt.io orelse {
@@ -798,7 +804,23 @@ fn fillStdin(th: *Thread, st: *StreamState) bool {
         st.stdin_eof = true;
         return false;
     }
-    st.in_list.appendSlice(th.rt.gpa, buf[0..n]) catch return false;
+    st.in_list.appendSlice(th.rt.gpa, buf[0..n]) catch return stdinOom(th, st);
+    return true;
+}
+
+fn stdinOom(th: *Thread, st: *StreamState) bool {
+    _ = th.outOfMemory();
+    st.stdin_oom = true;
+    st.stdin_eof = true;
+    return false;
+}
+
+/// 読み足しでメモリが足りなかったか（真なら、記録済みのエラーで巻き戻す）
+fn takeStdinOom(s: Value) bool {
+    if (!isStream(s)) return false;
+    const st = stateOf(s) orelse return false;
+    if (!st.stdin_oom) return false;
+    st.stdin_oom = false;
     return true;
 }
 
@@ -844,6 +866,7 @@ fn checkCharStream(th: *Thread, s: Value) bool {
 }
 
 fn eofResult(th: *Thread, s: Value, eof_error: ?Value, eof_value: ?Value) Value {
+    if (takeStdinOom(s)) return Value.unwind;
     if (eof_error == null or eof_error.? != Value.nil)
         return th.signal(.end_of_file, "ストリームの終わりです", s, Value.unbound);
     return eof_value orelse Value.nil;
@@ -887,6 +910,7 @@ pub fn readCharNoHang(th: *Thread, args: []const Value) Value {
 pub fn unreadChar(th: *Thread, args: []const Value) Value {
     if (!args[0].isChar()) return th.typeError(args[0], cl(th, "CHARACTER"));
     const s = inputDesignator(th, optArg(args, 1)) orelse return Value.unwind;
+    if (!checkCharStream(th, s)) return Value.unwind;
     const st = stateOf(s) orelse return Value.nil;
     if (st.last_len == 0 or st.pos < st.last_len) return th.signal(.simple_error, "UNREAD-CHAR の前に READ-CHAR がありません", s, Value.unbound);
     st.pos -= st.last_len;
@@ -909,7 +933,9 @@ pub fn peekChar(th: *Thread, args: []const Value) Value {
         const c = decodeAt(th, st, &n) orelse return eofResult(th, s, optArg(args, 2), optArg(args, 3));
         const stop = if (peek_type == Value.nil) true else if (peek_type == th.rt.t) !isWhitespace(c) else if (peek_type.isChar()) c == peek_type.asChar() else return th.typeError(peek_type, cl(th, "CHARACTER"));
         if (stop) return Value.fromChar(c);
+        // 読み飛ばした文字は unread-char で戻せる（最後に読み飛ばした文字の長さ。SBCL と同じ。agy のレビュー 0.3 #2）
         st.pos += n;
+        st.last_len = n;
     }
 }
 
@@ -1043,7 +1069,13 @@ pub fn writeSequence(th: *Thread, args: []const Value) Value {
         if (!emitString(th, s, seq, b[0], b[1])) return Value.unwind;
         return seq;
     }
-    for (b[0]..b[1]) |i| if (writeChar(th, &.{ arrays.storageGet(view.data, i), s }) == Value.unwind) return Value.unwind;
+    // broadcast はバイナリの印を持たないので、要素が整数なら write-byte に渡す（write-byte が出力先に配る。
+    // agy のレビュー 0.3 #9・Codex のレビュー 0.3 #7）
+    for (b[0]..b[1]) |i| {
+        const e = arrays.storageGet(view.data, i);
+        const r = if (kindOf(s) == .broadcast and (e.isFixnum() or (e.isOther() and Runtime.kindOf(e) == .bignum))) writeByte(th, &.{ e, s0 }) else writeChar(th, &.{ e, s });
+        if (r == Value.unwind) return Value.unwind;
+    }
     return seq;
 }
 
@@ -1083,12 +1115,28 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
         }
         const text = if (st.latin1) converted.items else raw;
         var src = reader.Source.init(text, 0);
+        // 標準入力は、テキストの終わりで読み足して続きを読む（読み直さない）
+        const Refill = struct {
+            th: *Thread,
+            st: *StreamState,
+            start: usize,
+            fn f(ctx: *anyopaque) ?[]const u8 {
+                const c: *@This() = @ptrCast(@alignCast(ctx));
+                if (!fillStdin(c.th, c.st)) return null;
+                return c.st.input()[c.start..];
+            }
+        };
+        var refill_ctx: Refill = .{ .th = th, .st = st, .start = start_pos };
+        if (st.kind == .stdin and !st.latin1) src.refill = .{ .ctx = &refill_ctx, .f = Refill.f };
         var b: vb.ValueBuilder = .{ .rt = rt, .th = th, .stream = stream_obj orelse Value.nil, .stream_base = st.pos, .latin1 = st.latin1 };
         if (recursive) if (th.read_builder) |outer| {
             b.labels_ptr = outer.labels_ptr orelse &outer.labels;
         };
         var r = reader.Reader(vb.ValueBuilder).init(rt.gpa, &src, &b, .{ .preserve_whitespace = preserve });
         defer r.deinit();
+        if (recursive) if (th.read_builder) |outer| {
+            r.bq_depth = outer.bq_depth;
+        };
         const result = switch (op) {
             .read => r.read(),
             .builtin => |x| r.readBuiltin(x.k, x.cp, x.arg),
@@ -1099,6 +1147,10 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
             error.EndOfFile => {
                 // 標準入力なら読み足して読み直す
                 if (fillStdin(th, st)) continue;
+                if (st.stdin_oom) {
+                    st.stdin_oom = false;
+                    return Value.unwind;
+                }
                 return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", s, Value.unbound);
             },
             error.ReaderError => return th.signal(.reader_error, r.diagnostic.message, s, Value.unbound),
@@ -1106,7 +1158,7 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
         };
         if (op != .read) {
             // 読んだところまで位置を進める（reader macro がストリームを読み進めた分は Source に反映してある）
-            st.pos = start_pos + if (st.latin1) charCount(text[0..src.pos]) else src.pos;
+            st.pos = start_pos + if (st.latin1) charCount(converted.items[0..src.pos]) else src.pos;
             st.last_len = 0;
             if (form == null) {
                 th.mv_count = 0;
@@ -1117,14 +1169,20 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
         }
         if (form == null) {
             if (fillStdin(th, st)) continue;
-            st.pos = start_pos + if (st.latin1) charCount(text[0..src.pos]) else src.pos;
+            if (st.stdin_oom) {
+                st.stdin_oom = false;
+                return Value.unwind;
+            }
+            st.pos = start_pos + if (st.latin1) charCount(converted.items[0..src.pos]) else src.pos;
+            st.last_len = 0;
             eof.* = true;
             return Value.nil;
         }
         var consumed = src.pos;
+        const now = if (st.latin1) converted.items else src.text;
         // 読んだ後ろの空白を1つ読み進める（トークンの後ろは Reader が読み進めている。SBCL 2.6.7 と同じ）
-        if (!preserve and consumed > 0 and consumed < text.len and !isWhitespace(text[consumed - 1]) and isWhitespace(text[consumed])) consumed += 1;
-        st.pos = start_pos + if (st.latin1) charCount(text[0..consumed]) else consumed;
+        if (!preserve and consumed > 0 and consumed < now.len and !isWhitespace(now[consumed - 1]) and isWhitespace(now[consumed])) consumed += 1;
+        st.pos = start_pos + if (st.latin1) charCount(now[0..consumed]) else consumed;
         st.last_len = 0;
         return form.?;
     }
@@ -1306,7 +1364,9 @@ pub fn makeBroadcastStream(th: *Thread, args: []const Value) Value {
     var i = args.len;
     while (i > 0) {
         i -= 1;
+        // 出力のストリームでなければ type-error（CLHS make-broadcast-stream。agy のレビュー 0.3 #8）
         if (!isStream(args[i])) return th.typeError(args[i], cl(th, "STREAM"));
+        if (outputStreamP(th, args[i .. i + 1]) != th.rt.t) return th.typeError(args[i], cl(th, "STREAM"));
         list = th.rt.cons(args[i], list) catch return oom(th);
     }
     return makeStream(th, .broadcast, SF.output | SF.open, list, false) orelse Value.unwind;
@@ -1315,6 +1375,9 @@ pub fn makeBroadcastStream(th: *Thread, args: []const Value) Value {
 /// (make-two-way-stream 入力 出力)
 pub fn makeTwoWayStream(th: *Thread, args: []const Value) Value {
     for (args) |a| if (!isStream(a)) return th.typeError(a, cl(th, "STREAM"));
+    // 1つ目は入力、2つ目は出力のストリーム（CLHS make-two-way-stream）
+    if (inputStreamP(th, args[0..1]) != th.rt.t) return th.typeError(args[0], cl(th, "STREAM"));
+    if (outputStreamP(th, args[1..2]) != th.rt.t) return th.typeError(args[1], cl(th, "STREAM"));
     const pair = th.rt.cons(args[0], args[1]) catch return oom(th);
     return makeStream(th, .two_way, SF.input | SF.output | SF.open, pair, false) orelse Value.unwind;
 }
@@ -1322,7 +1385,8 @@ pub fn makeTwoWayStream(th: *Thread, args: []const Value) Value {
 /// (make-synonym-stream シンボル)
 pub fn makeSynonymStream(th: *Thread, args: []const Value) Value {
     const sym = args[0];
-    if (!(sym.isOther() and Runtime.kindOf(sym) == .symbol)) return th.typeError(sym, th.rt.syms.symbol);
+    // NIL もシンボル（agy のレビュー 0.3 #7）
+    if (!(sym == Value.nil or (sym.isOther() and Runtime.kindOf(sym) == .symbol))) return th.typeError(sym, th.rt.syms.symbol);
     return makeStream(th, .synonym, SF.input | SF.output | SF.open, sym, false) orelse Value.unwind;
 }
 
@@ -1451,6 +1515,8 @@ pub fn close(th: *Thread, args: []const Value) Value {
 /// (file-length stream)：ファイルの大きさ（バイト）
 pub fn fileLength(th: *Thread, args: []const Value) Value {
     const s = followSynonym(th, args[0]) orelse return Value.unwind;
+    // 閉じたストリームはエラー（SBCL と同じ。agy のレビュー 0.3 #10）
+    if (flags(s) & SF.open == 0) return closedError(th, s) orelse Value.unwind;
     // broadcast は 0（SBCL 2.6.7 と同じ）
     if (kindOf(s) == .broadcast) return Value.fromFixnum(0);
     if (kindOf(s) != .file) return th.typeError(s, cl(th, "FILE-STREAM"));
@@ -1462,6 +1528,7 @@ pub fn fileLength(th: *Thread, args: []const Value) Value {
 /// (file-position stream &optional 位置)：今の位置（ファイルはバイト、文字列は文字）。位置を指定すれば移して T
 pub fn filePosition(th: *Thread, args: []const Value) Value {
     const s = followSynonym(th, args[0]) orelse return Value.unwind;
+    if (flags(s) & SF.open == 0) return closedError(th, s) orelse Value.unwind;
     if (kindOf(s) == .broadcast) return Value.fromFixnum(0);
     const st = stateOf(s) orelse return Value.nil;
     if (args.len < 2) {
@@ -1549,7 +1616,8 @@ pub fn open(th: *Thread, args: []const Value) Value {
                 } else return th.signal(.file_error, "ファイルがありません", args[0], Value.unbound);
             }
             if (dir == .probe) {
-                const s = makeStream(th, .file, SF.input | (if (binary) SF.binary else 0), p, false) orelse return Value.unwind;
+                // :probe のストリームは向きを持たない（input-stream-p も output-stream-p も NIL。SBCL と同じ。agy のレビュー 0.3 #11）
+                const s = makeStream(th, .file, if (binary) SF.binary else 0, p, false) orelse return Value.unwind;
                 return s;
             }
             const text = Io.Dir.cwd().readFileAlloc(io, name, rt.gpa, .limited(1 << 31)) catch |err| switch (err) {

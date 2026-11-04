@@ -568,6 +568,8 @@ pub const Runtime = struct {
         }
         const width: u16 = if (wide) 4 else 1;
         // 先にオブジェクトを作り、そのオブジェクトが持つバッファを確保する（バッファの確保では GC は起きない）
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (count > std.math.maxInt(u32)) return error.OutOfMemory;
         const s = try rt.heap.create(object.String, 0);
         s.* = .{ .header = .{ .kind = .string, .aux = width, .len = @intCast(count) }, .data = undefined };
         const buf = try rt.heap.allocOwnedBuffer(s, count * width);
@@ -586,6 +588,8 @@ pub const Runtime = struct {
     /// 長さ n の文字列を作り、文字 cp で埋める（make-array :element-type 'character）
     pub fn makeStringFilled(rt: *Runtime, n: usize, cp: u21) Error!Value {
         const width: u16 = if (cp > 0xFF) 4 else 1;
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (n > std.math.maxInt(u32)) return error.OutOfMemory;
         const s = try rt.heap.create(object.String, 0);
         s.* = .{ .header = .{ .kind = .string, .aux = width, .len = @intCast(n) }, .data = undefined };
         const buf = try rt.heap.allocOwnedBuffer(s, n * width);
@@ -636,6 +640,8 @@ pub const Runtime = struct {
     /// リスト `list`（長さ `len`）の要素からベクタを作る。確保の間、list は呼び出し側が保持していること
     /// （この関数の引数として生きているので、ネイティブのスタックかレジスタにある：§3.4）
     pub fn makeVectorFromList(rt: *Runtime, list: Value, len: usize) Error!Value {
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (len > std.math.maxInt(u32)) return error.OutOfMemory;
         const v = try rt.heap.create(object.SimpleVector, len * @sizeOf(Value));
         v.header = .{ .kind = .simple_vector, .len = @intCast(len) };
         var x = list;
@@ -650,6 +656,8 @@ pub const Runtime = struct {
 
     /// 長さ n の単純ベクタを作り、v で埋める
     pub fn makeVectorFilled(rt: *Runtime, n: usize, v: Value) Error!Value {
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (n > std.math.maxInt(u32)) return error.OutOfMemory;
         const vec = try rt.heap.create(object.SimpleVector, n * @sizeOf(Value));
         vec.header = .{ .kind = .simple_vector, .len = @intCast(n) };
         @memset(vec.items(), v);
@@ -657,6 +665,8 @@ pub const Runtime = struct {
     }
 
     pub fn makeVector(rt: *Runtime, items: []const Value) Error!Value {
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (items.len > std.math.maxInt(u32)) return error.OutOfMemory;
         const v = try rt.heap.create(object.SimpleVector, items.len * @sizeOf(Value));
         v.header = .{ .kind = .simple_vector, .len = @intCast(items.len) };
         @memcpy(v.items(), items);
@@ -669,6 +679,8 @@ pub const Runtime = struct {
 
     /// 長さ n の、GC が中を走査しない数の配列を作り、0 で埋める（T は u32 か u64）
     pub fn makeRawVector(rt: *Runtime, comptime T: type, n: usize) Error!Value {
+        // 長さはヘッダの u32 に入る範囲まで（超えればメモリ不足と同じ。Codex のレビュー 0.3 #2）
+        if (n > std.math.maxInt(u32)) return error.OutOfMemory;
         const v = try rt.heap.create(object.RawVector, n * @sizeOf(T));
         v.header = .{ .kind = .raw_vector, .aux = @sizeOf(T), .len = @intCast(n) };
         @memset(v.items(T), 0);

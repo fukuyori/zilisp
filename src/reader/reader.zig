@@ -291,7 +291,8 @@ pub fn Reader(comptime Builder: type) type {
                 switch (obj) {
                     .datum => |d| try self.builder.listPush(&list, d),
                     .dot => |loc| return self.fail(loc, "ここにドット（.）は置けません"),
-                    .close => break,
+                    // 指定の文字でない閉じ括弧は、対応しない閉じ括弧（SBCL と同じく reader-error。Codex のレビュー 0.3 #6）
+                    .close => return self.fail(start, "対応する開き括弧のない閉じ括弧です"),
                 }
             }
             return self.builder.listEnd(&list, null);
@@ -336,7 +337,7 @@ pub fn Reader(comptime Builder: type) type {
                 .builtin => |k| return self.builtinMacro(k, cp, loc, null),
                 .user => |f| {
                     if (comptime !@hasDecl(Builder, "callMacro")) return self.fail(loc, "ユーザー定義の reader macro はここでは使えません");
-                    const d = try self.builder.callMacro(&self.diagnostic, loc, self.src, f, cp, null, false);
+                    const d = try self.builder.callMacro(&self.diagnostic, loc, self.src, f, cp, null, false, self.suppress, self.bq_depth);
                     return if (d) |x| .{ .datum = x } else null;
                 },
             }
@@ -497,7 +498,7 @@ pub fn Reader(comptime Builder: type) type {
                 .builtin => |k| return self.sharpBuiltin(k, loc, arg, ch.cp),
                 .user => |f| {
                     if (comptime !@hasDecl(Builder, "callMacro")) return self.fail(loc, "ユーザー定義の reader macro はここでは使えません");
-                    return self.builder.callMacro(&self.diagnostic, loc, self.src, f, ch.cp, arg, true);
+                    return self.builder.callMacro(&self.diagnostic, loc, self.src, f, ch.cp, arg, true, self.suppress, self.bq_depth);
                 },
             }
         }

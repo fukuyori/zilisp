@@ -95,6 +95,40 @@
 
 ### Fixed
 - Bignums printed in bases 8 and 32 had wrong digits (Zig 0.17.0's `toStringAlloc`; now built from the base-2 digits)
+- Review of the 0.3 changes (agy and Codex, Phases 19 to 24), 41 issues reproduced and fixed:
+  - Crashes: negative lengths in sequence type specifiers (`(make-sequence '(vector t -1) 0)`), lengths beyond the
+    object header (`(make-string 4294967296)` is now a storage-condition) and `~0,0<...~>` in `format` (now
+    division-by-zero) panicked.
+  - `loop`: destructuring and `and` in `with`, subclauses of `for ... from` evaluated in the written order, conflicting
+    directions and a non-positive `by` signal errors, `by` of `in`/`on` evaluated once, `it` only in the first clause
+    after a test, mixed kinds of accumulation and wrong `using` clauses signal program-error. `do` rejects malformed
+    variable specs. `reduce` checks `:start`/`:end`; `mapcan` works on lists longer than `call-arguments-limit`.
+    `(expt -2 2.0)` is 4.0.
+  - Sequences and arrays: `sxhash` of symbols is computed from the name; `remove-duplicates :from-end t` passes the
+    arguments to `:test` in SBCL's order; `coerce` returns objects that already have a compound array type and makes
+    functions from lambda expressions; `butlast`/`nbutlast` with 0 keep a dotted tail and reject negative counts;
+    `adjust-array` and `make-string` check their keyword arguments; `:initial-contents` rejects dotted lists and is
+    no longer quadratic for lists; memory exhaustion while copying a string is reported.
+  - Streams: `fresh-line`, `~&` and `clear-output` on closed or input streams signal errors; `file-position` and
+    `file-length` on closed streams signal stream-error; `unread-char` after `peek-char` with skipping returns the
+    skipped character; `make-synonym-stream` accepts NIL; `make-broadcast-stream` and `make-two-way-stream` check
+    stream directions; `write-sequence` writes bytes to broadcast streams; `:probe` streams have no direction; reading
+    more of standard input no longer re-reads the form (side effects of `#.` and reader macros happened twice).
+  - `load` binds `*readtable*`; `equal` compares pathnames in the cdr of lists; symbols that leave or enter the
+    KEYWORD package get or lose the keyword flags; pathname functions accept non-simple strings, resolve `:back`,
+    match `**/` against names without a directory, return `:start` from `parse-namestring` and follow synonym
+    streams; `make-pathname` checks its components; package nicknames drop duplicates and the package's own name,
+    and `:local-nicknames` rejects CL, COMMON-LISP, KEYWORD and the package's names.
+  - Reader and printer: reader macros called while `#+`/`#-` skip, or with `*read-suppress*`, read as NIL with
+    `*read-suppress*` bound; a recursive `read` inside a reader macro keeps the backquote depth; `NIL` is escaped
+    by the readtable; `read-delimited-list` rejects a different closing parenthesis; changing a copy of the initial
+    pprint dispatch table keeps the standard layouts (SBCL's priorities); `#nA` reading of lists is no longer
+    quadratic.
+  - Native programs: the constants of each toplevel form are read just before the form runs (symbols of later forms
+    were interned too early, so `shadow` in an earlier form conflicted), and all constants share one set of
+    `#n=` labels (an uninterned symbol used by two constants stays the same symbol).
+  - Language test `review-cases.lisp` (same output as SBCL 2.6.7; also a gc-stress version) and unit tests for 31
+    error cases compared with SBCL.
 - Standard output and standard error were written at file positions from 0, so redirecting both to one file, or
   appending with `>>`, overwrote earlier output (they are now written as streams)
 - Codex review (Phase 24), 8 issues: `format` copied list arguments where the GC could not see them, so a `~/name/`

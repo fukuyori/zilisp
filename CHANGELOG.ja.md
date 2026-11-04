@@ -87,6 +87,38 @@
 
 ### Fixed
 - 基数 8 と 32 で印字する bignum の桁が誤っていた（Zig 0.17.0 の `toStringAlloc`。2 進の桁から作るようにした）
+- 0.3 の変更のレビュー（agy と Codex。Phase 19〜24）で再現した 41 件を直した：
+  - 落ちる問題：列の型の指定の負の長さ（`(make-sequence '(vector t -1) 0)`）、オブジェクトのヘッダに入らない長さ
+    （`(make-string 4294967296)` は storage-condition にした）、`format` の `~0,0<…~>`（division-by-zero にした）で
+    panic していた。
+  - `loop`：`with` の分解と `and`、`for … from` の部分節を書いた順に評価、上り・下りの矛盾と正でない `by` はエラー、
+    `in`・`on` の `by` は一度だけ評価、`it` は条件の直後の最初の句の中だけ、種類の違う集め方の混在と誤った `using` は
+    program-error。`do` は誤った変数の指定を拒む。`reduce` は `:start`・`:end` を確かめる。`mapcan` は
+    `call-arguments-limit` より長いリストにも使える。`(expt -2 2.0)` は 4.0。
+  - 列と配列：シンボルの `sxhash` は名前から求める。`remove-duplicates :from-end t` は `:test` に SBCL と同じ順で
+    渡す。`coerce` は、すでにその複合の配列の型のものをそのまま返し、ラムダ式から関数を作る。`butlast`・`nbutlast`
+    は 0 ならドット対の末尾を保ち、負の数を拒む。`adjust-array`・`make-string` はキーワード引数を確かめる。
+    `:initial-contents` はドット対で終わるリストを拒み、リストでも二乗の時間にならない。文字列を写すときの
+    メモリ不足を伝える。
+  - ストリーム：閉じたストリーム・入力ストリームへの `fresh-line`・`~&`・`clear-output` はエラー。閉じたストリームの
+    `file-position`・`file-length` は stream-error。読み飛ばす `peek-char` の後の `unread-char` は読み飛ばした文字を
+    戻す。`make-synonym-stream` は NIL を受け付ける。`make-broadcast-stream`・`make-two-way-stream` はストリームの
+    向きを確かめる。`write-sequence` は broadcast のストリームにバイトを書く。`:probe` のストリームは向きを持たない。
+    標準入力を読み足しても、フォームを読み直さない（`#.` と reader macro の副作用が2回起きていた）。
+  - `load` は `*readtable*` を束縛する。`equal` はリストの cdr にあるパス名も比べる。KEYWORD に出入りするシンボルの
+    キーワードの印を付け外しする。パス名の関数は、単純でない文字列を受け付け、`:back` を取り除き、ディレクトリの
+    ない名前と `**/` を照合し、`parse-namestring` の2つ目の値に `:start` を返し、synonym のストリームをたどる。
+    `make-pathname` は欄を確かめる。パッケージの別名は重複とパッケージ自身の名前を除き、`:local-nicknames` は
+    CL・COMMON-LISP・KEYWORD とパッケージ自身の名前を拒む。
+  - Reader と印字：`#+`・`#-` で読み飛ばしている間と `*read-suppress*` のときの reader macro は、`*read-suppress*` を
+    束縛して呼び、値は NIL。reader macro の中の recursive な `read` は backquote の深さを引き継ぐ。`NIL` も readtable に
+    従って囲む。`read-delimited-list` は別の閉じ括弧を拒む。初期の pprint-dispatch の表の写しを変えても、標準の形を
+    保つ（SBCL と同じ優先度）。`#nA` のリストの読み取りは二乗の時間にならない。
+  - ネイティブのプログラム：トップレベルのフォームの定数は、そのフォームを実行する直前に読む（後ろのフォームの
+    シンボルを先に intern していたので、前のフォームの `shadow` と衝突した）。定数全体で `#n=` の番号を共有する
+    （2つの定数が使う uninterned なシンボルは同じシンボルのまま）。
+  - 言語試験 `review-cases.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版も）と、SBCL と比べた 31 個のエラーの場合の
+    単体テスト。
 - 標準出力と標準エラー出力を、ファイルの位置 0 から書いていたため、両方を1つのファイルにリダイレクトしたときや `>>` で
   追記したときに、前の出力を上書きしていた（ストリームとして書くようにした）
 - Codex のレビュー（Phase 24）の指摘 8 件：`format` がリストの引数を GC から見えない所に写していたため、`~/名前/` の関数が

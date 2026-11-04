@@ -131,13 +131,13 @@ pub fn vector(th: *Thread, args: []const Value) Value {
 
 /// equal：eql か、cons なら car と cdr が equal、文字列なら同じ文字の並び（CLHS equal）
 pub fn equal2(a: Value, b: Value) bool {
-    // パス名は欄ごとに equal（Phase 23。CLHS equal）
-    if (a.isOther() and b.isOther() and Runtime.kindOf(a) == .pathname and Runtime.kindOf(b) == .pathname)
-        return @import("pathnames.zig").equalPathnames(a, b);
     var x = a;
     var y = b;
     while (true) {
         if (eql2(x, y)) return true;
+        // パス名は欄ごとに equal（Phase 23。CLHS equal）。リストの cdr にあるパス名も（agy のレビュー 0.3 #5）
+        if (x.isOther() and y.isOther() and Runtime.kindOf(x) == .pathname and Runtime.kindOf(y) == .pathname)
+            return @import("pathnames.zig").equalPathnames(x, y);
         if (x.isCons() and y.isCons()) {
             if (!equal2(Runtime.consPtr(x).car, Runtime.consPtr(y).car)) return false;
             x = Runtime.consPtr(x).cdr;

@@ -379,6 +379,14 @@ Phase 24 is done in four steps: P24a printer variables, P24b `format`, P24c read
   - Native programs: constants are now written with `*print-readably*` (so they keep their dimensions and element type); a constant that cannot be read back (a hash table from `#.`, a function, ...) is an error at `--emit-zig` instead of a broken program.
   - With `*print-readably*`, arrays that `#nA` cannot represent (a character array, or an axis of length 0 followed by a nonzero axis, such as `(make-array '(0 3))`) are written as `#A((0 3) T)` (SBCL's `array-readably-printable-p` and `output-unreadable-array-readably`; with the pretty printer the list is written by the pretty printer, as in SBCL).
 
+**Review of the 0.3 changes (2026-11-04)**
+After Phase 24, the changes of Phases 19 to 24 were reviewed by agy (Antigravity CLI; two of five rounds finished before its quota ran out) and by Codex (the other three rounds). 41 issues were reproduced with Zilisp and SBCL 2.6.7 and fixed; the list is in CHANGELOG.md (Fixed). Design changes among them:
+- Native programs read the constants of each toplevel form just before running it (`Toplevel.nconsts`/`nlambdas`, `rt.zig` `loadUpTo`), as a fasl does, and the emitter prints the whole constant table with one set of `*print-circle*` labels (`printer.writeObjects`); the reader keeps the labels across the constants.
+- `reader.Source` has a refill hook: reading from standard input continues the same read when more input is needed instead of reading the form again.
+- Reader macros called while skipping (`#+`, `*read-suppress*`) get `*read-suppress*` bound to T and their value is NIL; a recursive `read` inside a reader macro takes the backquote depth of the outer read (`ValueBuilder.bq_depth`).
+- Object constructors refuse lengths that do not fit in the 32-bit header length (OutOfMemory, i.e. storage-condition).
+- Errors for malformed `do`/`loop` forms are program-error (SBCL signals simple-error for some of them; `error` comes in Phase 25).
+
 ---
 
 ## 3. Heap and GC: page management, roots, FFI handles (D-8, D-9)

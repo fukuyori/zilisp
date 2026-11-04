@@ -75,8 +75,11 @@ pub fn run(gpa: std.mem.Allocator, io: Io, options: Options, path: []const u8, o
             try stderr.print("{s}:{d}:{d}: 内部エラー：IR が正しくありません（{t}）\n", .{ path, loc.line, loc.col, err });
             return .failed;
         };
+        const lambda_start = em.lambdas.items.len;
         _ = em.emitLambda(lambda) catch return oom(stderr);
-        toplevels.append(gpa, .{ .lambda = lambda, .line = loc.line, .col = loc.col }) catch return oom(stderr);
+        // このフォームの lambda の名前も、このフォームの定数に含める（フォームの直前に読む）
+        em.registerNamesFrom(lambda_start) catch return oom(stderr);
+        toplevels.append(gpa, .{ .lambda = lambda, .line = loc.line, .col = loc.col, .nconsts = @intCast(em.consts.items.len), .nlambdas = @intCast(em.lambdas.items.len) }) catch return oom(stderr);
     }
     em.registerNames() catch return oom(stderr);
     var out: Io.Writer.Allocating = .init(gpa);

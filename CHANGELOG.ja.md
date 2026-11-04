@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-04
+
+データ処理・ファイル処理と、複数のファイルからなるプログラム（Phase 19〜24）：繰り返しと `loop`、数の塔（bignum と比）、
+一般の配列と列の関数、Unicode 15.0.0 の文字、SBCL と同じ配置のハッシュ表、パッケージと `load`、ストリームとパス名、
+`format` の全体、Reader の拡張と pretty printer。condition（`handler-case`・restart）・`defstruct`・CLOS は未実装
+（`compatibility/eval-status.md`）。
+
 ### Added
 - Phase 21：一般の配列（多次元の配列・fill-pointer・adjustable な配列。添字がいくつでもよい `aref`、`row-major-aref`、
   `array-dimensions` などの配列の問い合わせ、`vector-push`・`vector-push-extend`・`vector-pop`・`adjust-array`、`#2A(...)` の印字）、

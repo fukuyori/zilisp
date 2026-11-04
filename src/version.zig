@@ -7,7 +7,7 @@ const builtin = @import("builtin");
 pub const name = "zilisp";
 
 /// 処理系のバージョン（build.zig.zon の .version と一致させる）。
-pub const version = "0.2.0";
+pub const version = "0.3.0";
 
 /// ビルドに使った Zig のバージョン。
 pub const zig_version = builtin.zig_version_string;

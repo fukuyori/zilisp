@@ -18,7 +18,7 @@ Execution speed is the top design priority; standard semantics are never traded 
 
 ## Status
 
-Zilisp is at **0.2.0**, the first public release. It is still early: many common operators are not
+Zilisp is at **0.3.0**. It is still early: many common operators are not
 implemented yet. Unimplemented features are reported as errors before or during evaluation; Zilisp
 never silently returns a different value.
 
@@ -41,12 +41,11 @@ Implemented in 0.2.0:
   `push` `pop`
 - Hash tables (`eq`, `eql`, `equal`) and one-dimensional arrays (simple vectors and strings)
 
-Implemented after 0.2.0 (in `main`, not yet released):
+Added in 0.3.0:
 
 - `tagbody`/`go`, `do`, `do*`, `dolist`, `dotimes`, `psetq`, and `loop` (main clauses)
 - `mapcar`, `mapc`, `mapcan`, `nconc`, `reduce`, `reverse`, `nreverse`, `copy-list`, `last`, `max`, `min`,
-  `evenp`, `oddp`, `mod`, `rem`, `string=`, `string-upcase`, `princ`, and a minimal `format`
-  (`~A ~S ~D ~% ~& ~~` to `T` or `NIL`)
+  `evenp`, `oddp`, `mod`, `rem`, `string=`, `string-upcase`, `princ`
 - Bignums and ratios, exact comparisons with floats, `floor`/`ceiling`/`truncate`/`round`, `gcd`, `lcm`,
   `expt`, `sqrt`, `isqrt`, `exp`, `log`, trigonometric functions and bit operations (`logand`, `ash`, ...)
 - Multidimensional arrays, fill pointers and adjustable arrays (`vector-push-extend`, `adjust-array`),
@@ -55,7 +54,6 @@ Implemented after 0.2.0 (in `main`, not yet released):
   `concatenate`, `map`, `coerce`, ...), list and set functions (`member`, `assoc`, `union`, `pushnew`, ...),
   and character and string functions (`char-upcase`, `string<`, `string-trim`, `parse-integer`, ...); character classes
   and case follow Unicode 15.0.0, as in SBCL 2.6.7
-
 - Packages: `defpackage`, `in-package`, `export`, `use-package`, `intern`, `find-symbol` and the other package
   functions, name-conflict detection, and `load`
 - Streams and files: `with-open-file`, `read-line`, `read`, `write-line`, string streams (`with-output-to-string`,

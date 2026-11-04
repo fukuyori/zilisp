@@ -17,7 +17,7 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 
 ## 状況
 
-今の版は **0.2.0**（最初の公開版）です。まだ初期の段階で、よく使う演算子の多くが未実装です。
+今の版は **0.3.0** です。まだ初期の段階で、よく使う演算子の多くが未実装です。
 未実装の機能は、評価の前または評価の途中でエラーとして報告します。黙って別の値を返すことはしません。
 
 0.2.0 で実装したもの
@@ -36,11 +36,11 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - `setf` と場所（`defsetf`・`define-setf-expander`・`(defun (setf 名前) ...)`）、`incf` `decf` `push` `pop`
 - ハッシュ表（`eq`・`eql`・`equal`）と1次元の配列（単純ベクタと文字列）
 
-0.2.0 の後に実装したもの（`main` にあり、まだリリースしていない）
+0.3.0 で実装したもの
 
 - `tagbody`/`go`、`do`・`do*`・`dolist`・`dotimes`・`psetq`、`loop`（主な句）
 - `mapcar`・`mapc`・`mapcan`・`nconc`・`reduce`・`reverse`・`nreverse`・`copy-list`・`last`・`max`・`min`・
-  `evenp`・`oddp`・`mod`・`rem`・`string=`・`string-upcase`・`princ`、`format` の最小版（`T`・`NIL` への `~A ~S ~D ~% ~& ~~`）
+  `evenp`・`oddp`・`mod`・`rem`・`string=`・`string-upcase`・`princ`
 - bignum と比、浮動小数との正確な比較、`floor`・`ceiling`・`truncate`・`round`、`gcd`・`lcm`、`expt`・`sqrt`・`isqrt`・
   `exp`・`log`・三角関数、ビット演算（`logand`・`ash` など）
 - 多次元の配列・fill-pointer・adjustable な配列（`vector-push-extend`・`adjust-array`）、`equalp` と `equalp` のハッシュ表
@@ -48,7 +48,6 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - 列の関数（`find`・`position`・`remove-if`・`substitute`・`sort`・`subseq`・`search`・`concatenate`・`map`・`coerce` など）、
   リスト・集合の関数（`member`・`assoc`・`union`・`pushnew` など）、文字・文字列の関数（`char-upcase`・`string<`・
   `string-trim`・`parse-integer` など）。文字の種類と大文字・小文字は、SBCL 2.6.7 と同じく Unicode 15.0.0 に従う
-
 - パッケージ：`defpackage`・`in-package`・`export`・`use-package`・`intern`・`find-symbol` などのパッケージの関数、名前の衝突の検出、
   `load`
 - ストリームとファイル：`with-open-file`・`read-line`・`read`・`write-line`、文字列のストリーム（`with-output-to-string`・

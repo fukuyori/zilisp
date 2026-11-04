@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-04
+
+Data processing, files and programs in several files (Phases 19–24): iteration and `loop`, the numeric tower
+(bignums and ratios), general arrays and the sequence functions, Unicode 15.0.0 characters, hash tables with SBCL's
+layout, packages and `load`, streams and pathnames, the full `format`, reader extensions and the pretty printer.
+Conditions (`handler-case`, restarts), `defstruct` and CLOS are not implemented yet (`compatibility/eval-status.md`).
+
 ### Added
 - Phase 21: general arrays (multidimensional arrays, fill pointers, adjustable arrays; `aref` with any number of subscripts,
   `row-major-aref`, `array-dimensions` and the other array inquiries, `vector-push`, `vector-push-extend`, `vector-pop`,

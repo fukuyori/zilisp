@@ -49,6 +49,10 @@
 - Fixed the three issues of the seventh Codex review of P25: `incf` and `decf` evaluate the delta before reading the place;
   `(complex (and ...))` is accepted (an intersection can be empty or real); the element type `base-char` does not match
   strings (Zilisp strings always have element type `character`)
+- Fixed the two issues of the eighth Codex review of P25: the argument of `complex` is now classified three ways. It is
+  accepted when it is surely a subtype of `real` (including `(not (not real))`), rejected when it surely contains a
+  non-real (including `(and string)` and `(and t string)`), and signals `zilisp:unimplemented` otherwise (empty
+  intersections such as `(and string symbol)`; SBCL returns NIL)
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

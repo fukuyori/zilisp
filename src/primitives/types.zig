@@ -163,43 +163,84 @@ fn completeType(th: *Thread, spec: Value) bool {
     return true;
 }
 
-/// 確実に実数の下位の型でない（complex の引数の誤り）。and の交わりは計算せず受け付ける（空や実数になることがある。
-/// (and string symbol) など。Codex のレビュー P25 7回目 #2）。satisfies も確かめられないので受け付ける
-fn surelyNotReal(th: *Thread, spec: Value) bool {
-    if (spec == Value.nil) return false;
-    if (spec == th.rt.t) return true;
+/// 型が実数の下位の型か（complex の引数）。yes：下位と言い切れる。no：実数でない要素を必ず含む。
+/// unknown：言い切れない（and の交わりが空になる (and string symbol) や satisfies など。subtypep がないので未実装）。
+/// Codex のレビュー P25 7回目 #2・8回目 #1・#2
+const Realness = enum { yes, no, unknown };
+
+fn realness(th: *Thread, spec: Value) Realness {
+    if (spec == Value.nil) return .yes;
+    if (spec == th.rt.t) return .no;
     const head = if (spec.isCons()) Runtime.consPtr(spec).car else spec;
-    if (classOf(th.rt, head) != null) return true;
+    if (!isSymbol(head) or th.rt.symbolPtr(head).package != th.rt.cl.obj) return .no; // 利用者のクラス
     var buf: [64]u8 = undefined;
-    const name = asciiName(th.rt, head, &buf) orelse return true;
+    const name = asciiName(th.rt, head, &buf) orelse return .no;
     const real_names = [_][]const u8{
         "REAL",       "RATIONAL", "INTEGER", "RATIO", "FLOAT", "SINGLE-FLOAT",  "SHORT-FLOAT", "DOUBLE-FLOAT",
         "LONG-FLOAT", "FIXNUM",   "BIGNUM",  "BIT",   "MOD",   "UNSIGNED-BYTE", "SIGNED-BYTE",
     };
-    if (inNames(name, &real_names)) return false;
-    if (!spec.isCons()) return true;
+    if (inNames(name, &real_names)) return .yes;
+    if (!spec.isCons()) return .no;
     const args = Runtime.consPtr(spec).cdr;
-    if (std.mem.eql(u8, name, "AND")) return args == Value.nil; // (and) は t
-    if (std.mem.eql(u8, name, "SATISFIES")) return false;
-    if (std.mem.eql(u8, name, "NOT")) return nthOf(args, 0) != th.rt.t;
     var x = args;
-    if (std.mem.eql(u8, name, "OR")) {
-        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (surelyNotReal(th, Runtime.consPtr(x).car)) return true;
-        return false;
+    if (std.mem.eql(u8, name, "AND")) {
+        // t を除いた部分：0 個なら t、1 個ならその型。どれかが実数の下位なら交わりも下位
+        var count: usize = 0;
+        var only: Value = Value.nil;
+        var any_yes = false;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const part = Runtime.consPtr(x).car;
+            if (part == th.rt.t) continue;
+            count += 1;
+            only = part;
+            if (realness(th, part) == .yes) any_yes = true;
+        }
+        if (count == 0) return .no;
+        if (count == 1) return realness(th, only);
+        return if (any_yes) .yes else .unknown;
     }
+    if (std.mem.eql(u8, name, "OR")) {
+        var all_yes = true;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) switch (realness(th, Runtime.consPtr(x).car)) {
+            .no => return .no,
+            .unknown => all_yes = false,
+            .yes => {},
+        };
+        return if (all_yes) .yes else .unknown;
+    }
+    if (std.mem.eql(u8, name, "NOT")) {
+        const arg = nthOf(args, 0);
+        if (arg == th.rt.t) return .yes; // (not t) は nil
+        // t 以外のアトムの型と、and・or・satisfies 以外の合成の型は、実数でない値をすべて含むことはない。
+        // その補集合には実数でない値が残る（実数の下位の型の補集合も同じ）
+        if (!arg.isCons()) return .no;
+        var abuf: [64]u8 = undefined;
+        const an = asciiName(th.rt, Runtime.consPtr(arg).car, &abuf) orelse return .unknown;
+        if (std.mem.eql(u8, an, "NOT")) return realness(th, nthOf(Runtime.consPtr(arg).cdr, 0));
+        if (inNames(an, &.{ "AND", "OR", "SATISFIES" }))
+            return if (realness(th, arg) == .yes) .no else .unknown;
+        return .no;
+    }
+    if (std.mem.eql(u8, name, "SATISFIES")) return .unknown;
     if (std.mem.eql(u8, name, "EQL") or std.mem.eql(u8, name, "MEMBER")) {
         while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
             const e = Runtime.consPtr(x).car;
-            if (!numbers.isNumber(e)) return true;
+            if (!isRational(e) and !isFloat(e)) return .no;
         }
-        return false;
+        return .yes;
     }
-    return true;
+    return .no;
 }
 
 /// Codex のレビュー P25 6回目 #5：complex の実部の型は * か実数の下位の型に限る
-fn validComplexPart(th: *Thread, spec: Value) bool {
-    return isStar(th, spec) or (completeType(th, spec) and !surelyNotReal(th, spec));
+fn validComplexPart(th: *Thread, spec: Value) Validity {
+    if (isStar(th, spec)) return .ok;
+    if (!completeType(th, spec)) return .invalid;
+    return switch (realness(th, spec)) {
+        .yes => .ok,
+        .no => .invalid,
+        .unknown => .unimplemented,
+    };
 }
 
 /// 型指定子 spec の正しさ。値は判定せず、形だけを見る（Codex のレビュー P25 5回目 #3〜#5）
@@ -265,7 +306,7 @@ fn validate(th: *Thread, spec: Value) Validity {
     }
     if (eq(hn, "COMPLEX")) {
         if (n > 1) return .invalid;
-        return if (n == 0 or validComplexPart(th, nthOf(args, 0))) .ok else .invalid;
+        return if (n == 0) .ok else validComplexPart(th, nthOf(args, 0));
     }
     return .invalid;
 }
@@ -561,10 +602,12 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
         }
         return true;
     }
-    // base-string（Zilisp にはない）と complex（複素数はない）は、形が正しければ偽（Codex のレビュー P25 5回目 #5）
+    // base-string（Zilisp にはない）と complex（複素数はない）は、形が正しければ偽（Codex のレビュー P25 5回目 #5）。
+    // complex の引数が実数の下位か言い切れなければ未実装（8回目）
     if (Is.eq(hn, "BASE-STRING") or Is.eq(hn, "SIMPLE-BASE-STRING") or Is.eq(hn, "COMPLEX")) {
         return switch (validate(th, spec)) {
-            .ok, .unimplemented => false,
+            .ok => false,
+            .unimplemented => unimplemented(th, spec),
             .invalid => unknown(th, spec),
         };
     }

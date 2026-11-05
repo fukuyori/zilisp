@@ -43,6 +43,9 @@
 - Codex の 7 回目のレビュー（P25）の 3 件を直した：`incf`・`decf` は増やす量を場所の値を読む前に評価する、
   `(complex (and …))` を受け付ける（交わりは空や実数になることがある）、要素の型 `base-char` は文字列に当たらない
   （Zilisp の文字列の要素の型はいつも `character`）
+- Codex の 8 回目のレビュー（P25）の 2 件を直した：`complex` の引数の判定を 3 つに分けた。実数の下位と言い切れれば受け付け
+  （`(not (not real))` も）、実数でない要素を必ず含めば誤り（`(and string)`・`(and t string)` も）、どちらとも言い切れなければ
+  `zilisp:unimplemented`（`(and string symbol)` などの空の交わり。SBCL は NIL）
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

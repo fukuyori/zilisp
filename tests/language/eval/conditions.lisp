@@ -174,6 +174,28 @@
                    (check-type (aref v (incf i)) string) :ok))
                v i)))
 
+;;; Codex のレビュー P25 3回目で直したもの
+;; #1 ccase・ctypecase は場所を1回だけ読み、store-value の後は格納のフォームの値で分岐をやり直す
+(defvar *p25-reads* 0)
+(defvar *p25-cell* 9)
+(defun p25-probe () (incf *p25-reads*) *p25-cell*)
+(defun p25-put-probe (v) (setq *p25-cell* v))
+(defsetf p25-probe p25-put-probe)
+(print (handler-bind ((type-error (lambda (c) (store-value 1 c))))
+         (list (ccase (p25-probe) (1 :ok)) *p25-reads* *p25-cell*)))
+(setq *p25-reads* 0 *p25-cell* 9)
+(print (handler-bind ((type-error (lambda (c) (store-value "s" c))))
+         (list (ctypecase (p25-probe) (string :str)) *p25-reads* *p25-cell*)))
+;; #2 格納の変数が複数ある場所（足りない値は NIL）
+(defvar *p25-a* 9)
+(defvar *p25-b* 8)
+(define-setf-expander p25-pair ()
+  (let ((x (gensym)) (y (gensym)))
+    (values nil nil (list x y) `(progn (setq *p25-a* ,x *p25-b* ,y) (values ,x ,y)) `(values *p25-a* *p25-b*))))
+(print (handler-case (handler-bind ((type-error (lambda (c) (store-value 1 c))))
+                       (list (ccase (p25-pair) (1 :ok)) *p25-a* *p25-b*))
+         (unbound-variable () :unbound)))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

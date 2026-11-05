@@ -2011,23 +2011,24 @@
   (list (eval (read *query-io*))))
 
 ;; ccase・ctypecase：漏れたら store-value の restart で場所に新しい値を入れて、もう一度分岐する。
-;; 場所の部分式（添字など）は、setf の展開で最初に1回だけ評価し、やり直しでも同じ場所を読み書きする（SBCL 2.6.7 と同じ。
-;; Codex のレビュー P25 2回目 #3）
+;; 場所の部分式（添字など）は、setf の展開で最初に1回だけ評価し、やり直しでも同じ場所を読み書きする。場所を読むのも最初の
+;; 1回だけで、store-value の後は格納のフォームの値で分岐をやり直す。格納の変数が複数あれば、足りない値は NIL
+;; （どれも SBCL 2.6.7 と同じ。Codex のレビュー P25 2回目 #3・3回目 #1・#2）
 (defun zl-sys::%correctable-case (keyplace dispatch)
   (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion keyplace)
     (let ((block (gensym "BLOCK")) (again (gensym "AGAIN")) (v (gensym "KEY")) (value (gensym "VALUE")))
       `(let* ,(zl-sys::%zip temps vals)
-         (block ,block
-           (tagbody
-              ,again
-              (let ((,v ,access))
+         (let ((,v ,access))
+           (block ,block
+             (tagbody
+                ,again
                 (return-from ,block
                   ,(funcall dispatch v
                             `(restart-case ,(funcall dispatch v nil)
                                (store-value (,value)
                                  :report (lambda (stream) (format stream "Supply a new value for ~S." ',keyplace))
                                  :interactive zl-sys::%read-new-value
-                                 (let ((,(car stores) ,value)) ,store-form)
+                                 (setq ,v (multiple-value-bind ,stores (values ,value) ,store-form))
                                  (go ,again))))))))))))
 
 (defmacro ccase (keyplace &rest clauses)

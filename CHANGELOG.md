@@ -29,6 +29,9 @@
 - Fixed the four issues of the second Codex review of P25: the stream position on wrong `#A` contents, the stream of
   reader-error and end-of-file from `read-from-string`, evaluating the subforms of the place of `ccase` and `ctypecase` once,
   and calling `*debugger-hook*` for errors found in Zig even with no handler or restart
+- Fixed the three issues of the third Codex review of P25: `ccase` and `ctypecase` read the place only once; places with
+  several store variables; a failed allocation of the stream for a `read-from-string` error is no longer overwritten by the
+  original error
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

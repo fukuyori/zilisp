@@ -26,6 +26,8 @@
 - Codex の 2 回目のレビュー（P25）の 4 件を直した：`#A` の中身の誤りのときのストリームの位置、`read-from-string` の
   reader-error・end-of-file のストリーム、`ccase`・`ctypecase` の場所の部分式を1回だけ評価、handler・restart がなくても
   Zig で見つけたエラーで `*debugger-hook*` を呼ぶ
+- Codex の 3 回目のレビュー（P25）の 3 件を直した：`ccase`・`ctypecase` は場所を1回だけ読む、格納の変数が複数ある場所、
+  `read-from-string` のエラーのストリームの確保に失敗したときに元のエラーで上書きしない
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

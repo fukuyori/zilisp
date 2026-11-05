@@ -1128,10 +1128,11 @@ const ReadOp = union(enum) {
 /// st の位置から1つ読む。読めなければ（終わり）null を eof に入れる
 /// 読み取りのエラーの condition に入れるストリーム（stream-error-stream）。read-from-string（s が文字列）なら、
 /// 同じ中身と位置の文字列の入力ストリームを、エラーのときだけ作る（SBCL 2.6.7 と同じく condition はストリームを持つ。
-/// Codex のレビュー P25 2回目 #2）。作れなければ s のまま
-fn errorStream(th: *Thread, s: Value, st: *StreamState) Value {
+/// Codex のレビュー P25 2回目 #2）。作れなければ null（確保の失敗を記録済み。呼び出し側は元のエラーを通知せずに
+/// Value.unwind を返す。3回目 #3）
+fn errorStream(th: *Thread, s: Value, st: *StreamState) ?Value {
     if (isStream(s)) return s;
-    const es = makeStringInputBytes(th, st.input()) orelse return s;
+    const es = makeStringInputBytes(th, st.input()) orelse return null;
     setReadPosition(es, st.pos);
     return es;
 }
@@ -1214,11 +1215,13 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
                     return Value.unwind;
                 }
                 sync.run();
-                return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", errorStream(th, s, st), Value.unbound);
+                const es = errorStream(th, s, st) orelse return Value.unwind;
+                return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", es, Value.unbound);
             },
             error.ReaderError => {
                 sync.run();
-                return th.signal(.reader_error, r.diagnostic.message, errorStream(th, s, st), Value.unbound);
+                const es = errorStream(th, s, st) orelse return Value.unwind;
+                return th.signal(.reader_error, r.diagnostic.message, es, Value.unbound);
             },
             error.LispError => return Value.unwind,
         };
@@ -1377,7 +1380,8 @@ pub fn readFromString(th: *Thread, args: []const Value) Value {
     const index = Value.fromFixnum(@intCast(b[0] + charCount(text[0..st.pos])));
     if (eof) {
         const signals = eof_error == null or eof_error.? != Value.nil;
-        const r = eofResult(th, if (signals) errorStream(th, str, &st) else str, eof_error, eof_value);
+        const ds = if (signals) (errorStream(th, str, &st) orelse return Value.unwind) else str;
+        const r = eofResult(th, ds, eof_error, eof_value);
         if (r == Value.unwind) return r;
         th.mv[1] = index;
         th.mv_count = 2;

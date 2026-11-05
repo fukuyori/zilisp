@@ -19,7 +19,7 @@
 ## 2. 次の作業（tque）
 
 - P25 の残り：上の未確認の検証、修正への Codex の再レビュー、コミット。
-  - Codex のレビュー 1 回目（2026-11-05）：7 件。#1〜#6 は直した（言語試験 `conditions.lisp` に再現の例を入れた）。#7 `*break-on-signals*` はデバッガのフェーズへ。2 回目（再レビュー）：4 件、すべて直した（`*debugger-hook*` の例は、`sbcl --script` が呼ばないので単体テスト）。依頼文と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`（`request.md`・`result1.md`）。
+  - Codex のレビュー 1 回目（2026-11-05）：7 件。#1〜#6 は直した（言語試験 `conditions.lisp` に再現の例を入れた）。#7 `*break-on-signals*` はデバッガのフェーズへ。2 回目（再レビュー）：4 件、すべて直した（`*debugger-hook*` の例は、`sbcl --script` が呼ばないので単体テスト）。3 回目（`5214e36` に対して）：3 件、すべて直した（直した後の試験：test Debug・lang-test 65/65・native-test Debug 36/36・fmt 通過。ReleaseSafe・ReleaseFast とクロス・WSL は未確認）。依頼文と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`（`request.md`・`result1.md`）。
 - **デバッガのフェーズ（tque #351、#317 の後）**：D1 調査 → D2 Zilisp の制約 → D3 方式の比較と推奨 → D4 レモンの決定（方式・範囲・置き場所）→ D5 反映・実装。どのようなデバッガにするかの検討から始める（2026-11-05 の指示）。
 - **判断待ち**：`zilisp:unimplemented` と、未実装の CL 関数の `undefined-function` は、今は `error` の下位なので、`ignore-errors` や `(handler-case … (error …))` が未実装を黙って受け止める（基本設計 §3.1「黙って別の値を返さない」に反する恐れ）。`error` の下位にしない案がある。
 - 0.4（#316）の下のほかの項目：

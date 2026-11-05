@@ -1739,8 +1739,16 @@
       (dolist (r (compute-restarts condition) nil)
         (if (eq (restart-name r) identifier) (return r)))))
 
+;; restart のオブジェクトは、いま有効か（束縛の中にあるか）だけを見る。:test を condition なしで呼び直すと、
+;; condition を指定して見つけた restart を拒否してしまう（Codex のレビュー P25 10回目。SBCL 2.6.7 と同じ）
+(defun zl-sys::%restart-active-p (restart)
+  (dolist (cluster zl-sys::*restart-clusters* nil)
+    (if (member restart cluster) (return t))))
+
 (defun zl-sys::%find-restart-or-lose (identifier &optional condition)
-  (or (find-restart identifier condition)
+  (or (if (typep identifier 'restart)
+          (if (zl-sys::%restart-active-p identifier) identifier nil)
+          (find-restart identifier condition))
       (error 'zl-sys::simple-control-error :format-control "No restart ~S is active." :format-arguments (list identifier))))
 
 (defun invoke-restart (restart &rest arguments)

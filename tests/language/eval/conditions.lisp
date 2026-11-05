@@ -314,6 +314,29 @@
                  (not (cons nil t)) (cons) (cons integer string) (cons * symbol) (complex) (complex *)
                  (vector nil 0) (array nil (0)) (string 0))))
 
+;;; Codex のレビューの 10 回目の指摘（SBCL 2.6.7 と比較）：condition を指定して見つけた restart のオブジェクトは、
+;;; :test を condition なしで呼び直さずに呼べる（名前で呼ぶと :test は NIL を受け取る）
+(defun p25-test-restart (how)
+  (handler-case
+      (handler-bind ((error (lambda (c)
+                              (ecase how
+                                (:object (invoke-restart (find-restart 'recover c)))
+                                (:interactive (invoke-restart-interactively (find-restart 'recover c)))
+                                (:name (invoke-restart 'recover))))))
+        (restart-case (error "x") (recover () :test (lambda (c) (typep c 'error)) :recovered)))
+    (control-error () :control-error)))
+(print (mapcar #'p25-test-restart '(:object :interactive :name)))
+(print (handler-case (handler-bind ((error (lambda (c) (continue c))))
+                       (restart-case (error "x") (continue () :test (lambda (c) (typep c 'error)) :continued)))
+         (control-error () :control-error)))
+(print (handler-bind ((error (lambda (c) (store-value 5 c))))
+         (restart-case (error "x") (store-value (v) :test (lambda (c) (typep c 'error)) (list :stored v)))))
+(print (multiple-value-list
+        (handler-bind ((error (lambda (c) (invoke-restart (find-restart 'recover c) 1 2))))
+          (restart-case (error "x") (recover (a b) :test (lambda (c) (typep c 'error)) (values a b))))))
+;; 抜けた restart-case の restart をオブジェクトで呼ぶ例は、結果が未定義（restart は dynamic extent。
+;; SBCL 2.6.7 は memory fault）なので eval_test.zig で確かめる
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

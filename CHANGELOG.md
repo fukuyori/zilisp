@@ -56,6 +56,10 @@
 - Fixed the issue of the ninth Codex review of P25: a `cons` type with a `nil` part (such as `(cons nil t)`) is empty
   and so is accepted as the argument of `complex`; `cons` and compound `complex` types that may or may not be empty
   (such as `(complex nil)`) signal `zilisp:unimplemented` (SBCL returns NIL)
+- Fixed the issue of the tenth Codex review of P25: when `invoke-restart` or `invoke-restart-interactively` is given a
+  restart object, it only checks that the restart is active (it no longer calls `:test` again without the condition).
+  A restart found for a condition (also through `continue`, `store-value` and `use-value`) was rejected with a
+  control-error
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

@@ -49,6 +49,9 @@
 - Codex の 9 回目のレビュー（P25）の 1 件を直した：部分が `nil` の `cons`（`(cons nil t)` など）は空の型なので
   `complex` の引数に使える。空かどうか言い切れない `cons` と `complex` の合成の型（`(complex nil)` など）は
   `zilisp:unimplemented`（SBCL は NIL）
+- Codex の 10 回目のレビュー（P25）の 1 件を直した：`invoke-restart`・`invoke-restart-interactively` に restart の
+  オブジェクトを渡したら、いま有効かだけを確かめる（`:test` を condition なしで呼び直さない）。condition を指定して
+  見つけた restart（`continue`・`store-value`・`use-value` の経路も）を control-error で拒否していた
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

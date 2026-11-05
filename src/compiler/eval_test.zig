@@ -2069,6 +2069,10 @@ test "conditions not handled reach the top level (Phase 25)" {
     try expectError(&e, "(typep 1 '(complex (complex (integer 0 0))))", .unimplemented);
     try expectError(&e, "(typep 1 '(complex (cons (integer 3 1) t)))", .unimplemented);
     try expectError(&e, "(typep 1 '(complex (cons (cons nil t) t)))", .unimplemented);
+    // Codex のレビュー P25 10回目：抜けた restart-case の restart は、オブジェクトで呼んでも control-error
+    // （restart は dynamic extent なので結果は未定義。SBCL 2.6.7 は memory fault）。抜けた後に束縛は残らない
+    try expectValue(&e, "(let ((r (restart-case (find-restart 'p25-gone) (p25-gone () nil)))) (list (restart-name r) (handler-case (invoke-restart r) (control-error () :ce)) (handler-case (invoke-restart-interactively r) (control-error () :ce))))", "(P25-GONE :CE :CE)");
+    try expectValue(&e, "(progn (restart-case 1 (p25-gone () nil)) (handler-bind ((error #'identity)) 1) (list (find-restart 'p25-gone) zl-sys::*restart-clusters* zl-sys::*handler-clusters*))", "(NIL NIL NIL)");
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");
     // 未定義の condition 型と、有効でない restart

@@ -19,8 +19,9 @@
   arrays, condition types), `typecase`, `etypecase`, `ctypecase`, `ecase`, `ccase`, `check-type` and `assert` (with SBCL's
   texts), and `eval` as a function
 - Tests: the language test `conditions.lisp` (the same output as SBCL 2.6.7; also a gc-stress version and native) and unit tests.
-  Level 13 of the curriculum gives the same output as SBCL except one file-error text (implementation-dependent). Curriculum
-  blocks matching went from 478 to 514. Startup time is 12.72 ms
+  Level 13 of the curriculum gives the same output as SBCL except one file-error text (implementation-dependent) and one block
+  that calls `get-universal-time` (not implemented yet). Curriculum
+  blocks matching went from 478 to 513. Startup time is 13.43 ms
 - Fixed six issues found in the Codex review of P25 (each checked against SBCL 2.6.7): the evaluation order of `cerror`'s
   arguments inside `restart-case`; associating restarts with forms that macroexpand to `signal` or `error`; control-error when
   an `abort` or `muffle-warning` restart returns; `typep` of `(vector t n)` and `(string n)` compares the dimension, not the
@@ -32,10 +33,26 @@
 - Fixed the three issues of the third Codex review of P25: `ccase` and `ctypecase` read the place only once; places with
   several store variables; a failed allocation of the stream for a `read-from-string` error is no longer overwritten by the
   original error
+- Fixed the five issues of the fourth Codex review of P25: funcall of a macro or special operator is undefined-function, not
+  unimplemented; `typep` of a CL symbol that is not a type, a wrong `pprint-logical-block` specification and an unknown `loop`
+  clause are errors, not unimplemented; `otherwise` in `etypecase` and `ctypecase` is a type specifier; added
+  `(setf (values ...))` (setf of places with several store variables)
+- Fixed the six issues of the fifth Codex review of P25: `setf`, `incf`, `decf`, `push` and `pop` of places with zero or
+  several store variables (`(values)`, `(values a b)`) bind every store variable; `typep` checks the form of a type specifier,
+  so a malformed one (`(random-state 3)`, `(mod 0)`, `(integer 1 2 3)`, an element type that is not a type) is an error, and
+  `(base-string n)`, `(simple-base-string n)` and `(complex type)` are false; a `loop` `named` that is not first and an unknown
+  `being` kind are program-error (only the symbol kinds of `being` and SBCL's `elements` are unimplemented)
+- Fixed the five issues of the sixth Codex review of P25: `getf` and nested `values` places bind every store variable (a place
+  with no store variables takes no value and gives NIL); `typep` always checks the outer form of `and`, `or`, `not` and `cons`
+  (the parts are still checked only when used); the bounds of a numeric range are checked per type (`(integer 1.5 3)` and
+  `(single-float 1 3)` are errors); the argument of `(complex type)` must be `*` or a subtype of `real`
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed
 - Malformed `do`, `do*` and `psetq` forms signal simple-error as in SBCL 2.6.7 (they were program-error)
+- Unimplemented features (`zilisp:unimplemented`) are not a subtype of `error` (they are `serious-condition`s), so
+  `ignore-errors` and `(handler-case ... (error ...))` do not take them and they reach the top level. Unimplemented CL functions
+  and variables are also signaled to handlers as `zilisp:unimplemented`
 - The storage-condition of a stack overflow (the VM and native stacks, the dynamic binding and control stacks) is not
   signaled to handlers (there is no reserve area to run them in)
 

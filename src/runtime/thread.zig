@@ -358,7 +358,23 @@ pub const Thread = struct {
             th.read_builder = saved_builder;
         }
         var name_buf: [64]u8 = undefined;
-        const tag = @tagName(kind);
+        // COMMON-LISP パッケージの未実装の関数（未実装の印）と、値のない CL の特殊変数は、その機能が未実装のため。
+        // zilisp:unimplemented（error の下位でない）として通知し、error の handler が黙って受け止めないようにする
+        // （基本設計 §3.1。マクロを funcall した場合などは SBCL と同じ undefined-function のまま）
+        const SF = @import("../values/object.zig").SymbolFlags;
+        const cl_symbol = datum.isOther() and Runtime.kindOf(datum) == .symbol and rt.symbolPtr(datum).package == rt.cl.obj;
+        // マクロ・特殊演算子を関数として呼んだのは、未実装かどうかによらず undefined-function（SBCL と同じ。Codex のレビュー
+        // P25 4回目 #1。未実装の印はマクロ・特殊演算子にも付く）
+        const unimplemented_function = cl_symbol and blk: {
+            const fs = rt.symbolPtr(datum);
+            break :blk fs.hasFlag(SF.unimplemented) and !fs.hasFlag(SF.macro) and !fs.hasFlag(SF.special_operator);
+        };
+        const tag = if (kind == .undefined_function and unimplemented_function)
+            "unimplemented-function"
+        else if (kind == .unbound_variable and cl_symbol and rt.symbolPtr(datum).hasFlag(SF.special))
+            "unimplemented-variable"
+        else
+            @tagName(kind);
         for (tag, 0..) |c, i| name_buf[i] = if (c == '_') '-' else std.ascii.toUpper(c);
         const kw = rt.internKeyword(name_buf[0..tag.len]) catch return th.signalFailed();
         const text = if (detail != Value.unbound) detail else (rt.makeString(message) catch return th.signalFailed());

@@ -17,8 +17,9 @@
 - `typep`（数の範囲・`mod`・`member`・`and`・`or`・`not`・`satisfies`・`cons`・ベクタと配列の要素の型と大きさ・condition の型）、
   `typecase`・`etypecase`・`ctypecase`・`ecase`・`ccase`・`check-type`・`assert`（文面は SBCL と同じ）、関数としての `eval`
 - 試験：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
-  教材 Level 13 は、ファイルのエラーの文面の 1 つ（処理系依存）以外は SBCL と同じ出力。教材のブロックの一致は 478 から 514 に。
-  起動時間は 12.72 ms
+  教材 Level 13 は、ファイルのエラーの文面の 1 つ（処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ以外は SBCL と同じ出力。
+  教材のブロックの一致は 478 から 513 に。
+  起動時間は 13.43 ms
 - Codex のレビュー（P25）で見つけた 6 件を直した（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` の引数の評価順、
   マクロを展開すると `signal`・`error` になるフォームの restart の関連付け、`abort`・`muffle-warning` の restart が戻ったときの
   control-error、`typep` の `(vector t n)`・`(string n)` を fill-pointer でなく次元で照合、reader-error・end-of-file の handler
@@ -28,10 +29,24 @@
   Zig で見つけたエラーで `*debugger-hook*` を呼ぶ
 - Codex の 3 回目のレビュー（P25）の 3 件を直した：`ccase`・`ctypecase` は場所を1回だけ読む、格納の変数が複数ある場所、
   `read-from-string` のエラーのストリームの確保に失敗したときに元のエラーで上書きしない
+- Codex の 4 回目のレビュー（P25）の 5 件を直した：マクロ・特殊演算子の funcall は未実装でなく undefined-function、
+  型でない CL のシンボルの `typep` と `pprint-logical-block` の指定の誤りと `loop` の知らない句は未実装でなく error、
+  `etypecase`・`ctypecase` の `otherwise` は型指定子、`(setf (values …))` を加えた（格納の変数が複数の場所の `setf`）
+- Codex の 5 回目のレビュー（P25）の 6 件を直した：格納の変数が 0 個・複数の場所（`(values)`・`(values a b)`）の
+  `setf`・`incf`・`decf`・`push`・`pop` はすべての格納の変数を束縛する、`typep` は型指定子の形を確かめる（`(random-state 3)`・
+  `(mod 0)`・`(integer 1 2 3)`・型でない要素の型は error、`(base-string n)`・`(simple-base-string n)`・`(complex 型)` は偽）、
+  `loop` の先頭でない `named` と知らない `being` の種類は program-error（`being` の symbol の種類と SBCL の `elements` だけ未実装）
+- Codex の 6 回目のレビュー（P25）の 5 件を直した：`getf` と入れ子の `values` の場所はすべての格納の変数を束縛する（格納の
+  変数のない場所は値を受け取らず NIL を返す）、`typep` は `and`・`or`・`not`・`cons` の外側の形をいつも確かめる（部分は使うとき
+  だけ）、数の範囲の限界を型ごとに確かめる（`(integer 1.5 3)`・`(single-float 1 3)` は error）、`(complex 型)` の引数は `*` か
+  `real` の下位の型
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした
 - `do`・`do*`・`psetq` の形の誤りを、SBCL 2.6.7 と同じく simple-error にした（今までは program-error）
+- 未実装の機能（`zilisp:unimplemented`）は `error` の下位でない（`serious-condition` の下位）。`ignore-errors` や
+  `(handler-case … (error …))` は未実装を受け止めず、トップレベルまで届く。CL の未実装の関数・変数も、handler には
+  `zilisp:unimplemented` として通知する
 - スタックの溢れ（VM・ネイティブのスタック、動的束縛と制御スタック）の storage-condition は、handler に通知しない
   （handler を動かす予備の領域がないため）
 

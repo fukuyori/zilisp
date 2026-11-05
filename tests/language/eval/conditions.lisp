@@ -196,6 +196,96 @@
                        (list (ccase (p25-pair) (1 :ok)) *p25-a* *p25-b*))
          (unbound-variable () :unbound)))
 
+;;; Codex のレビュー P25 4回目で直したもの（未実装の機能は error の下位でない zilisp:unimplemented。ほかのエラーは SBCL と同じ型）
+;; #1 マクロ・特殊演算子を funcall したのは undefined-function
+(print (list (handler-case (funcall 'if t 1 2) (undefined-function () :undefined) (serious-condition () :serious))
+             (handler-case (funcall 'with-slots) (undefined-function () :undefined) (serious-condition () :serious))))
+;; #2 型でない CL のシンボル、#3 pprint-logical-block の指定の誤り、LOOP の知らない句は error
+(print (list (handler-case (typep 1 'car) (error () :error) (serious-condition () :serious))
+             (handler-case (eval '(pprint-logical-block (s nil :prefix "a" :per-line-prefix "b") nil))
+               (error () :error) (serious-condition () :serious))
+             (handler-case (macroexpand '(loop for x in nil frob 3)) (error () :error) (serious-condition () :serious))))
+;; #4 etypecase・ctypecase の otherwise は型指定子（typecase の otherwise はどれにも当たらない節）
+(print (list (handler-case (eval '(let ((x 1)) (ctypecase x (otherwise :ok)))) (error () :error))
+             (handler-case (eval '(let ((x 1)) (etypecase x (otherwise :ok)))) (error () :error))
+             (typecase 5 (string :s) (otherwise :other))))
+;; #5 (setf (values …))、ccase の場所の (values a b)
+(print (let ((a 0) (v (vector 1 2))) (list (multiple-value-list (setf (values a (aref v 1)) (values 7 8 9))) a v)))
+(print (let ((a 0) (b 0)) (setf (values a b) 5) (list a b)))
+(print (let ((a 9) (b 8))
+         (list (handler-bind ((type-error (lambda (c) (store-value 1 c)))) (ccase (values a b) (1 :ok))) a b)))
+
+;;; Codex のレビューの 5 回目の指摘（どれも SBCL 2.6.7 と同じ結果）
+;; #1・#2 格納の変数が 0 個・複数の場所（setf・incf・decf・push・pop）
+(print (let ((a 0)) (list (multiple-value-list (setf (values) (incf a))) a)))
+(print (let ((a 1) (b 2)) (list (multiple-value-list (incf (values a b))) a b)))
+(print (let ((a 5) (b 2)) (list (multiple-value-list (decf (values a b) 2)) a b)))
+(print (let ((a (list 1 2)) (b 9)) (list (multiple-value-list (pop (values a b))) a b)))
+(print (let ((a (list 1)) (b 9)) (list (multiple-value-list (push 0 (values a b))) a b)))
+;; #3〜#5 型指定子の形の誤りはエラー、正しい形の base-string・complex は偽
+(print (mapcar (lambda (spec) (handler-case (typep 1 spec) (error () :error) (serious-condition () :serious)))
+               '((base-string 3) (simple-base-string 3) (complex single-float) (base-string -1) (complex car)
+                 (random-state 3) (bit-vector 3 4) (mod 0) (integer 1 2 3) (or fixnum car))))
+(print (list (handler-case (typep #(1) '(vector car)) (error () :error) (serious-condition () :serious))
+             (typep "ab" '(vector character 2))))
+;; #6 先頭でない named と、知らない being の種類は形の誤り
+(print (list (handler-case (macroexpand '(loop repeat 1 named foo do (print 1))) (error () :error))
+             (handler-case (macroexpand '(loop for x being each frob of nil collect x)) (error () :error))))
+
+;;; Codex のレビューの 6 回目の指摘（SBCL 2.6.7 と比較）
+;; Codex のレビュー P25 6回目 #1：getf の内側の多値の場所は、後続の格納の変数も NIL にする
+(print (let ((p nil) (b 9))
+         (list (handler-case (setf (getf (values p b) :x) 7) (unbound-variable () :unbound)) p b)))
+(print (let ((p nil) (b 9))
+         (list (push 7 (getf (values p b) :x)) p b)))
+(print (let ((p (list :x (list 7 8))) (b 9))
+         (list (pop (getf (values p b) :x)) p b)))
+(print (let ((p nil) (b 9) (log nil))
+         (list (push (progn (push :item log) 7)
+                     (getf (values p b) (progn (push :indicator log) :x)
+                           (progn (push :default log) nil)))
+               p b (reverse log))))
+;; Codex のレビュー P25 6回目 #2：格納の変数が 0 個の場所は値を消費しない。複数なら先頭だけ消費する
+(print (handler-case
+           (eval '(let ((a 0)) (list (multiple-value-list (setf (values (values) a) (values 1 2))) a)))
+         (program-error () :program-error)))
+(print (let ((a 0) (b 0) (c 0))
+         (list (multiple-value-list (setf (values (values a b) c) (values 1 2 3))) a b c)))
+(print (let ((a 0) (b 0))
+         (list (multiple-value-list (setf (values a (values) b) (values 1 2 3))) a b)))
+(print (multiple-value-list (setf (values (values) (values)) (values 1 2))))
+(print (let ((a 0) (b 0))
+         (list (multiple-value-list (setf (values (values) a b) (values))) a b)))
+;; Codex のレビュー P25 6回目 #3：外側の形は短絡の前に検査し、部分の型は使うときだけ検査する
+(print (mapcar (lambda (s) (handler-case (typep (cons 1 2) s) (error () :error)))
+               '((cons t t t) (not integer integer) (and . integer))))
+(print (mapcar (lambda (s) (handler-case (typep 1 s) (error () :error)))
+               '((cons t t t) (cons . integer) (not) (not integer integer) (not integer . t)
+                 (and . integer) (and fixnum . integer) (or fixnum . integer)
+                 (or fixnum car) (and integer car) (cons car car) (not (or fixnum car)))))
+;; Codex のレビュー P25 6回目 #4：型ごとの境界（閉区間・開区間・既定値）
+(print (mapcar (lambda (s) (handler-case (typep 2 s) (error () :error)))
+               '((integer 1.5 3) (integer (1.5) 3) (rational 1.5 3) (rational (1.5) 3)
+                 (single-float 1 3) (single-float (1) 3.0) (short-float 1 3)
+                 (double-float 1.0 3.0) (double-float (1.0) 3.0d0) (long-float 1.0 3.0)
+                 (float 1 3) (float (1) (3)) (real 1.5 3) (real (1.5) (3))
+                 (integer 1 3) (integer (1) (3)) (rational 1/2 3) (rational (1/2) (3))
+                 (integer *) (real * *) (integer (1 2) 3) (integer (*) 3)
+                 (real nil 3) (float "x" 3))))
+(print (mapcar (lambda (s) (handler-case (typep 2.0 s) (error () :error)))
+               '((single-float 1.0 3.0) (short-float (1.0) (3.0)) (float 1 3) (real 1 3))))
+(print (mapcar (lambda (s) (handler-case (typep 2.0d0 s) (error () :error)))
+               '((double-float 1.0d0 3.0d0) (long-float (1.0d0) (3.0d0)) (float 1 3))))
+;; Codex のレビュー P25 6回目 #5：complex の実部に使える型と、合成・不正な型
+(print (mapcar (lambda (s) (handler-case (typep 1 (list 'complex s)) (simple-error () :error)))
+               '(* real rational integer ratio float single-float short-float double-float long-float
+                 fixnum bignum bit (mod 4) unsigned-byte signed-byte (unsigned-byte 8) (signed-byte 8)
+                 (integer 1 3) (rational (1/2) 3) (float 1 3) (single-float 1.0 3.0)
+                 (and real integer) (or integer single-float) (and real string) (and integer (not bit))
+                 (eql 1) (member 1 2) nil (or)
+                 string t number complex (or integer string) (not string) (and)
+                 (integer 1.5 3) (mod 0) (member 1 "x") (eql "x") car)))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

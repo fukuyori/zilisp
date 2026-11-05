@@ -7,21 +7,27 @@
 ## 1. 今の状態
 
 - リリース：`gh release list` は `Zilisp 0.3.0`（Latest、v0.3.0）と `Zilisp 0.2.0`。リモートのタグは `v0.2.0`・`v0.3.0`。
-- ブランチ：`main`。push 済みの最新は `cf5ff9d Stop attaching SHA256SUMS.txt and signing notes to releases`。
-- **P25（tque #317）の実装が、コミットしていない変更として作業ツリーにある**（コミットと push は指示待ち）。
-  - 内容：condition・handler・restart、`typep`、型の分岐と `check-type`・`assert`、関数としての `eval`、`do`・`do*`・`psetq` の形の誤りを simple-error に。
+- ブランチ：`main`。push 済みの最新は `d6c0d6e Fix issues from the third Codex review of Phase 25`（P25 の本体は `5214e36`）。
+- **コミットしていない変更**（コミットと push は指示待ち）：
+  - `zilisp:unimplemented` を `error` の下位から外した（`serious-condition` の下位。`ignore-errors` や `(handler-case … (error …))` に飲み込まれない）。
+  - Codex の 4 回目のレビューの 5 件の修正（マクロ・特殊演算子の `funcall`、`typep` の未実装の判定、`pprint-logical-block`・`loop` の誤りの型、`etypecase`・`ctypecase` の `otherwise`、`(setf (values …))`）。
+  - Codex の 5 回目のレビューの 6 件の修正（格納の変数が 0 個・複数の場所の `setf`・`incf`・`decf`・`push`・`pop`、`typep` の型指定子の形の確認（types.zig の `validate`）、`loop` の位置の誤った `named` と知らない `being` の種類）。
+  - Codex の 6 回目のレビューの 5 件の修正（コードは Codex が書き、こちらで確かめて要素の型の判定を 1 か所直した）：`getf` と入れ子の `values` の場所、`typep` の外側の形の確認（`validate`）と部分まで見る確認（`completeType`。要素の型と `complex` の引数）、数の範囲の限界の型、`complex` の引数は `real` の下位の型。
+  - デバッガの要件の文書 `docs/debugger-requirements.ja.md`・`.md`（v1.1）。
+- P25（tque #317）の内容：condition・handler・restart、`typep`、型の分岐と `check-type`・`assert`、関数としての `eval`、`do`・`do*`・`psetq` の形の誤りを simple-error に。
   - 文書：設計書（英日）の §6.6・§7 の表・§9・Phase 25 の節・起動時間の表、CHANGELOG（英日）、README（英日）、`tests/differential/impl-dependent.toml`、`compatibility/eval-status.md`・`eval-check.tsv`（eval-check が生成）。
   - 決めたこと（2026-11-05、レモン）：condition は専用の `record` で表し P27 で CLOS にまとめる／標準の condition の report は SBCL の英語の文面／Zig で見つけたエラーは `th.signal` の場所ですぐ handler を呼ぶ／REPL は restart の一覧の表示まで。
-- 全体の検証（2026-11-05、Codex の 2 回目の指摘を直した後。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 514・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）、起動時間の中央値 12.72 ms（ReleaseFast）。
-  - **未確認**：WSL の 1 skipped が前から同じか。2 回目の修正への Codex のレビュー。
+- 全体の検証（2026-11-05、Codex の 6 回目の指摘を直した後。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 513・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 79、起動時間の中央値 13.43 ms（ReleaseFast。最小 12.30 ms）。
+  - 一致が 514 から 513 に減ったのは Level 13 L704。未実装の `get-universal-time` を `ignore-errors` が受け止めなくなったため（`zilisp:unimplemented` の変更の結果）。
+  - **未確認**：WSL の 1 skipped が前から同じか。6 回目の修正への Codex のレビュー。
 - tque の #317 はまだ完了にしていない。#309（0.3 リリース）も完了にしていない。
 
 ## 2. 次の作業（tque）
 
 - P25 の残り：上の未確認の検証、修正への Codex の再レビュー、コミット。
   - Codex のレビュー 1 回目（2026-11-05）：7 件。#1〜#6 は直した（言語試験 `conditions.lisp` に再現の例を入れた）。#7 `*break-on-signals*` はデバッガのフェーズへ。2 回目（再レビュー）：4 件、すべて直した（`*debugger-hook*` の例は、`sbcl --script` が呼ばないので単体テスト）。3 回目（`5214e36` に対して）：3 件、すべて直した（直した後の試験：test Debug・lang-test 65/65・native-test Debug 36/36・fmt 通過。ReleaseSafe・ReleaseFast とクロス・WSL は未確認）。依頼文と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`（`request.md`・`result1.md`）。
-- **デバッガのフェーズ（tque #351、#317 の後）**：D1 調査 → D2 Zilisp の制約 → D3 方式の比較と推奨 → D4 レモンの決定（方式・範囲・置き場所）→ D5 反映・実装。どのようなデバッガにするかの検討から始める（2026-11-05 の指示）。
-- **判断待ち**：`zilisp:unimplemented` と、未実装の CL 関数の `undefined-function` は、今は `error` の下位なので、`ignore-errors` や `(handler-case … (error …))` が未実装を黙って受け止める（基本設計 §3.1「黙って別の値を返さない」に反する恐れ）。`error` の下位にしない案がある。
+- **デバッガ（tque #351、#317 の後）**：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。2026-11-05 に作成し、レモンが決定）。要点：外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。共通の中核の上に、JSON の出力・一括のデバッガ・MCP・DAP・Swank・REPL を載せる。0.4 に入れるのは段階 1（中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）で、tque #356。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
+- `zilisp:unimplemented` は `error` の下位にしない（`serious-condition` の下位。2026-11-05 にレモンが推奨の案で決定）。CL の未実装の関数・変数も handler には `zilisp:unimplemented` として通知する（`src/runtime/thread.zig` の callSignalHook）。
 - 0.4（#316）の下のほかの項目：
   - #318 P26 defstruct（受入 Level 19）
   - #344 P23 の受入の残り（Level 17 の text-tools を SBCL と比べる。P25 ができたので着手できる）
@@ -45,7 +51,7 @@
   - handler・restart のスタックは特殊変数 `zl-sys::*handler-clusters*`・`*restart-clusters*` の動的束縛（VM の命令は作らない）。
   - Zig の `th.signal` は、handler・restart があるときだけ `zl-sys::%signal-zig-error`（boot.lisp）を呼ぶ。その間は `vm.sp` を一番上のフレームの最大の深さまで上げる（上げないと、同じフレームの `catch` に戻る場合に途中の値が壊れることを確かめた）。
   - スタックの溢れは handler に通知しない（`th.stackExhausted`）。
-  - Lisp の部分は boot.lisp の末尾（約 670 行）。起動時間が 9.84 ms から 12.72 ms に増えた（20 ms で2段階ビルドを前倒しにする決まり）。
+  - Lisp の部分は boot.lisp の末尾（約 670 行）。起動時間が 9.84 ms から 13.43 ms に増えた（20 ms で2段階ビルドを前倒しにする決まり）。
 
 ## 5. 作業の進め方・道具
 

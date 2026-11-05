@@ -119,13 +119,21 @@
                           `(funcall #'(setf ,head) ,store ,@temps)
                           `(,head ,@temps)))))))))
 
+
+;; 場所の一時変数を束縛し、value の値で格納の変数を束縛して body を評価するフォーム。格納の変数がちょうど 1 個でなければ
+;; （(values) は 0 個、(values a b) は 2 個）value の多値で束縛する（足りない値は NIL。CLHS 5.1.2.3。Codex のレビュー P25 5回目 #1・#2）
+(defun zl-sys::%bind-stores (temps vals stores value body)
+  (if (and stores (null (cdr stores)))
+      `(let* (,@(zl-sys::%zip temps vals) (,(car stores) ,value)) ,@body)
+      `(let* ,(zl-sys::%zip temps vals)
+         (multiple-value-bind ,stores ,value ,@body))))
+
 (defun zl-sys::%expand-setf (place value)
   (if (symbolp place)
       `(setq ,place ,value)
       (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
         (declare (ignore access))
-        `(let* (,@(zl-sys::%zip temps vals) (,(car stores) ,value))
-           ,store-form))))
+        (zl-sys::%bind-stores temps vals stores value (list store-form)))))
 
 (defmacro setf (&rest pairs)
   (cond ((null pairs) nil)
@@ -207,9 +215,9 @@
                       (list (append temps (list itemp dtemp))
                             (append vals (list indicator default))
                             (list store)
-                            `(let ((,(car stores) (zl-sys::%putf ,access ,itemp ,store)))
-                               ,store-form
-                               ,store)
+                            ;; Codex のレビュー P25 6回目 #1：内側の格納の変数をすべて束縛し、足りない値は NIL にする
+                            (zl-sys::%bind-stores nil nil stores `(zl-sys::%putf ,access ,itemp ,store)
+                                                  (list store-form store))
                             `(getf ,access ,itemp ,dtemp)))))))
 
 ;; 場所を更新するマクロ（CLHS 5.1.2：場所の部分のフォームは1回だけ、左から順に評価する）
@@ -217,15 +225,13 @@
   (if (symbolp place)
       `(setq ,place (+ ,place ,delta))
       (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-        `(let* (,@(zl-sys::%zip temps vals) (,(car stores) (+ ,access ,delta)))
-           ,store-form))))
+        (zl-sys::%bind-stores temps vals stores `(+ ,access ,delta) (list store-form)))))
 
 (defmacro decf (place &optional (delta 1))
   (if (symbolp place)
       `(setq ,place (- ,place ,delta))
       (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-        `(let* (,@(zl-sys::%zip temps vals) (,(car stores) (- ,access ,delta)))
-           ,store-form))))
+        (zl-sys::%bind-stores temps vals stores `(- ,access ,delta) (list store-form)))))
 
 ;; push：item は場所の部分より先に評価する（CLHS push）
 (defmacro push (item place)
@@ -233,8 +239,7 @@
       `(setq ,place (cons ,item ,place))
       (let ((g (gensym)))
         (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-          `(let* ((,g ,item) ,@(zl-sys::%zip temps vals) (,(car stores) (cons ,g ,access)))
-             ,store-form)))))
+          (zl-sys::%bind-stores (cons g temps) (cons item vals) stores `(cons ,g ,access) (list store-form))))))
 
 (defmacro pop (place)
   (let ((g (gensym)))
@@ -243,9 +248,8 @@
            (setq ,place (cdr ,g))
            (car ,g))
         (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-          `(let* (,@(zl-sys::%zip temps vals) (,g ,access) (,(car stores) (cdr ,g)))
-             ,store-form
-             (car ,g))))))
+          (zl-sys::%bind-stores (append temps (list g)) (append vals (list access)) stores `(cdr ,g)
+                                (list store-form `(car ,g)))))))
 
 ;;; ---------------------------------------------------------------------------
 ;;; 多値（Phase 17。CLHS 5.3）
@@ -436,6 +440,23 @@
               (t (if tail (rplacd tail l) (setq head l))
                  (setq tail (last l))))))))
 
+;; (setf (values 場所 …) 値)：各場所に多値の各値を入れ、入れた値を多値で返す（CLHS 5.1.2.3。Codex のレビュー P25 4回目 #5）。
+;; 場所の格納の変数の2つ目以降は NIL にする。dolist・mapcar を使うので、それらの定義の後ろに置く
+(define-setf-expander values (&rest places)
+  (let ((temps nil) (vals nil) (stores nil) (sets nil) (gets nil) (results nil))
+    (dolist (p places)
+      (destructuring-bind (ts vs ss sf af) (zl-sys::%setf-expansion p)
+        (setq temps (append temps ts)
+              vals (append vals vs)
+              ;; Codex のレビュー P25 6回目 #2：格納の変数がなければ値を消費せず、その位置には NIL を返す
+              stores (append stores (if ss (list (car ss)) nil))
+              results (append results (list (car ss)))
+              sets (append sets (list (if (cdr ss)
+                                          `(let ,(mapcar (lambda (s) (list s nil)) (cdr ss)) ,sf)
+                                          sf)))
+              gets (append gets (list af)))))
+    (values temps vals stores `(progn ,@sets (values ,@results)) `(values ,@gets))))
+
 ;; 列の start〜end の要素のリスト。範囲と型は subseq が確かめる（SBCL と同じ type-error。agy のレビュー 0.3 #2）
 (defun zl-sys::%sequence-list (seq start end)
   (let ((s (subseq seq start end)))
@@ -599,7 +620,12 @@
                     (let ((kind (next)) (pairs (gensym "PAIRS")) (other nil) (keys nil))
                       (cond ((zl-sys::%loop-keyword-p kind '("HASH-KEY" "HASH-KEYS")) (setq keys t))
                             ((zl-sys::%loop-keyword-p kind '("HASH-VALUE" "HASH-VALUES")) (setq keys nil))
-                            (t (zl-sys::%unimplemented-error "LOOP の being のこの種類は未実装です" kind)))
+                            ;; CLHS 6.1.2.1.7 の symbol の種類と SBCL 2.6.7 の拡張の elements は未実装。それ以外の名前は形の誤り
+                            ;; （Codex のレビュー P25 5回目 #6）
+                            ((zl-sys::%loop-keyword-p kind '("SYMBOL" "SYMBOLS" "PRESENT-SYMBOL" "PRESENT-SYMBOLS"
+                                                              "EXTERNAL-SYMBOL" "EXTERNAL-SYMBOLS" "ELEMENT" "ELEMENTS"))
+                             (zl-sys::%unimplemented-error "LOOP の being のこの種類は未実装です" kind))
+                            (t (zl-sys::%macro-form-error "LOOP の being の種類が正しくありません" kind)))
                       (if (at "OF" "IN") (next) (zl-sys::%macro-form-error "LOOP の being には of が必要です" (peek)))
                       (bind pairs `(zl-sys::%hash-pairs ,(need-form "OF")))
                       (if (at "USING")
@@ -826,8 +852,8 @@
            ((at "DO" "DOING" "COLLECT" "COLLECTING" "APPEND" "APPENDING" "NCONC" "NCONCING" "SUM" "SUMMING"
                 "COUNT" "COUNTING" "MAXIMIZE" "MAXIMIZING" "MINIMIZE" "MINIMIZING" "RETURN" "WHEN" "IF" "UNLESS")
             (add-body (parse-selectable)))
-           ((and (symbolp (peek)) (peek))
-            (zl-sys::%unimplemented-error "この LOOP の句は未実装です" (peek)))
+           ;; CLHS の句はすべて上で扱う。ここに来るのは書き間違いか位置の誤り（先頭でない named など）で、SBCL と同じ
+           ;; program-error（Codex のレビュー P25 4回目 #3・5回目 #6）
            (t (zl-sys::%macro-form-error "LOOP の句が正しくありません" (peek))))
          (go next)
        done)
@@ -1291,7 +1317,8 @@
 (defmacro pprint-logical-block ((stream-symbol object &key (prefix nil prefix-p) (per-line-prefix nil per-line-p) (suffix ""))
                                 &body body)
   (when (and prefix-p per-line-p)
-    (zl-sys::%unimplemented-error "PPRINT-LOGICAL-BLOCK に :prefix と :per-line-prefix の両方は指定できません" prefix))
+    ;; 指定の誤り（未実装ではない）。SBCL 2.6.7 と同じ simple-error（Codex のレビュー P25 4回目 #3）
+    (zl-sys::%macro-simple-error "PPRINT-LOGICAL-BLOCK に :prefix と :per-line-prefix の両方は指定できません" prefix))
   (let ((stream-var (cond ((null stream-symbol) '*standard-output*)
                           ((eq stream-symbol t) '*terminal-io*)
                           (t stream-symbol))))
@@ -1598,7 +1625,9 @@
 (define-condition zl-sys::simple-print-not-readable (simple-condition print-not-readable) ())
 (define-condition zl-sys::simple-arithmetic-error (simple-condition arithmetic-error) ())
 ;; 未実装の機能（基本設計 §3.1）
-(define-condition zilisp:unimplemented (simple-condition error) ())
+;; error の下位にしない（ignore-errors・(handler-case … (error …)) が未実装を黙って受け止めないように。基本設計 §3.1
+;; 「黙って別の値を返さない」。2026-11-05 の決定）。serious-condition なので、handler がなければトップレベルまで届く
+(define-condition zilisp:unimplemented (simple-condition serious-condition) ())
 
 ;; ecase・etypecase などの漏れ（SBCL の SB-KERNEL:CASE-FAILURE と同じ文面）
 (define-condition zl-sys::case-failure (type-error)
@@ -1969,6 +1998,11 @@
         (:print-not-readable (make-condition 'print-not-readable :object (if has-datum datum nil)))
         (:storage-condition (simple 'zl-sys::simple-storage-condition))
         (:unimplemented (simple 'zilisp:unimplemented))
+        ;; COMMON-LISP パッケージの未実装の関数・変数（Zig の callSignalHook が分ける）
+        (:unimplemented-function
+         (make-condition 'zilisp:unimplemented :format-control "関数 ~S は未実装です" :format-arguments (list datum)))
+        (:unimplemented-variable
+         (make-condition 'zilisp:unimplemented :format-control "変数 ~S は未実装です" :format-arguments (list datum)))
         (t (simple 'simple-error))))))
 
 ;;; 型の分岐と検査（CLHS 5.3・9.2）
@@ -1986,9 +2020,11 @@
        (case ,v ,@clauses
          (otherwise (zl-sys::%case-failure 'ecase ,v '(member ,@keys) ',keys))))))
 
-(defun zl-sys::%typecase-clauses (v clauses)
+;; otherwise を「どれにも当たらない」節にするのは typecase だけ（otherwise-p）。etypecase・ctypecase では otherwise も
+;; 型指定子として扱う（CLHS。SBCL 2.6.7 と同じ。Codex のレビュー P25 4回目 #4）。t は型として常に真なので同じ
+(defun zl-sys::%typecase-clauses (v clauses &optional (otherwise-p t))
   (mapcar (lambda (c)
-            (if (member (car c) '(t otherwise))
+            (if (or (eq (car c) t) (and otherwise-p (eq (car c) 'otherwise)))
                 `(t ,@(or (cdr c) '(nil)))
                 `((typep ,v ',(car c)) ,@(or (cdr c) '(nil)))))
           clauses))
@@ -2001,7 +2037,7 @@
 (defmacro etypecase (keyform &rest clauses)
   (let ((v (gensym "KEY")) (types (mapcar #'car clauses)))
     `(let ((,v ,keyform))
-       (cond ,@(zl-sys::%typecase-clauses v clauses)
+       (cond ,@(zl-sys::%typecase-clauses v clauses nil)
              (t (zl-sys::%case-failure 'etypecase ,v '(or ,@types) ',types))))))
 
 ;; 新しい値を読む（store-value の :interactive）
@@ -2047,7 +2083,7 @@
      keyplace
      (lambda (v fallback)
        (if fallback
-           `(cond ,@(zl-sys::%typecase-clauses v clauses) (t ,fallback))
+           `(cond ,@(zl-sys::%typecase-clauses v clauses nil) (t ,fallback))
            `(zl-sys::%case-failure 'ctypecase ,v '(or ,@types) ',types))))))
 
 ;; (check-type 場所 型 [型の説明])：型でなければ store-value の restart のある simple-type-error（SBCL と同じ文面）

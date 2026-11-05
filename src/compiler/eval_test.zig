@@ -2043,6 +2043,14 @@ test "conditions not handled reach the top level (Phase 25)" {
     // SBCL 2.6.7 も、デバッガを有効にしていれば呼ぶ）
     try expectValue(&e, "(let ((*debugger-hook* (lambda (c h) (declare (ignore c h)) (throw 'p25-done :hook)))) (catch 'p25-done (funcall (symbol-function 'car) 3)))", ":HOOK");
     try expectValue(&e, "(let ((*debugger-hook* (lambda (c h) (declare (ignore h)) (throw 'p25-done (princ-to-string c))))) (catch 'p25-done (error \"lisp ~A\" 1)))", "\"lisp 1\"");
+    // 未実装の機能は error の下位でない zilisp:unimplemented：ignore-errors・error の handler では受け止めない
+    // （基本設計 §3.1。2026-11-05 の決定）。トップレベルの報告は今までと同じ種類
+    try expectError(&e, "(ignore-errors (describe 1))", .undefined_function);
+    try expectError(&e, "(handler-case (describe 1) (error () :caught))", .undefined_function);
+    try expectValue(&e, "(handler-case (describe 1) (zilisp:unimplemented (c) (princ-to-string c)))", "\"関数 DESCRIBE は未実装です\"");
+    // マクロの funcall、変数でない CL のシンボルの値は SBCL と同じ型
+    try expectValue(&e, "(handler-case (funcall 'when 1) (undefined-function () :uf))", ":UF");
+    try expectValue(&e, "(handler-case (symbol-value 'car) (unbound-variable () :ub))", ":UB");
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");
     // 未定義の condition 型と、有効でない restart

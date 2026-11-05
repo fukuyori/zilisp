@@ -60,13 +60,223 @@ pub fn recordTypep(v: Value, name: Value) bool {
     return false;
 }
 
-fn unknown(th: *Thread, spec: Value) Fail {
-    const sym = if (spec.isCons()) Runtime.consPtr(spec).car else spec;
-    if (isSymbol(sym) and sym != Value.nil and th.rt.symbolPtr(sym).package == th.rt.cl.obj) {
-        _ = th.signal(.unimplemented, "この型指定子は未実装です", spec, Value.unbound);
-    } else {
-        _ = th.signal(.simple_error, "型指定子ではありません", spec, Value.unbound);
+/// CLHS の標準の型の名前（Figure 4-2・4-3・4-4 の型・合成の型指定子の先頭）のうち、typep がまだ判定できないもの
+const unimplemented_type_names = [_][]const u8{
+    "BIT-VECTOR",       "SIMPLE-BIT-VECTOR",         "EXTENDED-CHAR",       "RANDOM-STATE",    "STRUCTURE-OBJECT",
+    "STANDARD-OBJECT",  "CLASS",                     "BUILT-IN-CLASS",      "STANDARD-CLASS",  "STRUCTURE-CLASS",
+    "GENERIC-FUNCTION", "STANDARD-GENERIC-FUNCTION", "METHOD",              "STANDARD-METHOD", "METHOD-COMBINATION",
+    "LOGICAL-PATHNAME", "BROADCAST-STREAM",          "CONCATENATED-STREAM", "ECHO-STREAM",     "FILE-STREAM",
+    "STRING-STREAM",    "SYNONYM-STREAM",            "TWO-WAY-STREAM",
+};
+
+/// typep が判定できる、単独の型の名前（typep のシンボルの分岐と合わせる）
+const atomic_type_names = [_][]const u8{
+    "CONS",      "LIST",              "NULL",          "ATOM",          "SYMBOL",             "KEYWORD",
+    "BOOLEAN",   "STRING",            "SIMPLE-STRING", "BASE-STRING",   "SIMPLE-BASE-STRING", "CHARACTER",
+    "BASE-CHAR", "STANDARD-CHAR",     "NUMBER",        "REAL",          "COMPLEX",            "INTEGER",
+    "FIXNUM",    "BIGNUM",            "BIT",           "UNSIGNED-BYTE", "SIGNED-BYTE",        "RATIO",
+    "RATIONAL",  "FLOAT",             "SINGLE-FLOAT",  "SHORT-FLOAT",   "DOUBLE-FLOAT",       "LONG-FLOAT",
+    "ARRAY",     "SIMPLE-ARRAY",      "VECTOR",        "SIMPLE-VECTOR", "SEQUENCE",           "HASH-TABLE",
+    "FUNCTION",  "COMPILED-FUNCTION", "PATHNAME",      "STREAM",        "PACKAGE",            "READTABLE",
+};
+
+fn inNames(name: []const u8, names: []const []const u8) bool {
+    for (names) |n| if (std.mem.eql(u8, name, n)) return true;
+    return false;
+}
+
+/// 型指定子の正しさ（CLHS 4.2.3 の形）。ok は判定できる、unimplemented は正しいがまだ判定できない、invalid は型指定子でない
+const Validity = enum { ok, unimplemented, invalid };
+
+/// 真リストの長さ（真リストでなければ null）
+fn listLen(v: Value) ?usize {
+    var x = v;
+    var n: usize = 0;
+    while (x.isCons()) : (x = Runtime.consPtr(x).cdr) n += 1;
+    return if (x == Value.nil) n else null;
+}
+
+fn nthOf(v: Value, i: usize) Value {
+    var x = v;
+    var k = i;
+    while (k > 0) : (k -= 1) x = Runtime.consPtr(x).cdr;
+    return Runtime.consPtr(x).car;
+}
+
+/// 正の整数（mod・unsigned-byte の引数）
+fn isPositiveInteger(th: *Thread, v: Value) bool {
+    if (v.isFixnum()) return v.asFixnum() > 0;
+    if (kindOf(v) != .bignum) return false;
+    const r = numbers.compare2(th, .gt, v, Value.fromFixnum(0));
+    return r != Value.unwind and r != Value.nil;
+}
+
+/// 配列の大きさ（* か 0 以上の整数）
+fn validSize(th: *Thread, v: Value) bool {
+    return isStar(th, v) or (v.isFixnum() and v.asFixnum() >= 0);
+}
+
+/// Codex のレビュー P25 6回目 #4：開区間も閉区間も、型ごとの限界の種類を確かめる
+fn validBounds(th: *Thread, name: []const u8, args: Value, n: usize) bool {
+    if (n > 2) return false;
+    for (0..n) |i| {
+        var b = nthOf(args, i);
+        if (isStar(th, b)) continue;
+        if (b.isCons()) {
+            if (Runtime.consPtr(b).cdr != Value.nil) return false;
+            b = Runtime.consPtr(b).car;
+        }
+        const valid = if (std.mem.eql(u8, name, "INTEGER"))
+            isInteger(b)
+        else if (std.mem.eql(u8, name, "RATIONAL"))
+            isRational(b)
+        else if (inNames(name, &.{ "SINGLE-FLOAT", "SHORT-FLOAT" }))
+            b.isSingleFloat()
+        else if (inNames(name, &.{ "DOUBLE-FLOAT", "LONG-FLOAT" }))
+            kindOf(b) == .double_float
+        else
+            numbers.isNumber(b); // float・real（SBCL 2.6.7 は (float 1 3) も受け付ける）
+        if (!valid) return false;
     }
+    return true;
+}
+
+/// 要素の型など、型指定子の位置（* も許す）
+fn validOrStar(th: *Thread, v: Value) Validity {
+    return if (isStar(th, v)) .ok else validate(th, v);
+}
+
+/// Codex のレビュー P25 6回目 #5：合成の部分も含めて形を検査する（通常の typep の短絡検査とは分ける）
+fn completeType(th: *Thread, spec: Value) bool {
+    if (validate(th, spec) == .invalid) return false;
+    if (!spec.isCons()) return true;
+    var buf: [64]u8 = undefined;
+    const name = asciiName(th.rt, Runtime.consPtr(spec).car, &buf) orelse return false;
+    if (inNames(name, &.{ "AND", "OR", "NOT", "CONS" })) {
+        var args = Runtime.consPtr(spec).cdr;
+        while (args.isCons()) : (args = Runtime.consPtr(args).cdr) {
+            const part = Runtime.consPtr(args).car;
+            if (std.mem.eql(u8, name, "CONS") and isStar(th, part)) continue;
+            if (!completeType(th, part)) return false;
+        }
+    }
+    return true;
+}
+
+/// 実数の範囲に収まる合成型。積は実数の制約を持てばよく、和は全項が実数でなければならない
+fn realSubtype(th: *Thread, spec: Value, negated: bool) bool {
+    if (spec == Value.nil) return !negated;
+    if (spec == th.rt.t) return negated;
+    const head = if (spec.isCons()) Runtime.consPtr(spec).car else spec;
+    var buf: [64]u8 = undefined;
+    const name = asciiName(th.rt, head, &buf) orelse return false;
+    if (spec.isCons()) {
+        const args = Runtime.consPtr(spec).cdr;
+        if (std.mem.eql(u8, name, "NOT")) return realSubtype(th, nthOf(args, 0), !negated);
+        if (inNames(name, &.{ "AND", "OR" })) {
+            const every = std.mem.eql(u8, name, "OR") != negated;
+            var x = args;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+                const yes = realSubtype(th, Runtime.consPtr(x).car, negated);
+                if (yes != every) return !every;
+            }
+            return every;
+        }
+        if (!negated and inNames(name, &.{ "EQL", "MEMBER" })) {
+            var x = args;
+            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+                if (!numbers.isNumber(Runtime.consPtr(x).car)) return false;
+            }
+            return true;
+        }
+    }
+    return !negated and inNames(name, &.{ "REAL", "RATIONAL", "INTEGER", "RATIO", "FLOAT", "SINGLE-FLOAT", "SHORT-FLOAT", "DOUBLE-FLOAT", "LONG-FLOAT", "FIXNUM", "BIGNUM", "BIT", "MOD", "UNSIGNED-BYTE", "SIGNED-BYTE" });
+}
+
+/// Codex のレビュー P25 6回目 #5：complex の実部の型は * か実数の下位の型に限る
+fn validComplexPart(th: *Thread, spec: Value) bool {
+    return isStar(th, spec) or (completeType(th, spec) and realSubtype(th, spec, false));
+}
+
+/// 型指定子 spec の正しさ。値は判定せず、形だけを見る（Codex のレビュー P25 5回目 #3〜#5）
+fn validate(th: *Thread, spec: Value) Validity {
+    const rt = th.rt;
+    if (spec == rt.t or spec == Value.nil) return .ok;
+    var buf: [64]u8 = undefined;
+    if (isSymbol(spec)) {
+        if (classOf(rt, spec) != null) return .ok;
+        if (rt.symbolPtr(spec).package != rt.cl.obj) return .invalid;
+        const name = asciiName(rt, spec, &buf) orelse return .invalid;
+        if (inNames(name, &atomic_type_names)) return .ok;
+        if (inNames(name, &unimplemented_type_names)) return .unimplemented;
+        return .invalid;
+    }
+    if (!spec.isCons()) return .invalid;
+    const head = Runtime.consPtr(spec).car;
+    const args = Runtime.consPtr(spec).cdr;
+    const n = listLen(args) orelse return .invalid;
+    if (!isSymbol(head) or head == Value.nil or rt.symbolPtr(head).package != rt.cl.obj) return .invalid;
+    const hn = asciiName(rt, head, &buf) orelse return .invalid;
+    const eq = struct {
+        fn f(a: []const u8, b: []const u8) bool {
+            return std.mem.eql(u8, a, b);
+        }
+    }.f;
+    // Codex のレビュー P25 6回目 #3：外側の形は常に検査し、部分の型は判定に使うときだけ検査する
+    if (eq(hn, "AND") or eq(hn, "OR")) return .ok;
+    if (eq(hn, "NOT")) return if (n == 1) .ok else .invalid;
+    if (eq(hn, "MEMBER")) return .ok;
+    if (eq(hn, "EQL")) return if (n == 1) .ok else .invalid;
+    if (eq(hn, "SATISFIES")) return if (n == 1 and isSymbol(nthOf(args, 0))) .ok else .invalid;
+    if (eq(hn, "CONS")) return if (n <= 2) .ok else .invalid;
+    if (eq(hn, "INTEGER") or eq(hn, "RATIONAL") or eq(hn, "REAL") or eq(hn, "FLOAT") or eq(hn, "SINGLE-FLOAT") or
+        eq(hn, "SHORT-FLOAT") or eq(hn, "DOUBLE-FLOAT") or eq(hn, "LONG-FLOAT"))
+        return if (validBounds(th, hn, args, n)) .ok else .invalid;
+    if (eq(hn, "MOD")) return if (n == 1 and isPositiveInteger(th, nthOf(args, 0))) .ok else .invalid;
+    if (eq(hn, "UNSIGNED-BYTE") or eq(hn, "SIGNED-BYTE")) {
+        if (n == 0) return .ok;
+        const b = nthOf(args, 0);
+        return if (n == 1 and (isStar(th, b) or isPositiveInteger(th, b))) .ok else .invalid;
+    }
+    if (eq(hn, "SIMPLE-VECTOR") or eq(hn, "STRING") or eq(hn, "SIMPLE-STRING") or eq(hn, "BASE-STRING") or
+        eq(hn, "SIMPLE-BASE-STRING"))
+        return if (n == 0 or (n == 1 and validSize(th, nthOf(args, 0)))) .ok else .invalid;
+    if (eq(hn, "BIT-VECTOR") or eq(hn, "SIMPLE-BIT-VECTOR"))
+        return if (n == 0 or (n == 1 and validSize(th, nthOf(args, 0)))) .unimplemented else .invalid;
+    if (eq(hn, "VECTOR")) {
+        if (n > 2) return .invalid;
+        if (n == 2 and !validSize(th, nthOf(args, 1))) return .invalid;
+        return if (n >= 1) validOrStar(th, nthOf(args, 0)) else .ok;
+    }
+    if (eq(hn, "ARRAY") or eq(hn, "SIMPLE-ARRAY")) {
+        if (n > 2) return .invalid;
+        if (n == 2) {
+            const d = nthOf(args, 1);
+            if (!validSize(th, d)) {
+                const dn = listLen(d) orelse return .invalid;
+                for (0..dn) |i| if (!validSize(th, nthOf(d, i))) return .invalid;
+            }
+        }
+        return if (n >= 1) validOrStar(th, nthOf(args, 0)) else .ok;
+    }
+    if (eq(hn, "COMPLEX")) {
+        if (n > 1) return .invalid;
+        return if (n == 0 or validComplexPart(th, nthOf(args, 0))) .ok else .invalid;
+    }
+    return .invalid;
+}
+
+/// 判定できない型指定子：形の正しい標準の型でまだ判定できないものは zilisp:unimplemented、型でないシンボル・形の誤りは
+/// simple-error（SBCL 2.6.7 もエラー。Codex のレビュー P25 4回目 #2・5回目 #4：名前だけで未実装にしない）
+fn unknown(th: *Thread, spec: Value) Fail {
+    if (validate(th, spec) == .unimplemented) return unimplemented(th, spec);
+    _ = th.signal(.simple_error, "型指定子ではありません", spec, Value.unbound);
+    return error.Lisp;
+}
+
+/// 型指定子としては正しいが、まだ判定できない（特殊化した配列の要素の型など）
+fn unimplemented(th: *Thread, spec: Value) Fail {
+    _ = th.signal(.unimplemented, "この型指定子は未実装です", spec, Value.unbound);
     return error.Lisp;
 }
 
@@ -115,11 +325,17 @@ fn isStar(th: *Thread, v: Value) bool {
 /// ベクタ・配列の要素の型の指定が、置き場所 data の要素の型と合うか（* は何でもよい）
 fn elementTypeMatches(th: *Thread, data: Value, etype: Value) Fail!bool {
     if (isStar(th, etype)) return true;
-    var buf: [64]u8 = undefined;
-    const name = if (isSymbol(etype)) asciiName(th.rt, etype, &buf) orelse return unknown(th, etype) else return unknown(th, etype);
     const chars = arrays.isSimpleString(data);
     if (etype == th.rt.t) return !chars;
-    if (std.mem.eql(u8, name, "CHARACTER") or std.mem.eql(u8, name, "BASE-CHAR")) return chars;
+    var buf: [64]u8 = undefined;
+    if (isSymbol(etype) and etype != Value.nil and th.rt.symbolPtr(etype).package == th.rt.cl.obj) {
+        if (asciiName(th.rt, etype, &buf)) |name|
+            if (std.mem.eql(u8, name, "CHARACTER") or std.mem.eql(u8, name, "BASE-CHAR")) return chars;
+    }
+    // 正しい型指定子（fixnum・(unsigned-byte 8) など）の要素の型は、特殊化した配列がないので未実装。それ以外は型指定子の誤り
+    // （Codex のレビュー P25 5回目 #3）
+    // and・or などの部分も確かめる（validate は外側の形だけを見る）
+    if (completeType(th, etype)) return unimplemented(th, etype);
     return unknown(th, etype);
 }
 
@@ -225,6 +441,8 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
             return std.mem.eql(u8, n, s);
         }
     };
+    // Codex のレビュー P25 6回目 #3：短絡する型でも外側の真リストと引数の数は先に確かめる
+    if (validate(th, spec) == .invalid) return unknown(th, spec);
     const first: ?Value = if (args.isCons()) Runtime.consPtr(args).car else null;
     const second: ?Value = if (args.isCons() and Runtime.consPtr(args).cdr.isCons()) Runtime.consPtr(Runtime.consPtr(args).cdr).car else null;
     if (Is.eq(hn, "CONS")) {
@@ -334,6 +552,13 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
             return i == dims.len;
         }
         return true;
+    }
+    // base-string（Zilisp にはない）と complex（複素数はない）は、形が正しければ偽（Codex のレビュー P25 5回目 #5）
+    if (Is.eq(hn, "BASE-STRING") or Is.eq(hn, "SIMPLE-BASE-STRING") or Is.eq(hn, "COMPLEX")) {
+        return switch (validate(th, spec)) {
+            .ok, .unimplemented => false,
+            .invalid => unknown(th, spec),
+        };
     }
     return unknown(th, spec);
 }

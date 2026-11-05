@@ -469,7 +469,7 @@ seq	id	outcome	detail
 00481	chapters/18-Level 13.md#L640	match	
 00482	chapters/18-Level 13.md#L666	both-error	
 00483	chapters/18-Level 13.md#L672	match	
-00484	chapters/18-Level 13.md#L704	match	
+00484	chapters/18-Level 13.md#L704	zilisp-error	未実装の関数：GET-UNIVERSAL-TIME
 00485	chapters/18-Level 13.md#L732	both-error	
 00486	chapters/19-Level 14.md#L19	both-error	
 00488	chapters/19-Level 14.md#L64	zilisp-error	未定義の関数：QUIT

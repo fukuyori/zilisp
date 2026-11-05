@@ -286,6 +286,22 @@
                  string t number complex (or integer string) (not string) (and)
                  (integer 1.5 3) (mod 0) (member 1 "x") (eql "x") car)))
 
+;;; Codex のレビューの 7 回目の指摘（SBCL 2.6.7 と比較）
+;; #1 incf・decf の増やす量は、場所の値を読む前に評価する
+(print (let ((x (list 1))) (list (incf (car x) (progn (setf (car x) 10) 2)) x)))
+(print (let ((a 1) (b 9)) (list (multiple-value-list (decf (values a b) (progn (setq a 10) 2))) a b)))
+(print (let ((x 1)) (list (incf x (progn (setq x 10) 2)) x)))
+(print (let ((v (vector 1 2)) (i 0)) (incf (aref v (incf i)) (progn (setf (aref v 1) 100) 1)) (list v i)))
+(print (let ((x (list 1)) (i 0)) (list (incf (car x)) (decf (car x) 5) (incf (car x) (incf i)) x i)))
+;; #2 and の交わりは complex の引数として受け付ける
+(print (mapcar (lambda (s) (handler-case (typep 1 (list 'complex s)) (simple-error () :error)))
+               '((and string symbol) (and (member 1 a) (member 2 b)) (and (or real string) (or real symbol))
+                 (or integer float) (not integer) (eql a))))
+;; #3 文字列の要素の型は character（base-char ではない）
+(print (let ((s (make-string 1 :element-type 'character :initial-element #\a)))
+         (list (typep s '(vector base-char)) (typep s '(vector character)) (typep "abc" '(simple-array base-char (3)))
+               (typep "abc" '(array character (*))))))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

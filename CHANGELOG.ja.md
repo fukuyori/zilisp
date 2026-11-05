@@ -19,7 +19,7 @@
 - 試験：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
   教材 Level 13 は、ファイルのエラーの文面の 1 つ（処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ以外は SBCL と同じ出力。
   教材のブロックの一致は 478 から 513 に。
-  起動時間は 13.43 ms
+  起動時間は 11.93 ms
 - Codex のレビュー（P25）で見つけた 6 件を直した（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` の引数の評価順、
   マクロを展開すると `signal`・`error` になるフォームの restart の関連付け、`abort`・`muffle-warning` の restart が戻ったときの
   control-error、`typep` の `(vector t n)`・`(string n)` を fill-pointer でなく次元で照合、reader-error・end-of-file の handler
@@ -40,6 +40,9 @@
   変数のない場所は値を受け取らず NIL を返す）、`typep` は `and`・`or`・`not`・`cons` の外側の形をいつも確かめる（部分は使うとき
   だけ）、数の範囲の限界を型ごとに確かめる（`(integer 1.5 3)`・`(single-float 1 3)` は error）、`(complex 型)` の引数は `*` か
   `real` の下位の型
+- Codex の 7 回目のレビュー（P25）の 3 件を直した：`incf`・`decf` は増やす量を場所の値を読む前に評価する、
+  `(complex (and …))` を受け付ける（交わりは空や実数になることがある）、要素の型 `base-char` は文字列に当たらない
+  （Zilisp の文字列の要素の型はいつも `character`）
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

@@ -21,7 +21,7 @@
 - Tests: the language test `conditions.lisp` (the same output as SBCL 2.6.7; also a gc-stress version and native) and unit tests.
   Level 13 of the curriculum gives the same output as SBCL except one file-error text (implementation-dependent) and one block
   that calls `get-universal-time` (not implemented yet). Curriculum
-  blocks matching went from 478 to 513. Startup time is 13.43 ms
+  blocks matching went from 478 to 513. Startup time is 11.93 ms
 - Fixed six issues found in the Codex review of P25 (each checked against SBCL 2.6.7): the evaluation order of `cerror`'s
   arguments inside `restart-case`; associating restarts with forms that macroexpand to `signal` or `error`; control-error when
   an `abort` or `muffle-warning` restart returns; `typep` of `(vector t n)` and `(string n)` compares the dimension, not the
@@ -46,6 +46,9 @@
   with no store variables takes no value and gives NIL); `typep` always checks the outer form of `and`, `or`, `not` and `cons`
   (the parts are still checked only when used); the bounds of a numeric range are checked per type (`(integer 1.5 3)` and
   `(single-float 1 3)` are errors); the argument of `(complex type)` must be `*` or a subtype of `real`
+- Fixed the three issues of the seventh Codex review of P25: `incf` and `decf` evaluate the delta before reading the place;
+  `(complex (and ...))` is accepted (an intersection can be empty or real); the element type `base-char` does not match
+  strings (Zilisp strings always have element type `character`)
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

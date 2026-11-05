@@ -221,17 +221,25 @@
                             `(getf ,access ,itemp ,dtemp)))))))
 
 ;; 場所を更新するマクロ（CLHS 5.1.2：場所の部分のフォームは1回だけ、左から順に評価する）
+;; incf・decf の展開。増やす量は場所の部分の後、場所の値を読む前に評価する（増やす量が場所を書き換えても、書き換えた後の
+;; 値に足す。SBCL 2.6.7 と同じ。Codex のレビュー P25 7回目 #1）。増やす量が数なら一時変数を使わない
+(defun zl-sys::%expand-incf (op place delta)
+  (let ((d (if (numberp delta) delta (gensym "DELTA"))))
+    (if (symbolp place)
+        (if (numberp delta)
+            `(setq ,place (,op ,place ,d))
+            `(let ((,d ,delta)) (setq ,place (,op ,place ,d))))
+        (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
+          (if (numberp delta)
+              (zl-sys::%bind-stores temps vals stores `(,op ,access ,d) (list store-form))
+              (zl-sys::%bind-stores (append temps (list d)) (append vals (list delta)) stores `(,op ,access ,d)
+                                    (list store-form)))))))
+
 (defmacro incf (place &optional (delta 1))
-  (if (symbolp place)
-      `(setq ,place (+ ,place ,delta))
-      (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-        (zl-sys::%bind-stores temps vals stores `(+ ,access ,delta) (list store-form)))))
+  (zl-sys::%expand-incf '+ place delta))
 
 (defmacro decf (place &optional (delta 1))
-  (if (symbolp place)
-      `(setq ,place (- ,place ,delta))
-      (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion place)
-        (zl-sys::%bind-stores temps vals stores `(- ,access ,delta) (list store-form)))))
+  (zl-sys::%expand-incf '- place delta))
 
 ;; push：item は場所の部分より先に評価する（CLHS push）
 (defmacro push (item place)

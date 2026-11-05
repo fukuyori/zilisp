@@ -163,39 +163,43 @@ fn completeType(th: *Thread, spec: Value) bool {
     return true;
 }
 
-/// 実数の範囲に収まる合成型。積は実数の制約を持てばよく、和は全項が実数でなければならない
-fn realSubtype(th: *Thread, spec: Value, negated: bool) bool {
-    if (spec == Value.nil) return !negated;
-    if (spec == th.rt.t) return negated;
+/// 確実に実数の下位の型でない（complex の引数の誤り）。and の交わりは計算せず受け付ける（空や実数になることがある。
+/// (and string symbol) など。Codex のレビュー P25 7回目 #2）。satisfies も確かめられないので受け付ける
+fn surelyNotReal(th: *Thread, spec: Value) bool {
+    if (spec == Value.nil) return false;
+    if (spec == th.rt.t) return true;
     const head = if (spec.isCons()) Runtime.consPtr(spec).car else spec;
+    if (classOf(th.rt, head) != null) return true;
     var buf: [64]u8 = undefined;
-    const name = asciiName(th.rt, head, &buf) orelse return false;
-    if (spec.isCons()) {
-        const args = Runtime.consPtr(spec).cdr;
-        if (std.mem.eql(u8, name, "NOT")) return realSubtype(th, nthOf(args, 0), !negated);
-        if (inNames(name, &.{ "AND", "OR" })) {
-            const every = std.mem.eql(u8, name, "OR") != negated;
-            var x = args;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
-                const yes = realSubtype(th, Runtime.consPtr(x).car, negated);
-                if (yes != every) return !every;
-            }
-            return every;
-        }
-        if (!negated and inNames(name, &.{ "EQL", "MEMBER" })) {
-            var x = args;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
-                if (!numbers.isNumber(Runtime.consPtr(x).car)) return false;
-            }
-            return true;
-        }
+    const name = asciiName(th.rt, head, &buf) orelse return true;
+    const real_names = [_][]const u8{
+        "REAL",       "RATIONAL", "INTEGER", "RATIO", "FLOAT", "SINGLE-FLOAT",  "SHORT-FLOAT", "DOUBLE-FLOAT",
+        "LONG-FLOAT", "FIXNUM",   "BIGNUM",  "BIT",   "MOD",   "UNSIGNED-BYTE", "SIGNED-BYTE",
+    };
+    if (inNames(name, &real_names)) return false;
+    if (!spec.isCons()) return true;
+    const args = Runtime.consPtr(spec).cdr;
+    if (std.mem.eql(u8, name, "AND")) return args == Value.nil; // (and) は t
+    if (std.mem.eql(u8, name, "SATISFIES")) return false;
+    if (std.mem.eql(u8, name, "NOT")) return nthOf(args, 0) != th.rt.t;
+    var x = args;
+    if (std.mem.eql(u8, name, "OR")) {
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (surelyNotReal(th, Runtime.consPtr(x).car)) return true;
+        return false;
     }
-    return !negated and inNames(name, &.{ "REAL", "RATIONAL", "INTEGER", "RATIO", "FLOAT", "SINGLE-FLOAT", "SHORT-FLOAT", "DOUBLE-FLOAT", "LONG-FLOAT", "FIXNUM", "BIGNUM", "BIT", "MOD", "UNSIGNED-BYTE", "SIGNED-BYTE" });
+    if (std.mem.eql(u8, name, "EQL") or std.mem.eql(u8, name, "MEMBER")) {
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const e = Runtime.consPtr(x).car;
+            if (!numbers.isNumber(e)) return true;
+        }
+        return false;
+    }
+    return true;
 }
 
 /// Codex のレビュー P25 6回目 #5：complex の実部の型は * か実数の下位の型に限る
 fn validComplexPart(th: *Thread, spec: Value) bool {
-    return isStar(th, spec) or (completeType(th, spec) and realSubtype(th, spec, false));
+    return isStar(th, spec) or (completeType(th, spec) and !surelyNotReal(th, spec));
 }
 
 /// 型指定子 spec の正しさ。値は判定せず、形だけを見る（Codex のレビュー P25 5回目 #3〜#5）
@@ -329,8 +333,12 @@ fn elementTypeMatches(th: *Thread, data: Value, etype: Value) Fail!bool {
     if (etype == th.rt.t) return !chars;
     var buf: [64]u8 = undefined;
     if (isSymbol(etype) and etype != Value.nil and th.rt.symbolPtr(etype).package == th.rt.cl.obj) {
-        if (asciiName(th.rt, etype, &buf)) |name|
-            if (std.mem.eql(u8, name, "CHARACTER") or std.mem.eql(u8, name, "BASE-CHAR")) return chars;
+        if (asciiName(th.rt, etype, &buf)) |name| {
+            if (std.mem.eql(u8, name, "CHARACTER")) return chars;
+            // Zilisp の文字列の要素の型はいつも character（base-string はない。base-string の判定と同じく偽。
+            // Codex のレビュー P25 7回目 #3）
+            if (std.mem.eql(u8, name, "BASE-CHAR")) return false;
+        }
     }
     // 正しい型指定子（fixnum・(unsigned-byte 8) など）の要素の型は、特殊化した配列がないので未実装。それ以外は型指定子の誤り
     // （Codex のレビュー P25 5回目 #3）

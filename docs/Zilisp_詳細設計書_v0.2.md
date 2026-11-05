@@ -1260,7 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
-| P25 | 1913 | 13.43 ms | 2.35 MB |
+| P25 | 1920 | 11.93 ms | 2.35 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1390,8 +1390,9 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、4回目）**、5 件（`zilisp:unimplemented` を error の下位にしない変更に伴うものを含む。どれも SBCL 2.6.7 と照合した）：マクロ・特殊演算子を関数として呼んだのは undefined-function のまま（未実装の印はマクロ・特殊演算子にも付くので除く）。`typep` が未実装とするのは、CLHS の標準の型の名前のうちまだ判定できないもの（`bit-vector`・`random-state`・ストリームの下位の型・CLOS のクラスなど）と、特殊化した配列の要素の型だけ（型でないシンボル・形の誤りは simple-error）。`pprint-logical-block` の `:prefix` と `:per-line-prefix` の両方の指定は simple-error、`loop` の CLHS にない句は program-error（CLHS の句の名前でまだ扱えないものだけ未実装）。`etypecase`・`ctypecase` の `otherwise` は型指定子。`(setf (values 場所 …))` の展開（`define-setf-expander`）と、格納の変数が複数の場所の `setf`（`multiple-value-bind`）を加えた。
 - **Codex のレビューの修正（Phase 25、5回目）**、6 件（どれも SBCL 2.6.7 と照合した）：`zl-sys::%bind-stores` は、格納の変数がちょうど 1 個でなければ `multiple-value-bind` で束縛する。`setf`・`incf`・`decf`・`push`・`pop` はこれを使う（`(setf (values) …)`・`(incf (values a b))`）。`typep` は型指定子の形を、値を見ずに確かめる（types.zig の `validate`。ok・unimplemented・invalid）：形の誤り（`(random-state 3)`・`(mod 0)`・`(integer 1 2 3)`・型でない要素の型）は simple-error、形は正しいがまだ判定できないもの（`(bit-vector 3)`、`(unsigned-byte 8)` などの特殊化した要素の型）は未実装、`(base-string n)`・`(simple-base-string n)`・`(complex 型)` は偽（base-string と複素数はない）。`and`・`or`・`not`・`cons` の部分は、判定に使うときだけ確かめる。`loop` は CLHS の句をすべて最後の分岐より前で扱うので、そこに来る句（先頭でない `named`・書き間違い）は program-error。`being` の種類は symbol の種類（CLHS 6.1.2.1.7）と `elements`（SBCL 2.6.7 の拡張）だけを未実装とし、ほかの名前は program-error。
 - **Codex のレビューの修正（Phase 25、6回目）**、5 件（コードは Codex が書き、こちらで確かめた。どれも SBCL 2.6.7 と照合した）：`getf` の setf-expander は内側の場所の格納の変数を `%bind-stores` ですべて束縛し、`values` の setf-expander は格納の変数のない場所に値を渡さない（その位置は NIL を返す）。`validate` は `and`・`or`・`not`・`cons` の外側の形（真リストと引数の数）だけを見て、`typep` は判定の前にいつもこれを呼ぶ。部分は判定に使うときに確かめる（`(typep 1 '(or fixnum car))` は T のまま）。`completeType` は部分も確かめ、配列の要素の型と `complex` の引数に使う。限界は、`integer` は整数、`rational` は有理数、`single-float`・`short-float` は単精度、`double-float`・`long-float` は倍精度、`float`・`real` は実数（SBCL も `(float 1 3)` を受け付ける）。`complex` の引数は `*` か `real` の下位の型（`realSubtype`）。
+- **Codex のレビューの修正（Phase 25、7回目）**、3 件（どれも SBCL 2.6.7 と照合した）：`incf`・`decf`（`zl-sys::%expand-incf`）は、場所の部分 → 増やす量（数でなければ一時変数に入れる）→ 場所の値、の順に評価する（増やす量が場所を書き換えたら、書き換えた後の値に足す）。`complex` の引数は、確実に `real` の下位の型でないときだけ誤りとする（`surelyNotReal`：実数でない型、それを含む `or`、`not`、数でない `eql`・`member`、`(and)`）。ほかの `and` と `satisfies` は受け付ける（交わりは空や実数になることがあり、Zilisp には複素数もない）。要素の型 `base-char` は、どの配列にも当たらない（Zilisp の文字列の要素の型はいつも `character`。`base-string` と同じ）。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
-- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.43 ms（boot.lisp の空でない行は 1192 から 1913 に）。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 11.93 ms（boot.lisp の空でない行は 1192 から 1920 に）。
 
 ### 11.3 標準ライブラリのビルド
 

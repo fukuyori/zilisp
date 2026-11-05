@@ -2051,6 +2051,10 @@ test "conditions not handled reach the top level (Phase 25)" {
     // マクロの funcall、変数でない CL のシンボルの値は SBCL と同じ型
     try expectValue(&e, "(handler-case (funcall 'when 1) (undefined-function () :uf))", ":UF");
     try expectValue(&e, "(handler-case (symbol-value 'car) (unbound-variable () :ub))", ":UB");
+    // 配列の要素の型：部分まで型として正しければ未実装、正しくなければ simple-error（Codex のレビュー P25 7回目）
+    try expectError(&e, "(typep #(1) '(vector (or car)))", .simple_error);
+    try expectError(&e, "(typep #(1) '(vector (or fixnum)))", .unimplemented);
+    try expectError(&e, "(typep #(1) '(vector (unsigned-byte 8)))", .unimplemented);
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");
     // 未定義の condition 型と、有効でない restart

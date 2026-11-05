@@ -21,7 +21,7 @@
 - Tests: the language test `conditions.lisp` (the same output as SBCL 2.6.7; also a gc-stress version and native) and unit tests.
   Level 13 of the curriculum gives the same output as SBCL except one file-error text (implementation-dependent) and one block
   that calls `get-universal-time` (not implemented yet). Curriculum
-  blocks matching went from 478 to 513. Startup time is 11.93 ms
+  blocks matching went from 478 to 513. Startup time is 13.55 ms
 - Fixed six issues found in the Codex review of P25 (each checked against SBCL 2.6.7): the evaluation order of `cerror`'s
   arguments inside `restart-case`; associating restarts with forms that macroexpand to `signal` or `error`; control-error when
   an `abort` or `muffle-warning` restart returns; `typep` of `(vector t n)` and `(string n)` compares the dimension, not the
@@ -53,6 +53,9 @@
   accepted when it is surely a subtype of `real` (including `(not (not real))`), rejected when it surely contains a
   non-real (including `(and string)` and `(and t string)`), and signals `zilisp:unimplemented` otherwise (empty
   intersections such as `(and string symbol)`; SBCL returns NIL)
+- Fixed the issue of the ninth Codex review of P25: a `cons` type with a `nil` part (such as `(cons nil t)`) is empty
+  and so is accepted as the argument of `complex`; `cons` and compound `complex` types that may or may not be empty
+  (such as `(complex nil)`) signal `zilisp:unimplemented` (SBCL returns NIL)
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

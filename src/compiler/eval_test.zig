@@ -2064,6 +2064,11 @@ test "conditions not handled reach the top level (Phase 25)" {
     try expectError(&e, "(typep 1 '(complex (and (or real string) (or real symbol))))", .unimplemented);
     try expectError(&e, "(typep 1 '(complex (satisfies realp)))", .unimplemented);
     try expectError(&e, "(typep #(1) '(vector (complex (and string symbol))))", .unimplemented);
+    // Codex のレビュー P25 9回目：空かどうか言い切れない cons・complex の部分は未実装（SBCL 2.6.7 は NIL）
+    try expectError(&e, "(typep 1 '(complex (complex nil)))", .unimplemented);
+    try expectError(&e, "(typep 1 '(complex (complex (integer 0 0))))", .unimplemented);
+    try expectError(&e, "(typep 1 '(complex (cons (integer 3 1) t)))", .unimplemented);
+    try expectError(&e, "(typep 1 '(complex (cons (cons nil t) t)))", .unimplemented);
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");
     // 未定義の condition 型と、有効でない restart

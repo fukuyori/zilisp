@@ -1260,7 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
-| P25 | 1920 | 11.93 ms | 2.35 MB |
+| P25 | 1920 | 13.55 ms | 2.35 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1392,8 +1392,9 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、6回目）**、5 件（コードは Codex が書き、こちらで確かめた。どれも SBCL 2.6.7 と照合した）：`getf` の setf-expander は内側の場所の格納の変数を `%bind-stores` ですべて束縛し、`values` の setf-expander は格納の変数のない場所に値を渡さない（その位置は NIL を返す）。`validate` は `and`・`or`・`not`・`cons` の外側の形（真リストと引数の数）だけを見て、`typep` は判定の前にいつもこれを呼ぶ。部分は判定に使うときに確かめる（`(typep 1 '(or fixnum car))` は T のまま）。`completeType` は部分も確かめ、配列の要素の型と `complex` の引数に使う。限界は、`integer` は整数、`rational` は有理数、`single-float`・`short-float` は単精度、`double-float`・`long-float` は倍精度、`float`・`real` は実数（SBCL も `(float 1 3)` を受け付ける）。`complex` の引数は `*` か `real` の下位の型（`realSubtype`）。
 - **Codex のレビューの修正（Phase 25、7回目）**、3 件（どれも SBCL 2.6.7 と照合した）：`incf`・`decf`（`zl-sys::%expand-incf`）は、場所の部分 → 増やす量（数でなければ一時変数に入れる）→ 場所の値、の順に評価する（増やす量が場所を書き換えたら、書き換えた後の値に足す）。`complex` の引数は、確実に `real` の下位の型でないときだけ誤りとする（`surelyNotReal`：実数でない型、それを含む `or`、`not`、数でない `eql`・`member`、`(and)`）。ほかの `and` と `satisfies` は受け付ける（交わりは空や実数になることがあり、Zilisp には複素数もない）。要素の型 `base-char` は、どの配列にも当たらない（Zilisp の文字列の要素の型はいつも `character`。`base-string` と同じ）。
 - **Codex のレビューの修正（Phase 25、8回目）**、2 件（どれも SBCL 2.6.7 と照合した）：`surelyNotReal` を `realness` に替えた。返すのは yes（確かに `real` の下位）・no（実数でない要素を必ず含む）・unknown の 3 つ。実数の型の名前と `nil` は yes、ほかのアトムは no。`and` は `t` を除き、0 個なら `t`（no）、1 個ならその型、それ以外はどれかが yes なら yes、なければ unknown。`or` はどれかが no なら no、すべて yes なら yes。`(not (not X))` は X、`(not t)` は yes。アトムと、`and`・`or`・`satisfies` 以外の合成の型の `not` は no（そうした型は実数でない値をすべて含むことがない）。それ以外の `not` は、部分が yes なら no、そうでなければ unknown。`eql`・`member` は要素がすべて実数なら yes、そうでなければ no。`satisfies` は unknown。no は `simple-error`、unknown は `zilisp:unimplemented` を通知する。そのため `(complex (and string symbol))` などの空の交わりは未実装になる（SBCL は NIL。互いに素な型を見分けるには `subtypep` が要る）。
+- **Codex のレビューの修正（Phase 25、9回目）**、1 件（SBCL 2.6.7 と照合した）：`cons` の型の `realness` は、部分が `nil` なら yes（空の型）、両方の部分が空でないと言い切れれば no（`*`、`nil` 以外のアトム、`realness` が no の型）、それ以外は unknown。`complex` の合成の型は、`(complex)`・`(complex *)` だけが no で、ほかは unknown（SBCL では `(complex nil)`・`(complex (integer 0 0))` が空）。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
-- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 11.93 ms（boot.lisp の空でない行は 1192 から 1920 に）。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1920 に）。
 
 ### 11.3 標準ライブラリのビルド
 

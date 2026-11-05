@@ -229,7 +229,26 @@ fn realness(th: *Thread, spec: Value) Realness {
         }
         return .yes;
     }
+    // Codex のレビュー P25 9回目：cons は部分が空なら空（yes）。両方の部分が空でないと言い切れれば no
+    if (std.mem.eql(u8, name, "CONS")) {
+        var all_nonempty = true;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const part = Runtime.consPtr(x).car;
+            if (part == Value.nil) return .yes;
+            if (!nonEmptyType(th, part)) all_nonempty = false;
+        }
+        return if (all_nonempty) .no else .unknown;
+    }
+    // complex の合成の型は、部分の型によって空になる（(complex nil)・(complex (integer 0 0)) など）
+    if (std.mem.eql(u8, name, "COMPLEX")) return if (args == Value.nil or isStar(th, nthOf(args, 0))) .no else .unknown;
     return .no;
+}
+
+/// 空でないと言い切れる型：*、nil 以外のアトム、実数でない要素を必ず含む型
+fn nonEmptyType(th: *Thread, spec: Value) bool {
+    if (isStar(th, spec)) return true;
+    if (!spec.isCons()) return spec != Value.nil;
+    return realness(th, spec) == .no;
 }
 
 /// Codex のレビュー P25 6回目 #5：complex の実部の型は * か実数の下位の型に限る

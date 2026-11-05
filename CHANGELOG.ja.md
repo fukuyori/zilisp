@@ -19,7 +19,7 @@
 - 試験：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
   教材 Level 13 は、ファイルのエラーの文面の 1 つ（処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ以外は SBCL と同じ出力。
   教材のブロックの一致は 478 から 513 に。
-  起動時間は 11.93 ms
+  起動時間は 13.55 ms
 - Codex のレビュー（P25）で見つけた 6 件を直した（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` の引数の評価順、
   マクロを展開すると `signal`・`error` になるフォームの restart の関連付け、`abort`・`muffle-warning` の restart が戻ったときの
   control-error、`typep` の `(vector t n)`・`(string n)` を fill-pointer でなく次元で照合、reader-error・end-of-file の handler
@@ -46,6 +46,9 @@
 - Codex の 8 回目のレビュー（P25）の 2 件を直した：`complex` の引数の判定を 3 つに分けた。実数の下位と言い切れれば受け付け
   （`(not (not real))` も）、実数でない要素を必ず含めば誤り（`(and string)`・`(and t string)` も）、どちらとも言い切れなければ
   `zilisp:unimplemented`（`(and string symbol)` などの空の交わり。SBCL は NIL）
+- Codex の 9 回目のレビュー（P25）の 1 件を直した：部分が `nil` の `cons`（`(cons nil t)` など）は空の型なので
+  `complex` の引数に使える。空かどうか言い切れない `cons` と `complex` の合成の型（`(complex nil)` など）は
+  `zilisp:unimplemented`（SBCL は NIL）
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

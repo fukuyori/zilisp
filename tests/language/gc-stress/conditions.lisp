@@ -308,6 +308,12 @@
                  (and string) (and t string) (and t) (not (not string)) (not (vector)) (not (member 1 2))
                  (or real (and string)) (and integer string))))
 
+;;; Codex のレビューの 9 回目の指摘（SBCL 2.6.7 と比較）：部分が空の cons は空（complex の引数に使える）
+(print (mapcar (lambda (s) (handler-case (typep 1 (list 'complex s)) (simple-error () :error)))
+               '((cons nil t) (cons t nil) (cons nil) (or integer (cons nil t)) (not (not (cons nil t)))
+                 (not (cons nil t)) (cons) (cons integer string) (cons * symbol) (complex) (complex *)
+                 (vector nil 0) (array nil (0)) (string 0))))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

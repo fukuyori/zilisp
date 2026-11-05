@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記32） | 2026-11-05 | Phase 25：condition・handler・restart（§6.6・§7 の命令の表・§9・§11.2。condition と restart の `record`、特殊変数で表す handler と restart のスタック、Zig で見つけたエラーの handler への通知、SBCL と同じ report の文面、`typep`、型の分岐と `check-type`・`assert`、`eval` の関数） |
 | 0.2（追記31） | 2026-11-04 | Phase 24（P24d）：pretty printer（§11.2。pretty stream、`pprint-logical-block` などの pretty printing の関数、`*print-pprint-dispatch*` の表と標準の印字、`format` の `~<…~:>`・`~_`・`~I`・`~:T`、`*print-pretty*` の初期値 T、`#nA` の読み取りと往復の受入） |
 | 0.2（追記30） | 2026-11-03 | Phase 24（P24c）：Reader の拡張（§11.2。readtable のオブジェクト、ユーザー定義の reader macro、`#.`、`#n=`／`#n#`、読み取りと印字の `readtable-case`、`*read-base*` などの読み取りの変数、`with-standard-io-syntax`） |
 | 0.2（追記29） | 2026-11-03 | Phase 24（P24b）：pretty printer 以外のすべての指示子の `format`（§11.2。SBCL と同じ字句解析と指示子の意味、`~F ~E ~G ~$` のための `flonum-to-string` の移植、`formatter`、`~T` のためのストリームの桁） |
@@ -791,7 +792,8 @@ pub const Error = error{ LispUnwind, OutOfMemory, VmInternal };
 - ランタイムの内部で、速さが問題にならない処理（ロード、コンパイラ、FFI の準備など）は、Zig のエラー集合 `Error!T` を使ってよい。入口の境界で `Value.unwind` と `th.fault` に変換する（`fault` の値はエラーの種類に対応させる）。
 - Zig のプリミティブで CL のエラーが起きた場合は、`return th.signalError(class, initargs)` を呼ぶ。handler を巻き戻さずに実行し（§9）、最終的に必ず `Value.unwind` を返す。
 - `th.fault = .internal` は、診断情報を出力して処理系を停止する。
-- **condition ができるまで（Phase 08〜24）の暫定の扱い**（Phase 08 で決定）：プリミティブ・VM・コンパイラが見つけた Lisp のエラーは、`th.signal(kind, message, datum, expected)` で `th.fault = .lisp_error` と `th.err` に記録し、`Value.unwind` を返す。`kind` は CL の condition 型に対応させる（`type-error`、`unbound-variable`、`undefined-function`、`program-error`、`division-by-zero`、`floating-point-overflow`、`storage-condition` など。未実装の機能は Zilisp の拡張の `zilisp:unimplemented`）。トップレベル（REPL・スクリプト・`--eval`）まで戻って、型の名前と説明を1行で報告する。Phase 25 で、`th.signal` を handler を探して呼ぶ処理に置き換え、最後は toplevel の `abort` restart へ脱出する形にする。
+- **condition ができるまで（Phase 08〜24）の暫定の扱い**（Phase 08 で決定）：プリミティブ・VM・コンパイラが見つけた Lisp のエラーは、`th.signal(kind, message, datum, expected)` で `th.fault = .lisp_error` と `th.err` に記録し、`Value.unwind` を返す。`kind` は CL の condition 型に対応させる（`type-error`、`unbound-variable`、`undefined-function`、`program-error`、`division-by-zero`、`floating-point-overflow`、`storage-condition` など。未実装の機能は Zilisp の拡張の `zilisp:unimplemented`）。トップレベル（REPL・スクリプト・`--eval`）まで戻って、型の名前と説明を1行で報告する。
+- **Phase 25 から**：`th.signal` は、handler か restart が1つでもあれば、その場で condition を作って handler に通知する（§9.2）。handler が脱出すれば `Value.unwind`（`fault` は `.unwind`）を返し、受け止められなければ、上と同じく `th.err` に記録してトップレベルへ戻る（報告の文面も同じ）。toplevel の `abort` restart は作らず、トップレベルまで戻ることがその役をする。Lisp の `error` で受け止められなかった condition は、`ErrorKind.condition`（`th.err.datum` が condition、`expected` がクラスの名前、`detail` が report の文字列）で記録する。説明の Lisp の文字列は `th.signalDetail` で渡す。
 
 ### 6.7 スタックの大きさ
 
@@ -854,7 +856,7 @@ pub const VmFrame = struct {
 | | `TAGBODY_ENTER` / `TAGBODY_EXIT` / `GO_NL` | i n rel[n] / — / i u16 | |
 | | `CATCH_ENTER` / `CATCH_EXIT` / `THROW` | rel / — / — | |
 | | `UWP_ENTER` / `UWP_EXIT` / `UWP_END` | rel / — / — | |
-| 条件 | `HANDLER_PUSH` / `HANDLER_POP` / `RESTART_PUSH` / `RESTART_POP` | — | §9 |
+| 条件 | （作らない。handler と restart は特殊変数の動的束縛で表す。Phase 25） | — | §9.2 |
 | 高速経路 | `CONS` `CAR` `CDR` `EQ` `NULL` `ADD2` `SUB2` `LT2` `GT2` `NUMEQ2` 等 | — | fixnum の高速経路と汎用処理へのフォールバック |
 | その他 | `LOAD_TIME_VALUE` / `WIDE` | k / — | |
 
@@ -1093,31 +1095,42 @@ pub const Package = struct {
 
 ### 9.1 condition 型
 
-- condition は condition-class の `instance` として表す。標準の condition 型の階層は、ブートストラップ時に Zig の表から作成する。
-- `define-condition` は `:report` と `:reader` をサポートする。
+- **Phase 25 の表し方**（2026-11-05 決定）：condition と restart は `record`（ObjKind。クラスの記述と、スロットの値の simple-vector を持つ。`src/values/object.zig`・`src/primitives/conditions.zig`）で表す。CLOS（Phase 27）ができたら condition-class の `instance` にまとめる（Phase 27 の rack と直接配置の比較の結論を、先に決めないため）。
+- クラスの記述は Lisp で作る simple-vector：`#(名前 CPL 直接の上位 スロット report 既定の initarg 直接のスロット)`。クラスの名前のシンボルの属性 `zl-sys::%class` に置く。Zig が読むのは位置 0（名前。印字）と位置 1（CPL。`typep`）だけ。スロットは `(名前 initarg のリスト initform の関数)` のリストで、上位のクラスのスロットを含む（値のベクタはこの順）。
+- CPL は、深さ優先・左から右に並べ、重なりは最後のものを残す（CLHS 4.3.5 の計算ではないが、標準の condition の階層の菱形（`reader-error`）では同じ結果になる。CLOS の Phase で CLHS の計算にする）。
+- 標準の condition 型の階層は、`src/lisp/boot.lisp` の `define-condition` で作る（ブートストラップ時に Zig の表から作る予定を変えた）。Zig で見つけたエラーのうち説明の文を持つものには、Zilisp の型を使う（`zl-sys::simple-program-error`・`simple-control-error`・`simple-parse-error`・`simple-reader-error`・`simple-package-error`・`simple-stream-error`・`simple-end-of-file`・`simple-file-error`・`simple-storage-condition`。SBCL の `SB-INT:SIMPLE-PROGRAM-ERROR` などに当たる）。未実装の機能は `zilisp:unimplemented`（`simple-condition` と `error` の下位）。
+- `define-condition` は、スロットの `:initarg`・`:initform`・`:reader`・`:writer`・`:accessor`（`:type`・`:documentation`・`:allocation` は受け付けて使わない）、オプションの `:report`（文字列・関数の名前・lambda 式）・`:default-initargs`・`:documentation` を扱う。`make-condition` は、initarg、既定の initarg、initform の順に値を決める。値のないスロットを読むと `unbound-slot`。
+- **report の文面は SBCL 2.6.7 と同じ**（2026-11-05 決定）：`type-error` は `~@<The value ~@:_~2@T~S ~@:_is not of type ~@:_~2@T~S~:@>`、`arithmetic-error` は `arithmetic error ~S signalled` と、演算があれば `Operation was (…).`、`undefined-function` はパッケージ付きの名前（`*package*` を KEYWORD に束縛して印字。SBCL の `print-symbol-with-prefix`）、report のない型は `Condition ~S was signalled.`（`*package*` は COMMON-LISP）など。印字（`*print-escape*` が真）も SBCL と同じ形：`#<SIMPLE-ERROR "制御文字列" {アドレス}>`、`#<TYPE-ERROR expected-type: 型 datum: 値>`、`#<UNBOUND-VARIABLE 名前 {アドレス}>`、`#<型 {アドレス}>`。`*print-readably*` なら `print-not-readable`。
+- 印字は Lisp の `zl-sys::%print-record` が行う。Zig の印字の入口（pprint の `outputUgly`。pretty でないときも、condition・restart は pretty printer の経路に回す：`streams.emitPrinted`・`printTo`・`format` の `printed`）がそれを呼ぶ。`*print-pretty*` が NIL のときのリストの要素の condition は、Zig の既定の形 `#<型 {アドレス}>` で書く（Phase 25 の制限）。
+- **Zig で見つけたエラーの condition**：エラーの種類（`ErrorKind`）から型を決める（`zl-sys::%zig-condition`）。type-error（説明がなく期待する型があるとき）・unbound-variable・undefined-function・division-by-zero（`:operation` と `:operands`。0 除算の箇所が `expected` に `(演算 被演算子…)` を渡す。SBCL と同じく `floor`・`mod` なども演算は `/`）・floating-point-overflow などは、値を持つ標準の型で、report は SBCL の文面。そのほかは上の Zilisp の型で、report は今までの説明の文（日本語）と値。
 
 ### 9.2 handler
 
-- `handlers` スタックの各要素は cluster（`(型 . 関数)` の並び）である。`handler-bind` 1つが cluster 1つに対応する。
-- `signal` はスタックを上から走査し、型が一致した関数を呼ぶ。呼ぶ間は、handler スタックの有効な上端を、その cluster より下に一時的に下げる（CLHS 9.1.4.1）。
+- **handler のスタックは特殊変数 `zl-sys::*handler-clusters*` で表す**（2026-11-05 変更。Thread のスタックと VM の `HANDLER_PUSH` などの命令は作らない）。値は cluster のリスト（新しい順）で、cluster は `((型 . 関数) …)`。`handler-bind` が新しい cluster を先頭に足したリストを動的に束縛する。非局所脱出で抜けると、動的束縛と一緒に戻る（§6.4 の「深さで戻す」と同じ仕組み）。VM とネイティブコードは同じマクロの展開を使うので、どちらにも特別な扱いは要らない。
+- `signal` は新しい順に cluster を走査し、`typep` が真の handler を呼ぶ。呼ぶ間は `*handler-clusters*` を、その cluster より外側の cluster のリストに束縛する（CLHS 9.1.4.1）。
 - handler は通知した場所の動的環境で実行する（巻き戻さない）。
-- `handler-case` と `ignore-errors` は、`handler-bind` ＋ `block` / `return-from` のマクロとして Lisp で定義する。
+- `handler-case`（`:no-error` も）と `ignore-errors` は、`handler-bind` ＋ `block`／`tagbody`／`go` のマクロとして boot.lisp に書く。
+- **Zig で見つけたエラー**（§6.6 の `th.signal`）：handler か restart が1つでもあるか、`*debugger-hook*` があれば、`zl-sys::%signal-zig-error` を呼んで condition を作り、handler に通知する（受け止められなければ `*debugger-hook*` も呼ぶ）。受け止められなければ、使える restart の説明を返し、Zig の側でエラーを記録する。どれもなければ Lisp を呼ばない（確保もしない。今までと同じ速さ）。
+  - VM の命令の途中のエラー（未束縛の変数の `load_special` など）では、`vm.sp` を書き戻していないことがある。handler の実行が今のフレームの計算の途中の値を上書きしないように、一番上のフレームが使いうる深さ（`base + nlocals + max_stack`）まで `vm.sp` を上げてから呼び、後で戻す。その間の古い値も GC のルートとして走査されるが、`findObject` で確保済みのオブジェクトかを確かめてからマークするので安全（余分に残すことがあるだけ）。
+  - handler は Lisp のコードなので、`th.signal` の中で GC が起きる。Zig のローカル変数の値は、ネイティブのスタックの保守的な走査で守られる。`th.signal` を呼んだ後で処理を続ける箇所（`return th.signal(…)` の形でない約 30 か所）は、どれもすぐに失敗を返すことを確かめた。印字・読み取りの途中の状態（`pp_circle`・`pp_level`・`read_builder`）は handler に引き継がない。handler を呼ぶ入れ子は 32 段まで（`max_signal_depth`。処理系の誤りで同じエラーが起き続けないように）。
+  - **スタックの溢れは handler に通知しない**（`th.stackExhausted`。VM の値スタックとフレーム、ネイティブのスタック、Zig の関数の入れ子、動的束縛と制御スタック）。handler を動かす予備の領域がないため（Phase 25 の制限。SBCL は予備の領域を持つ）。
 
 ### 9.3 restart
 
-- `restarts` スタックの各要素は {name、function、test、report、interactive、関連付けられた condition} を持つ。
-- `restart-case` は `restart-bind` ＋ `tagbody` / `go` のマクロとして Lisp で定義する。
-- 標準の restart 関数 `abort`、`continue`、`muffle-warning`、`store-value`、`use-value` を提供する。
+- restart のスタックは特殊変数 `zl-sys::*restart-clusters*`（restart のリストのリスト。新しい順）で、`restart-bind` が動的に束縛する。restart は record で、スロットは {名前、関数、report の関数、interactive の関数、test の関数、関連付けた condition}。
+- `restart-case` は `restart-bind` ＋ `block`／`tagbody`／`go` のマクロ。フォームが `error`・`cerror`・`signal`・`warn` の呼び出しなら、通知する condition を先に作り、`with-condition-restarts` でその condition に restart を関連付ける（CLHS restart-case）。関連付けた restart は、その condition を指定したときだけ見える（CLHS 9.1.4.2.4）。
+- 関数とマクロ：`restart-bind`・`restart-case`・`with-simple-restart`・`with-condition-restarts`・`compute-restarts`・`find-restart`・`invoke-restart`・`invoke-restart-interactively`・`restart-name`、標準の restart の関数 `abort`・`muffle-warning`（restart がなければ control-error）・`continue`・`store-value`・`use-value`（なければ NIL）。
+- toplevel の restart は作らない（SBCL の `--script` には RETRY・CONTINUE・ABORT がある。`compute-restarts` の結果はそれだけ違う）。
 
 ### 9.4 デバッガ（D-4）
 
 | 実行形態 | 処理されなかった `error` への動作 |
 |---|---|
-| REPL | condition の型・メッセージ・発生位置・backtrace と、restart の一覧を番号付きで表示する（Phase 13 から：condition ができるまでは、型・説明・発生位置と、VM のフレームの関数名の呼び出しの履歴（新しい順、16 件まで）を表示する）。番号の入力で `invoke-restart` を実行する。toplevel の `abort` で REPL に戻る |
-| `--script` / ソース実行 / ビルドした実行ファイル | 標準エラー出力に condition と backtrace を出力し、**終了コード 1** で終了する |
+| REPL | condition の型・report・発生位置、使える restart の一覧（番号・名前・report）、呼び出しの履歴（新しい順、16 件まで）を表示する（Phase 25 から。それまでは型・説明・発生位置と呼び出しの履歴）。番号の入力で `invoke-restart` を実行する操作は後の Phase で加える（2026-11-05 決定） |
+| `--script` / ソース実行 / ビルドした実行ファイル | 標準エラー出力に condition と restart の一覧（あれば）と呼び出しの履歴を出力し、**終了コード 1** で終了する |
 
-- `*debugger-hook*` と `invoke-debugger` は標準どおりに実装する。
-- 処理されなかった `warning` は `*error-output*` に出力して続行する。
+- `invoke-debugger` は `*debugger-hook*` を（それを NIL に束縛して）呼び、戻ってきたらトップレベルへ戻る（`zl-sys::%unhandled-condition`）。Zig で見つけたエラーでも、受け止められなければ `*debugger-hook*` を呼ぶ（§9.2）。呼び出しの履歴からは、`error`・`invoke-debugger` など condition を通知する標準ライブラリの関数のフレームを除く。
+- 処理されなかった `warning` は `*error-output*` に `WARNING: report` と書いて続行する（SBCL と同じ）。`muffle-warning` の restart で止められる。
 
 ---
 
@@ -1247,6 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
+| P25 | 1879 | 12.72 ms | 2.33 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1358,7 +1372,22 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - `reader.Source` に読み足しの口を設けた：標準入力から読むとき、続きが要ればフォームを読み直さずに同じ読み取りを続ける。
 - 読み飛ばしの最中（`#+`・`*read-suppress*`）に呼ぶ reader macro は、`*read-suppress*` を T に束縛して呼び、値は NIL にする。reader macro の中の recursive な `read` は、外側の read の backquote の深さを引き継ぐ（`ValueBuilder.bq_depth`）。
 - オブジェクトを作る関数は、ヘッダの 32 ビットの長さに入らない長さを拒む（OutOfMemory。storage-condition になる）。
-- `do`・`loop` の形の誤りは program-error（SBCL は一部を simple-error にする。`error` は Phase 25）。
+- `do`・`loop` の形の誤りは program-error（SBCL は一部を simple-error にする。`error` は Phase 25）。Phase 25 で、SBCL 2.6.7 と同じく `do`・`do*`・`psetq` を simple-error にした（`loop` は SBCL も program-error）。
+
+**Phase 25 の実装（condition・handler・restart）**
+2026-11-05 の決定：condition は専用の `record` で表し、CLOS（Phase 27）で instance にまとめる。標準の condition の report の文面は SBCL 2.6.7 に合わせる。Zig で見つけたエラーは `th.signal` の場所ですぐに handler を呼ぶ。REPL は restart の一覧を表示するところまで（番号で選ぶ操作は後の Phase）。構造は §9。
+- **Zig の側**：`ObjKind.record`（`object.Record`。GC が class と slots を走査する）、`src/primitives/conditions.zig`（`zl-sys::%make-record`・`%record-p`・`%record-class`・`%record-slots`・`%object-address`・`%unhandled-condition`）、`th.signal` の handler の呼び出し（`signalDetail`・`callSignalHook`）、スタックの溢れの `th.stackExhausted`、受け止められなかった condition の記録（`ErrorKind.condition`・`th.unhandledCondition`）と restart の一覧（`LispError.restarts`・`th.writeRestarts`。REPL・スクリプト・ネイティブのプログラムが書く）。印字の入口は condition・restart を `zl-sys::%print-record` に渡す。
+- **`typep`**（`src/primitives/types.zig`。CL の関数として初めて実装した）：シンボルの型（数・文字・文字列・列・配列・シンボル・関数・ストリームなど）、`(integer 下限 上限)` などの範囲、`mod`・`unsigned-byte`・`signed-byte`、`member`・`eql`・`and`・`or`・`not`・`satisfies`・`cons`、`(vector 要素の型 長さ)`・`(simple-array …)`・`(string 長さ)`、condition と restart の型（クラスの CPL）。判定できない CL の型指定子は `zilisp:unimplemented`、型でないシンボルは simple-error。set-pprint-dispatch の型の判定（pprint.zig にあった部分的なもの）も、これに置き換えた。`type-of`・`subtypep`・`deftype` は未実装（教材で使われていない）。
+- **Lisp の側**（`src/lisp/boot.lisp` の末尾）：クラスの記述と `define-condition`・`make-condition`、標準の condition 型の階層と report、`signal`・`error`・`cerror`・`warn`・`invoke-debugger`、`handler-bind`・`handler-case`・`ignore-errors`、restart の関数とマクロ、`typecase`・`etypecase`・`ctypecase`・`ecase`・`ccase`（漏れは SBCL と同じ文面の `zl-sys::case-failure`。type-error の一種）、`check-type`（SBCL と同じ文面の simple-type-error と `store-value`）、`assert`（`continue`。テストが関数の呼び出しなら、定数でない引数の値を `failed with X = 3.` の形で報告する。場所の値は尋ねない）、Zig で見つけたエラーから condition を作る `zl-sys::%zig-condition`。
+- **0 除算の演算と被演算子**：`/`・`floor` などの 0 除算は `(/ 被除数 除数)`（浮動小数は浮動小数にした値。SBCL と同じ）、`expt` は `(EXPT 底 指数)` を condition に渡す。`log` の 0 は演算なし（SBCL と同じ）。
+- **`eval`** を関数として加えた（教材 Level 13 の `safe-eval`。コンパイラの `eval` を呼ぶ）。
+- **VM の値スタック**：handler を呼ぶ間 `vm.sp` を一番上のフレームが使いうる深さまで上げる（§9.2）。上げないと、呼び出し側の handler が同じフレームの `catch` に戻る場合に、書き戻していない `list` の引数が handler を呼ぶ処理の値で上書きされることを確かめた（単体テストと言語試験 `conditions.lisp` の `p25-mid`）。
+- **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：SBCL の内部の型（`SB-INT:SIMPLE-PROGRAM-ERROR` などは `zl-sys::simple-program-error` など）、SBCL のコンパイラの定数の畳み込みによる文面（`Value of "a" in (+ "a" 1) is "a", not a NUMBER.` は、Zilisp では値の型を報告する type-error の文面）、トップレベルの restart（SBCL の `--script` の RETRY・CONTINUE・ABORT）、ファイルのエラーの文面（SBCL は絶対パスと OS のメッセージ）、Zig で見つけたエラーの説明の文（日本語）、`*print-pretty*` が NIL のときのリストの中の condition の印字。
+- **試験**：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）、単体テスト（受け止められなかった condition の報告と restart の一覧、VM の命令の途中のエラーと GC）。
+- **Codex のレビューの修正（Phase 25）**、6 件（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` は引数を書いた順に評価する。`restart-case` のフォームはマクロを展開してから通知の形かを調べる（大域のマクロだけ）。`abort`・`muffle-warning` の restart が戻ってきたら control-error。`typep` の `(vector t n)`・`(string n)` などの大きさは、fill-pointer でなく次元と照合する。Reader が reader-error・end-of-file を通知する前に、読んだところまでストリームの位置を進める（handler がその場でストリームを読むため。`#A` の中身の誤りなど ValueBuilder の中から通知するエラーは、まだ位置を進めない）。reader-error の condition にストリームを入れる。
+- **Codex のレビューの修正（Phase 25、2回目）**、4 件（どれも SBCL 2.6.7 と照合した）：ValueBuilder の中から通知するエラー（`#A` の中身の誤り）も、通知の前にストリームの位置を進める（readOp が `ValueBuilder.sync_position` を渡す）。`read-from-string` の reader-error・end-of-file にも、同じ中身と位置の文字列の入力ストリームを入れる（エラーのときだけ作る）。`ccase`・`ctypecase` は場所の部分式を setf の展開で1回だけ評価する（`check-type` は SBCL と同じく、確かめるたびに場所を1回読む）。`*debugger-hook*` があれば、handler・restart がなくても Zig で見つけたエラーで呼ぶ（§9.4 の制限をなくした）。
+- `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 514 に（出力の違いはその 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 12.72 ms（boot.lisp の空でない行は 1192 から 1879 に）。
 
 ### 11.3 標準ライブラリのビルド
 

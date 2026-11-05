@@ -996,7 +996,8 @@ test "tagbody, go, iteration macros, loop and helpers like SBCL 2.6.7 (Phase 19)
     try expectError(&e, "(evenp 1.0)", .type_error);
     try expectError(&e, "(endp 3)", .type_error);
     try expectError(&e, "(format nil \"~A\")", .simple_error);
-    try expectError(&e, "(psetq a)", .program_error);
+    // psetq・do の形の誤りは simple-error（SBCL 2.6.7 と同じ。Phase 25）
+    try expectError(&e, "(psetq a)", .simple_error);
     // 範囲外のもの（明示的なエラー）：format の出力先の文字列、loop の並列の束縛（format の指示子は Phase 24 で実装）
     try expectValue(&e, "(format nil \"~5D|~X\" 3 255)", "\"    3|FF\"");
     try expectError(&e, "(format (make-array 3 :element-type 'character) \"x\")", .unimplemented);
@@ -1720,8 +1721,9 @@ noinline fn clobberStack() void {
 fn vmSlotBody(rt: *Runtime) !void {
     var out: std.Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
-    // 値スタックとフレームは、起動時に標準ライブラリのマクロを展開できるだけ要る（Phase 22 の defpackage から、64 要素・4 フレームでは足りない）
-    const th = try Thread.create(rt, &out.writer, .{ .stack_size = 256, .frame_count = 16 });
+    // 値スタックとフレームは、起動時に標準ライブラリのマクロを展開できるだけ要る（Phase 22 の defpackage から、64 要素・4 フレームでは
+    // 足りない。Phase 25 の define-condition などから、256 要素・16 フレームでも足りない）
+    const th = try Thread.create(rt, &out.writer, .{ .stack_size = 1024, .frame_count = 64 });
     defer th.destroy();
     // sp より上の枠（使い終わった枠）にある値はルートではない
     th.vm.sp = 3;
@@ -1891,7 +1893,7 @@ test "printer variables and errors like SBCL 2.6.7 (Phase 24)" {
         .{ "(let ((h (make-hash-table))) (loop for k being the hash-keys of h using (hash-key v) collect k))", .program_error },
         .{ "(loop for x in '(10) when x do (identity x) and collect it)", .unbound_variable },
         .{ "(loop for i from 1 to 5 by -1 collect i)", .type_error },
-        .{ "(do ((x 1 2 3)) (t x))", .program_error },
+        .{ "(do ((x 1 2 3)) (t x))", .simple_error },
         .{ "(make-sequence '(vector t -1) 0)", .simple_error },
         .{ "(coerce '(1) '(string -1))", .simple_error },
         .{ "(make-string 4294967296)", .storage_condition },
@@ -2001,4 +2003,68 @@ test "stream and pathname errors like SBCL 2.6.7 (Phase 23)" {
     try expectError(&e, "(let ((s (make-two-way-stream (make-string-input-stream \"abc\") (make-string-output-stream)))) (close s) (read-char s))", .stream_error);
     try expectError(&e, "(let ((s (make-synonym-stream '*standard-output*))) (close s) (write-string \"z\" s))", .stream_error);
     try expectValue(&e, "(progn (delete-file \".zig-cache/unit-tmp/p23/a.txt\") (delete-file \".zig-cache/unit-tmp/p23/b.bin\") (delete-file \".zig-cache/unit-tmp/p23/l.txt\"))", "T");
+}
+
+/// エラーの報告の1行（writeError）と restart の一覧（writeRestarts）
+fn errorReport(e: *Env, text: []const u8) ![]u8 {
+    const v = try evalText(e, text);
+    try testing.expect(v == Value.unwind);
+    var buf: std.Io.Writer.Allocating = .init(testing.allocator);
+    errdefer buf.deinit();
+    try e.th.writeError(&buf.writer);
+    try buf.writer.writeByte('\n');
+    try e.th.writeRestarts(&buf.writer);
+    e.th.clearError();
+    return buf.toOwnedSlice();
+}
+
+test "conditions not handled reach the top level (Phase 25)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // Lisp の error：condition の型と report
+    try expectError(&e, "(error \"boom ~A\" 1)", .condition);
+    const r1 = try errorReport(&e, "(error \"boom ~A\" 1)");
+    defer testing.allocator.free(r1);
+    try testing.expectEqualStrings("SIMPLE-ERROR: boom 1\n", r1);
+    const r2 = try errorReport(&e, "(progn (define-condition p25-err (error) () (:report \"P25 report\")) (error 'p25-err))");
+    defer testing.allocator.free(r2);
+    try testing.expectEqualStrings("P25-ERR: P25 report\n", r2);
+    // 使える restart の一覧
+    const r3 = try errorReport(&e, "(restart-case (error \"x\") (use-zero () :report \"Use zero\" 0) (p25-other () 1))");
+    defer testing.allocator.free(r3);
+    try testing.expectEqualStrings("SIMPLE-ERROR: x\n  使える restart:\n    0: [USE-ZERO] Use zero\n    1: [P25-OTHER] P25-OTHER\n", r3);
+    // Zig で見つけたエラーは、handler が受け止めなければ今までと同じ種類と文面で報告する
+    try expectError(&e, "(handler-bind ((error (lambda (c) c))) (car 1))", .type_error);
+    const r4 = try errorReport(&e, "(restart-case (car 1) (p25-r () 1))");
+    defer testing.allocator.free(r4);
+    try testing.expectEqualStrings("TYPE-ERROR: 値 1 は型 LIST ではありません\n  使える restart:\n    0: [P25-R] P25-R\n", r4);
+    // *debugger-hook* は、Zig で見つけたエラーでも、handler・restart がなくても呼ぶ（Codex のレビュー P25 2回目 #4。
+    // SBCL 2.6.7 も、デバッガを有効にしていれば呼ぶ）
+    try expectValue(&e, "(let ((*debugger-hook* (lambda (c h) (declare (ignore c h)) (throw 'p25-done :hook)))) (catch 'p25-done (funcall (symbol-function 'car) 3)))", ":HOOK");
+    try expectValue(&e, "(let ((*debugger-hook* (lambda (c h) (declare (ignore h)) (throw 'p25-done (princ-to-string c))))) (catch 'p25-done (error \"lisp ~A\" 1)))", "\"lisp 1\"");
+    // エラーで抜けた後、handler・restart の束縛は残らない
+    try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");
+    // 未定義の condition 型と、有効でない restart
+    try expectError(&e, "(error 'p25-no-such-condition)", .condition);
+    try expectError(&e, "(invoke-restart 'p25-no-such-restart)", .condition);
+    try expectError(&e, "(abort)", .condition);
+}
+
+test "handlers run inside a VM instruction keep the frame's values (Phase 25)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // 未束縛の変数（VM の load_special。vm.sp を書き戻さない）で handler を呼び、handler が同じフレームの catch に戻る：
+    // 書き戻していない計算の途中の値（list の引数）を、handler を呼ぶ処理が上書きしない（vm.sp を上げないと壊れることを確かめた）
+    try expectValue(&e,
+        \\(progn (defvar *p25-unbound*)
+        \\  (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))
+        \\  (handler-bind ((error (lambda (c) (declare (ignore c)) (throw 'p25-tag :h)))) (p25-mid 5 7)))
+    , "(5 7 5 7 :H)");
+    e.rt.heap.stress = true;
+    defer e.rt.heap.stress = false;
+    try expectValue(&e, "(handler-bind ((error (lambda (c) (declare (ignore c)) (throw 'p25-tag :h)))) (list (p25-mid 6 8) (p25-mid 7 9)))", "((6 8 6 8 :H) (7 9 7 9 :H))");
+    // Zig のプリミティブのエラーで handler が GC を起こしても、外側の値は残る
+    try expectValue(&e, "(let ((a (list 1 2 3))) (list a (handler-case (parse-integer \"x\") (parse-error (c) (princ-to-string c))) a))", "((1 2 3) \"整数として読めません: \\\"x\\\"\" (1 2 3))");
 }

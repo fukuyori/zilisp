@@ -174,14 +174,18 @@ pub fn gensym(th: *Thread, args: []const Value) Value {
 
 /// 説明の文字列と値でエラーを記録する（Lisp で書いた標準ライブラリから使う）
 fn signalWithDetail(th: *Thread, kind: @import("../runtime/thread.zig").ErrorKind, detail: Value, datum: Value) Value {
-    const r = th.signal(kind, "", datum, Value.unbound);
-    th.err.detail = detail;
-    return r;
+    return th.signalDetail(kind, "", datum, Value.unbound, detail);
 }
 
 /// ZILISP-SYSTEM::%MACRO-FORM-ERROR 説明 値：マクロのフォームの形の誤り（program-error）
 pub fn sysMacroFormError(th: *Thread, args: []const Value) Value {
     return signalWithDetail(th, .program_error, args[0], args[1]);
+}
+
+/// ZILISP-SYSTEM::%MACRO-SIMPLE-ERROR 説明 値：マクロのフォームの形の誤り（simple-error。SBCL 2.6.7 の do・do*・psetq と同じ。
+/// Phase 25）
+pub fn sysMacroSimpleError(th: *Thread, args: []const Value) Value {
+    return signalWithDetail(th, .simple_error, args[0], args[1]);
 }
 
 /// ZILISP-SYSTEM::%UNIMPLEMENTED-ERROR 説明 値：未実装の機能

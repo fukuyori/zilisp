@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 478 |
+| match | 両方とも正常に終わり、標準出力が同じ | 514 |
 | both-error | 両方ともエラーで終わった | 362 |
-| output-diff | 両方とも正常に終わったが、標準出力が違う | 0 |
-| zilisp-error | Zilisp だけがエラー | 115 |
+| output-diff | 両方とも正常に終わったが、標準出力が違う | 1 |
+| zilisp-error | Zilisp だけがエラー | 78 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -20,15 +20,10 @@
 |---|---|
 | 未実装：DEFSTRUCT | 31 |
 | 未実装：DEFCLASS | 21 |
-| 未実装：HANDLER-CASE | 16 |
-| 未実装：ASSERT | 5 |
-| 未実装：DEFINE-CONDITION | 5 |
-| 未実装の関数：EVAL | 4 |
 | 未実装：TRACE | 3 |
 | READER-ERROR | 2 |
 | 未実装の関数：RANDOM | 2 |
 | 未実装："FOR" | 2 |
-| 未実装：RESTART-CASE | 2 |
 | 未定義の関数：QUIT | 1 |
 | 未実装の変数：*RANDOM-STATE* | 1 |
 | 未実装の関数：APROPOS | 1 |
@@ -42,14 +37,9 @@
 | 未実装の関数：RATIONALIZE | 1 |
 | 未実装の関数：ROOM | 1 |
 | 未実装の関数：SINH | 1 |
-| 未実装の関数：WARN | 1 |
 | 未実装：DECLAIM | 1 |
 | 未実装：DEFMETHOD | 1 |
-| 未実装：ECASE | 1 |
-| 未実装：HANDLER-BIND | 1 |
-| 未実装：IGNORE-ERRORS | 1 |
 | 未実装：TIME | 1 |
-| 未実装：TYPECASE | 1 |
 | 未実装：結果が複素数になる演算は未実装です | 1 |
 
 各ブロックの結果は `eval-check.tsv`（同じディレクトリ）にある。

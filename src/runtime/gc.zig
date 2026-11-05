@@ -130,6 +130,11 @@ const Marker = struct {
                     m.markValue(t.other);
                     m.markValue(t.dispatch);
                 },
+                .record => {
+                    const r: *object.Record = @ptrFromInt(e);
+                    m.markValue(r.class);
+                    m.markValue(r.slots);
+                },
                 .pathname => {
                     const p: *object.Pathname = @ptrFromInt(e);
                     m.markValue(p.host);

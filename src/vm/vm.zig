@@ -79,7 +79,7 @@ pub fn isVmClosure(f: Value) bool {
 }
 
 fn stackOverflow(th: *Thread) Value {
-    return th.signal(.storage_condition, "VM のスタックが溢れました（呼び出しが深すぎます）", Value.unbound, Value.unbound);
+    return th.stackExhausted("VM のスタックが溢れました（呼び出しが深すぎます）");
 }
 
 /// フレームを積む。引数は stack[base .. base+nargs) にあること。失敗したら false（th にエラーを記録済み）

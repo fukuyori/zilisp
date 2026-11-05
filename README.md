@@ -60,9 +60,11 @@ Added in 0.3.0:
   `read-from-string`, ...), binary I/O, and pathnames (`#P`, `merge-pathnames`, `probe-file`, `directory`, ...)
 - Printing and reading: `format` with all its directives, the printer variables (`*print-base*`, `*print-circle*`, ...),
   readtables and user reader macros, and the pretty printer (`pprint`, `pprint-logical-block`, `set-pprint-dispatch`)
+- Conditions: `define-condition`, `error`, `warn`, `signal`,
+  `handler-case`, `handler-bind`, `ignore-errors`, `restart-case`, `invoke-restart`, `with-simple-restart`,
+  `check-type`, `assert`, `typecase`/`ecase`, and `typep`; the report texts of the standard conditions follow SBCL 2.6.7
 
-Not yet implemented (planned for later releases): complex numbers, `defstruct`,
-CLOS, and the condition system (`handler-case`, restarts).
+Not yet implemented (planned for later releases): complex numbers, `defstruct`, and CLOS.
 
 Error messages are currently written in Japanese.
 

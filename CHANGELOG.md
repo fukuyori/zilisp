@@ -4,8 +4,37 @@
 
 ## Unreleased
 
+### Added
+- Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
+  `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
+  `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with
+  `:no-error`) and `ignore-errors`, `restart-bind`, `restart-case` (`:report`, `:interactive`, `:test`, association with the
+  signaled condition), `with-simple-restart`, `with-condition-restarts`, `compute-restarts`, `find-restart`, `invoke-restart`,
+  `invoke-restart-interactively`, `restart-name`, `abort`, `continue`, `muffle-warning`, `store-value` and `use-value`, and the
+  condition accessors (`type-error-datum` and the others). Errors found in Zig (the type-error of `car`, division by zero,
+  unbound variables, ...) can be handled too, and restarts work with them. The report texts and printing of the standard
+  conditions are the same as SBCL 2.6.7. Reports of errors that no handler takes now list the available restarts (choosing
+  one by number comes in a later phase)
+- `typep` (numeric ranges, `mod`, `member`, `and`, `or`, `not`, `satisfies`, `cons`, element types and sizes of vectors and
+  arrays, condition types), `typecase`, `etypecase`, `ctypecase`, `ecase`, `ccase`, `check-type` and `assert` (with SBCL's
+  texts), and `eval` as a function
+- Tests: the language test `conditions.lisp` (the same output as SBCL 2.6.7; also a gc-stress version and native) and unit tests.
+  Level 13 of the curriculum gives the same output as SBCL except one file-error text (implementation-dependent). Curriculum
+  blocks matching went from 478 to 514. Startup time is 12.72 ms
+- Fixed six issues found in the Codex review of P25 (each checked against SBCL 2.6.7): the evaluation order of `cerror`'s
+  arguments inside `restart-case`; associating restarts with forms that macroexpand to `signal` or `error`; control-error when
+  an `abort` or `muffle-warning` restart returns; `typep` of `(vector t n)` and `(string n)` compares the dimension, not the
+  fill pointer; the stream position seen by reader-error and end-of-file handlers that read from the stream; and
+  `stream-error-stream` of reader-error. `*break-on-signals*` is left to the debugger phase
+- Fixed the four issues of the second Codex review of P25: the stream position on wrong `#A` contents, the stream of
+  reader-error and end-of-file from `read-from-string`, evaluating the subforms of the place of `ccase` and `ctypecase` once,
+  and calling `*debugger-hook*` for errors found in Zig even with no handler or restart
+
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed
+- Malformed `do`, `do*` and `psetq` forms signal simple-error as in SBCL 2.6.7 (they were program-error)
+- The storage-condition of a stack overflow (the VM and native stacks, the dynamic binding and control stacks) is not
+  signaled to handlers (there is no reserve area to run them in)
 
 ## 0.3.0 - 2026-11-04
 

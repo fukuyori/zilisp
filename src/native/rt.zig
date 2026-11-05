@@ -31,7 +31,7 @@ pub inline fn stackOk() bool {
 }
 
 pub fn stackOverflow(th: *Thread) Value {
-    return th.signal(.storage_condition, "ネイティブのスタックが溢れました（呼び出しが深すぎます）", Value.unbound, Value.unbound);
+    return th.stackExhausted("ネイティブのスタックが溢れました（呼び出しが深すぎます）");
 }
 
 pub fn argCountError(th: *Thread, self: Value, nargs: u32) Value {
@@ -431,6 +431,7 @@ pub fn runProgram(init: std.process.Init, prog: *const Program) !u8 {
             try stderr.print("{s}:{d}:{d}: ", .{ prog.file, t.line, t.col });
             try th.writeError(stderr);
             try stderr.writeByte('\n');
+            try th.writeRestarts(stderr);
             try stderr.flush();
             return 1;
         }

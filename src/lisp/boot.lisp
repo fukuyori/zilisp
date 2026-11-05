@@ -301,7 +301,7 @@
     (tagbody
      next
        (if (null p) (go done))
-       (if (null (cdr p)) (zl-sys::%macro-form-error "PSETQ の引数は変数と値の組です" pairs))
+       (if (null (cdr p)) (zl-sys::%macro-simple-error "PSETQ の引数は変数と値の組です" pairs))
        (let ((g (gensym)))
          (setq temps (cons (list g (car (cdr p))) temps))
          (setq sets (cons (car p) (cons g sets))))
@@ -349,7 +349,7 @@
 (defun zl-sys::%do-expansion (specs end-clause body let-op set-op)
   (let ((bindings nil) (steps nil) (top (gensym "TOP")) (end (gensym "END")))
     (if (not (consp end-clause))
-        (zl-sys::%macro-form-error "DO の終了の節はリストでなければなりません" end-clause))
+        (zl-sys::%macro-simple-error "DO の終了の節はリストでなければなりません" end-clause))
     (dolist (s specs)
       (cond ((symbolp s) (setq bindings (cons s bindings)))
             ;; (変数 [初期値 [更新]])：変数はシンボル、長さ 1〜3 の真のリスト（SBCL と同じくそれ以外はエラー）
@@ -358,12 +358,12 @@
                       (not (listp (cdr s)))
                       (and (cdr s) (not (listp (cdr (cdr s)))))
                       (and (cdr s) (cdr (cdr s)) (cdr (cdr (cdr s))))))
-             (zl-sys::%macro-form-error "DO の変数の指定が正しくありません" s))
+             (zl-sys::%macro-simple-error "DO の変数の指定が正しくありません" s))
             ((consp s)
              (setq bindings (cons (if (cdr s) (list (car s) (car (cdr s))) (list (car s))) bindings))
              (if (cdr (cdr s))
                  (setq steps (cons (car (cdr (cdr s))) (cons (car s) steps)))))
-            (t (zl-sys::%macro-form-error "DO の変数の指定が正しくありません" s))))
+            (t (zl-sys::%macro-simple-error "DO の変数の指定が正しくありません" s))))
     `(block nil
        (,let-op ,(reverse bindings)
          ,@(zl-sys::%body-declarations body)
@@ -1313,3 +1313,788 @@
        (if (zl-sys::%pprint-length-check zl-sys::%pp-list zl-sys::%pp-state)
            (pop zl-sys::%pp-list)
            (return-from zl-sys::%pp-block nil))))
+
+;;; ---------------------------------------------------------------------------
+;;; Phase 25：condition・handler・restart（CLHS 9 章。詳細設計 §9）
+;;; condition と restart は record（Zig の zl-sys::%make-record。src/primitives/conditions.zig）で表し、CLOS（Phase 27）で
+;;; instance にまとめる。クラスの記述は simple-vector で、クラスの名前のシンボルの属性 zl-sys::%class に置く：
+;;;   #(名前 CPL 直接の上位 スロット report 既定の initarg 直接のスロット)
+;;;   CPL は自身を含む上位のクラスの名前のリスト（具体的な方から。位置 0・1 は Zig の typep と印字が読む）、
+;;;   スロットは (名前 initarg のリスト initform の関数か NIL) のリスト（上位のクラスのスロットを含む。値のベクタの順）、
+;;;   report は文字列・関数・NIL、既定の initarg は (initarg 関数 …)。
+;;; handler：zl-sys::*handler-clusters* は cluster（((型 . 関数) …)）のリスト（新しい順）。handler-bind が動的に束縛する。
+;;; restart：zl-sys::*restart-clusters* は cluster（restart のリスト）のリスト。restart-bind が動的に束縛する。
+;;; どちらも動的束縛なので、非局所脱出で抜けると一緒に戻る。
+;;; Zig で見つけたエラー（th.signal）は、handler・restart があるときだけ zl-sys::%signal-zig-error で condition にして通知する
+;;; （受け止められなければ、Zig の側でトップレベルへ戻る。報告の文面は今までと同じ）。
+;;; 標準の condition の report の文面は SBCL 2.6.7 に合わせる。
+
+(defvar zl-sys::*handler-clusters* nil)
+(defvar zl-sys::*restart-clusters* nil)
+(defvar *debugger-hook* nil)
+(defvar *break-on-signals* nil)
+
+(export (intern "UNIMPLEMENTED" "ZILISP") "ZILISP")
+
+;; クラスの記述。なければ（errorp が真なら）simple-type-error（SBCL 2.6.7 と同じ文面）
+(defun zl-sys::%find-class (name &optional (errorp t))
+  (let ((class (if (and name (symbolp name)) (get name 'zl-sys::%class) nil)))
+    (cond (class class)
+          (errorp (error 'simple-type-error
+                         :datum name :expected-type '(satisfies zl-sys::%condition-class-name-p)
+                         :format-control "~S does not designate a condition class."
+                         :format-arguments (list name)))
+          (t nil))))
+
+(defun zl-sys::%condition-class-name-p (name)
+  (let ((class (zl-sys::%find-class name nil)))
+    (if (and class (member 'condition (svref class 1))) t nil)))
+
+;; CPL：深さ優先・左から右に並べ、重なりは最後のものを残す（菱形の継承で共通の上位を後ろに置く）
+(defun zl-sys::%compute-cpl (name supers)
+  (let ((all (cons name (mapcan (lambda (s) (copy-list (svref (zl-sys::%find-class s) 1))) supers)))
+        (result nil))
+    (do ((x all (cdr x)))
+        ((null x) (nreverse result))
+      (unless (member (car x) (cdr x)) (push (car x) result)))))
+
+;; 上位のクラスから順に、スロットを名前でまとめる（initarg は合わせ、initform は具体的なクラスのものを使う）
+(defun zl-sys::%effective-slots (cpl)
+  (let ((slots nil))
+    (dolist (cname (reverse cpl))
+      (dolist (d (svref (zl-sys::%find-class cname) 6))
+        (let ((e (assoc (car d) slots)))
+          (if e
+              (progn
+                (dolist (a (cadr d)) (unless (member a (cadr e)) (setf (cadr e) (append (cadr e) (list a)))))
+                (if (caddr d) (setf (caddr e) (caddr d))))
+              (setq slots (append slots (list (list (car d) (copy-list (cadr d)) (caddr d)))))))))
+    slots))
+
+(defun zl-sys::%effective-default-initargs (cpl)
+  (let ((result nil))
+    (dolist (cname cpl)
+      (do ((x (svref (zl-sys::%find-class cname) 5) (cddr x)))
+          ((null x))
+        (unless (zl-sys::%plist-has result (car x))
+          (setq result (append result (list (car x) (cadr x)))))))
+    result))
+
+(defun zl-sys::%plist-has (plist key)
+  (do ((x plist (cddr x)))
+      ((null x) nil)
+    (if (eq (car x) key) (return t))))
+
+;; クラスを定義する（define-condition の展開先）。direct-slots は (名前 initarg のリスト initform の関数か NIL) のリスト
+(defun zl-sys::%define-condition-class (name parents direct-slots report default-initargs)
+  (let* ((supers (cond (parents parents) ((member name '(condition restart)) nil) (t '(condition))))
+         (class (vector name nil supers nil report default-initargs direct-slots)))
+    (dolist (s supers) (zl-sys::%find-class s))
+    (setf (get name 'zl-sys::%class) class)
+    (setf (svref class 1) (zl-sys::%compute-cpl name supers))
+    (setf (svref class 3) (zl-sys::%effective-slots (svref class 1)))
+    (setf (svref class 5) (zl-sys::%effective-default-initargs (svref class 1)))
+    name))
+
+;; initarg のリスト keys のどれかの値（最初に現れたもの）。なければ zl-sys::%missing
+(defun zl-sys::%initarg-value (initargs keys)
+  (do ((x initargs (cddr x)))
+      ((null x) 'zl-sys::%missing)
+    (if (member (car x) keys) (return (cadr x)))))
+
+(defun make-condition (type &rest initargs)
+  (let* ((class (zl-sys::%find-class type))
+         (slots (svref class 3))
+         (defaults (svref class 5))
+         (slot-values (make-array (length slots) :initial-element 'zl-sys::%unbound-slot))
+         (i 0))
+    (unless (member 'condition (svref class 1))
+      (error 'simple-type-error
+             :datum type :expected-type '(satisfies zl-sys::%condition-class-name-p)
+             :format-control "~S does not designate a condition class." :format-arguments (list type)))
+    (dolist (s slots)
+      (let ((v (zl-sys::%initarg-value initargs (cadr s))))
+        (if (eq v 'zl-sys::%missing)
+            (let ((d (zl-sys::%initarg-value defaults (cadr s))))
+              (cond ((not (eq d 'zl-sys::%missing)) (setf (svref slot-values i) (funcall d)))
+                    ((caddr s) (setf (svref slot-values i) (funcall (caddr s))))))
+            (setf (svref slot-values i) v)))
+      (setq i (1+ i)))
+    (zl-sys::%make-record class slot-values)))
+
+(defun zl-sys::%slot-index (class name)
+  (let ((i 0))
+    (dolist (s (svref class 3) nil)
+      (if (eq (car s) name) (return i))
+      (setq i (1+ i)))))
+
+;; condition のスロットの値（スロットの reader・accessor の展開先）。type はスロットを持つクラスの名前
+(defun zl-sys::%condition-slot (c name type)
+  (unless (typep c type) (error 'type-error :datum c :expected-type type))
+  (let ((v (svref (zl-sys::%record-slots c) (zl-sys::%slot-index (zl-sys::%record-class c) name))))
+    (if (eq v 'zl-sys::%unbound-slot)
+        (error 'unbound-slot :name name :instance c)
+        v)))
+
+(defun zl-sys::%set-condition-slot (value c name type)
+  (unless (typep c type) (error 'type-error :datum c :expected-type type))
+  (setf (svref (zl-sys::%record-slots c) (zl-sys::%slot-index (zl-sys::%record-class c) name)) value))
+
+;; スロットの値。値がなければ default（印字に使う）
+(defun zl-sys::%slot-or (c name default)
+  (let ((i (zl-sys::%slot-index (zl-sys::%record-class c) name)))
+    (if i
+        (let ((v (svref (zl-sys::%record-slots c) i)))
+          (if (eq v 'zl-sys::%unbound-slot) default v))
+        default)))
+
+;; (define-condition 名前 (上位 …) (スロット …) オプション …)：スロットのオプションは :initarg・:initform・:reader・
+;; :writer・:accessor（:type・:documentation・:allocation は受け付けて使わない）。オプションは :report・:default-initargs・
+;; :documentation
+(defmacro define-condition (name parent-types slot-specs &rest options)
+  (let ((slots nil) (functions nil) (report nil) (defaults nil))
+    (dolist (spec slot-specs)
+      (let ((sname (if (consp spec) (car spec) spec))
+            (initargs nil) (initform nil) (has-initform nil))
+        (do ((o (if (consp spec) (cdr spec) nil) (cddr o)))
+            ((null o))
+          (let ((key (car o)) (val (cadr o)))
+            (cond ((eq key :initarg) (push val initargs))
+                  ((eq key :initform) (setq initform val has-initform t))
+                  ((eq key :reader)
+                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ',name)) functions))
+                  ((eq key :writer)
+                   (push `(defun ,val (value condition) (zl-sys::%set-condition-slot value condition ',sname ',name)) functions))
+                  ((eq key :accessor)
+                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ',name)) functions)
+                   (push `(defun (setf ,val) (value condition) (zl-sys::%set-condition-slot value condition ',sname ',name))
+                         functions))
+                  ((member key '(:type :documentation :allocation)))
+                  (t (zl-sys::%macro-form-error "DEFINE-CONDITION のスロットのオプションが正しくありません" spec)))))
+        (push `(list ',sname ',(reverse initargs) ,(if has-initform `(lambda () ,initform) nil)) slots)))
+    (dolist (o options)
+      (cond ((not (consp o)) (zl-sys::%macro-form-error "DEFINE-CONDITION のオプションが正しくありません" o))
+            ((eq (car o) :report)
+             (let ((r (cadr o)))
+               (setq report (cond ((stringp r) r)
+                                  ((symbolp r) `',r)
+                                  (t `(function ,r))))))
+            ((eq (car o) :default-initargs)
+             (do ((x (cdr o) (cddr x)))
+                 ((null x))
+               (setq defaults (append defaults (list `',(car x) `(lambda () ,(cadr x)))))))
+            ((eq (car o) :documentation))
+            (t (zl-sys::%macro-form-error "DEFINE-CONDITION のオプションが正しくありません" o))))
+    `(progn
+       (zl-sys::%define-condition-class ',name ',parent-types (list ,@(reverse slots)) ,report (list ,@defaults))
+       ,@(reverse functions)
+       ',name)))
+
+;;; 標準の condition 型（CLHS 9.2）。report の文面は SBCL 2.6.7 と同じ
+
+(zl-sys::%define-condition-class 'condition nil nil nil nil)
+(define-condition serious-condition (condition) ())
+(define-condition error (serious-condition) ())
+(define-condition warning (condition) ())
+(define-condition style-warning (warning) ())
+(define-condition storage-condition (serious-condition) ())
+
+(define-condition simple-condition (condition)
+  ((format-control :initarg :format-control :initform nil :reader simple-condition-format-control)
+   (format-arguments :initarg :format-arguments :initform nil :reader simple-condition-format-arguments))
+  (:report (lambda (condition stream)
+             (let ((control (simple-condition-format-control condition)))
+               (if control
+                   (apply #'format stream control (simple-condition-format-arguments condition)))))))
+
+(define-condition simple-error (simple-condition error) ())
+(define-condition simple-warning (simple-condition warning) ())
+
+(define-condition type-error (error)
+  ((datum :initarg :datum :reader type-error-datum)
+   (expected-type :initarg :expected-type :reader type-error-expected-type))
+  (:report (lambda (condition stream)
+             (format stream "~@<The value ~@:_~2@T~S ~@:_is not of type ~@:_~2@T~S~:@>"
+                     (type-error-datum condition) (type-error-expected-type condition)))))
+
+(define-condition simple-type-error (simple-condition type-error) ())
+(define-condition program-error (error) ())
+(define-condition control-error (error) ())
+(define-condition parse-error (error) ())
+
+(define-condition cell-error (error)
+  ((name :initarg :name :reader cell-error-name)))
+
+;; 名前をパッケージ付きで書く（SBCL の print-symbol-with-prefix）
+(defun zl-sys::%prin1-with-prefix (name stream)
+  (let ((*package* (find-package "KEYWORD")))
+    (prin1 name stream)))
+
+(define-condition unbound-variable (cell-error) ()
+  (:report (lambda (condition stream)
+             (format stream "The variable ~S is unbound." (cell-error-name condition)))))
+
+(define-condition undefined-function (cell-error) ()
+  (:report (lambda (condition stream)
+             (write-string "The function " stream)
+             (zl-sys::%prin1-with-prefix (cell-error-name condition) stream)
+             (write-string " is undefined." stream))))
+
+(define-condition unbound-slot (cell-error)
+  ((instance :initarg :instance :reader unbound-slot-instance))
+  (:report (lambda (condition stream)
+             (write-string "The slot " stream)
+             (zl-sys::%prin1-with-prefix (cell-error-name condition) stream)
+             (format stream " is unbound in the object ~S." (unbound-slot-instance condition)))))
+
+(define-condition arithmetic-error (error)
+  ((operation :initarg :operation :initform nil :reader arithmetic-error-operation)
+   (operands :initarg :operands :initform nil :reader arithmetic-error-operands))
+  (:report (lambda (condition stream)
+             (format stream "arithmetic error ~S signalled" (zl-sys::%condition-type condition))
+             (if (arithmetic-error-operation condition)
+                 (format stream "~%Operation was (~S~{ ~S~})."
+                         (arithmetic-error-operation condition) (arithmetic-error-operands condition))))))
+
+(define-condition division-by-zero (arithmetic-error) ())
+(define-condition floating-point-overflow (arithmetic-error) ())
+(define-condition floating-point-underflow (arithmetic-error) ())
+(define-condition floating-point-inexact (arithmetic-error) ())
+(define-condition floating-point-invalid-operation (arithmetic-error) ())
+
+(define-condition package-error (error)
+  ((package :initarg :package :reader package-error-package)))
+
+(define-condition stream-error (error)
+  ((stream :initarg :stream :reader stream-error-stream)))
+
+(define-condition end-of-file (stream-error) ()
+  (:report (lambda (condition stream)
+             (format stream "end of file on ~S" (stream-error-stream condition)))))
+
+(define-condition reader-error (parse-error stream-error) ())
+
+(define-condition file-error (error)
+  ((pathname :initarg :pathname :reader file-error-pathname))
+  (:report (lambda (condition stream)
+             (format stream "error on file ~S" (file-error-pathname condition)))))
+
+(define-condition print-not-readable (error)
+  ((object :initarg :object :reader print-not-readable-object))
+  (:report (lambda (condition stream)
+             (let ((*print-readably* nil))
+               (format stream "~S cannot be printed readably." (print-not-readable-object condition))))))
+
+;; Zilisp の condition 型（Zig で見つけたエラーの説明の文を持つもの。SBCL の SB-INT:SIMPLE-PROGRAM-ERROR などに当たる）
+(define-condition zl-sys::simple-program-error (simple-condition program-error) ())
+(define-condition zl-sys::simple-control-error (simple-condition control-error) ())
+(define-condition zl-sys::simple-parse-error (simple-condition parse-error) ())
+(define-condition zl-sys::simple-reader-error (simple-condition reader-error) ())
+(define-condition zl-sys::simple-package-error (simple-condition package-error) ())
+(define-condition zl-sys::simple-stream-error (simple-condition stream-error) ())
+(define-condition zl-sys::simple-end-of-file (simple-condition end-of-file) ())
+(define-condition zl-sys::simple-file-error (simple-condition file-error) ())
+(define-condition zl-sys::simple-storage-condition (simple-condition storage-condition) ())
+(define-condition zl-sys::simple-print-not-readable (simple-condition print-not-readable) ())
+(define-condition zl-sys::simple-arithmetic-error (simple-condition arithmetic-error) ())
+;; 未実装の機能（基本設計 §3.1）
+(define-condition zilisp:unimplemented (simple-condition error) ())
+
+;; ecase・etypecase などの漏れ（SBCL の SB-KERNEL:CASE-FAILURE と同じ文面）
+(define-condition zl-sys::case-failure (type-error)
+  ((name :initarg :name :reader zl-sys::case-failure-name)
+   (possibilities :initarg :possibilities :reader zl-sys::case-failure-possibilities))
+  (:report (lambda (condition stream)
+             (format stream "~@<~S fell through ~S expression. ~:_Wanted one of ~:S.~:>"
+                     (type-error-datum condition) (zl-sys::case-failure-name condition)
+                     (zl-sys::case-failure-possibilities condition)))))
+
+;;; report と印字
+
+(defun zl-sys::%condition-type (c)
+  (svref (zl-sys::%record-class c) 0))
+
+;; CPL の具体的な方から、最初に report を持つクラスの report を使う
+(defun zl-sys::%report-condition (c stream)
+  (let ((report nil))
+    (dolist (name (svref (zl-sys::%record-class c) 1))
+      (let ((r (svref (zl-sys::%find-class name) 4)))
+        (when r
+          (setq report r)
+          (return))))
+    (cond ((stringp report) (write-string report stream))
+          (report (funcall report c stream))
+          (t (let ((*package* (find-package "COMMON-LISP")))
+               (format stream "Condition ~S was signalled." (zl-sys::%condition-type c)))))))
+
+;; #<…> の形（SBCL 2.6.7 と同じ形。アドレスは Zilisp のもの）
+(defun zl-sys::%print-condition-unreadably (c stream)
+  (let ((name (zl-sys::%condition-type c))
+        (address (zl-sys::%object-address c)))
+    (cond ((typep c 'type-error)
+           (format stream "#<~S expected-type: ~S datum: ~S>" name
+                   (zl-sys::%slot-or c 'expected-type nil) (zl-sys::%slot-or c 'datum nil)))
+          ((typep c 'simple-condition)
+           (format stream "#<~S ~S {~X}>" name (zl-sys::%slot-or c 'format-control nil) address))
+          ((typep c 'cell-error)
+           (format stream "#<~S ~S {~X}>" name (zl-sys::%slot-or c 'name nil) address))
+          (t (format stream "#<~S {~X}>" name address)))))
+
+;; record（condition・restart）の印字（Zig の印字の入口が呼ぶ：src/printer/pprint.zig の outputUgly）
+(defun zl-sys::%print-record (object stream)
+  (cond (*print-readably* (error 'print-not-readable :object object))
+        ((typep object 'restart)
+         (if *print-escape*
+             (format stream "#<RESTART ~S {~X}>" (restart-name object) (zl-sys::%object-address object))
+             (zl-sys::%report-restart object stream)))
+        (*print-escape* (zl-sys::%print-condition-unreadably object stream))
+        (t (zl-sys::%report-condition object stream))))
+
+;;; restart（CLHS 9.1.4.2）。スロットは 名前・関数・report の関数・interactive の関数・test の関数・関連付けた condition
+
+(zl-sys::%define-condition-class 'restart nil nil nil nil)
+
+(defun zl-sys::%make-restart (name function report interactive test)
+  (zl-sys::%make-record (get 'restart 'zl-sys::%class) (vector name function report interactive test nil)))
+
+(defun zl-sys::%restart-slots (restart)
+  (unless (typep restart 'restart) (error 'type-error :datum restart :expected-type 'restart))
+  (zl-sys::%record-slots restart))
+
+(defun restart-name (restart)
+  (svref (zl-sys::%restart-slots restart) 0))
+
+(defun zl-sys::%report-restart (restart stream)
+  (let ((report (svref (zl-sys::%restart-slots restart) 2)))
+    (if report
+        (funcall report stream)
+        (format stream "~A" (restart-name restart)))))
+
+;; (restart-bind ((名前 関数 &key :interactive-function :report-function :test-function) …) 本体 …)
+(defmacro restart-bind (bindings &body forms)
+  `(let ((zl-sys::*restart-clusters*
+           (cons (list ,@(mapcar (lambda (b)
+                                   (destructuring-bind (name function &key interactive-function report-function test-function) b
+                                     `(zl-sys::%make-restart ',name ,function ,report-function ,interactive-function
+                                                             ,test-function)))
+                                 bindings))
+                 zl-sys::*restart-clusters*)))
+     ,@forms))
+
+;; condition に関連付けた restart は、その condition を指定したときだけ見える（CLHS 9.1.4.2.4）
+(defun zl-sys::%restart-applicable-p (restart condition)
+  (let* ((s (zl-sys::%record-slots restart))
+         (associated (svref s 5))
+         (test (svref s 4)))
+    (and (or (null condition) (null associated) (member condition associated))
+         (or (null test) (funcall test condition)))))
+
+(defun compute-restarts (&optional condition)
+  (let ((result nil))
+    (dolist (cluster zl-sys::*restart-clusters*)
+      (dolist (r cluster)
+        (if (zl-sys::%restart-applicable-p r condition) (push r result))))
+    (nreverse result)))
+
+(defun find-restart (identifier &optional condition)
+  (if (typep identifier 'restart)
+      (if (member identifier (compute-restarts condition)) identifier nil)
+      (dolist (r (compute-restarts condition) nil)
+        (if (eq (restart-name r) identifier) (return r)))))
+
+(defun zl-sys::%find-restart-or-lose (identifier &optional condition)
+  (or (find-restart identifier condition)
+      (error 'zl-sys::simple-control-error :format-control "No restart ~S is active." :format-arguments (list identifier))))
+
+(defun invoke-restart (restart &rest arguments)
+  (apply (svref (zl-sys::%record-slots (zl-sys::%find-restart-or-lose restart)) 1) arguments))
+
+(defun invoke-restart-interactively (restart)
+  (let* ((s (zl-sys::%record-slots (zl-sys::%find-restart-or-lose restart)))
+         (interactive (svref s 3)))
+    (apply (svref s 1) (if interactive (funcall interactive) nil))))
+
+(defmacro with-condition-restarts (condition-form restarts-form &body body)
+  (let ((c (gensym "CONDITION")) (rs (gensym "RESTARTS")))
+    `(let ((,c ,condition-form) (,rs ,restarts-form))
+       (unwind-protect
+            (progn
+              (dolist (r ,rs) (push ,c (svref (zl-sys::%record-slots r) 5)))
+              ,@body)
+         (dolist (r ,rs) (setf (svref (zl-sys::%record-slots r) 5) (remove ,c (svref (zl-sys::%record-slots r) 5) :count 1)))))))
+
+;; restart-case の節の :report・:interactive・:test の値を関数にする
+(defun zl-sys::%restart-case-option (key value)
+  (cond ((and (eq key :report) (stringp value)) `(lambda (stream) (write-string ,value stream)))
+        (t `(function ,value))))
+
+;; (restart-case フォーム (名前 ラムダリスト [:report r] [:interactive i] [:test t] 本体 …) …)。
+;; フォームが error・cerror・signal・warn の呼び出しなら、通知する condition に restart を関連付ける（CLHS restart-case）
+(defmacro restart-case (restartable-form &rest clauses)
+  (let ((block (gensym "BLOCK")) (args (gensym "ARGS")) (bindings nil) (bodies nil))
+    (dolist (clause clauses)
+      (let ((tag (gensym "TAG")) (temp (gensym "TEMP"))
+            (name (car clause)) (lambda-list (cadr clause)) (rest (cddr clause))
+            (options nil))
+        (do () ((not (and (consp rest) (member (car rest) '(:report :interactive :test)) (consp (cdr rest)))))
+          (setq options (append options
+                                (list (cdr (assoc (car rest) '((:report . :report-function)
+                                                               (:interactive . :interactive-function)
+                                                               (:test . :test-function))))
+                                      (zl-sys::%restart-case-option (car rest) (cadr rest)))))
+          (setq rest (cddr rest)))
+        (push `(,name (lambda (&rest ,temp) (setq ,args ,temp) (go ,tag)) ,@options) bindings)
+        (push tag bodies)
+        (push `(return-from ,block (apply (lambda ,lambda-list ,@rest) ,args)) bodies)))
+    ;; フォームはマクロを展開してから調べる（CLHS restart-case。字句的なマクロはないので、大域のマクロだけを展開する）
+    (let* ((expanded (macroexpand restartable-form))
+           (form (if (and (consp expanded) (member (car expanded) '(error cerror signal warn)))
+                     (zl-sys::%restart-case-signaling-form expanded)
+                     restartable-form)))
+      `(block ,block
+         (let ((,args nil))
+           (declare (ignorable ,args))
+           (tagbody
+              (restart-bind ,(reverse bindings)
+                (return-from ,block ,form))
+              ,@(reverse bodies)))))))
+
+;; (error 指定子 引数 …) などを、condition を作ってから restart を関連付けて通知する形にする。
+;; 引数は書いた順に評価する（cerror の継続の制御文字列が先）
+(defun zl-sys::%restart-case-signaling-form (form)
+  (let ((op (car form)) (c (gensym "CONDITION")) (control (gensym "CONTROL")))
+    (if (eq op 'cerror)
+        `(let* ((,control ,(cadr form))
+                (,c (zl-sys::%coerce-to-condition ,(caddr form) (list ,@(cdddr form)) 'simple-error)))
+           (with-condition-restarts ,c (car zl-sys::*restart-clusters*)
+             (cerror ,control ,c)))
+        `(let ((,c (zl-sys::%coerce-to-condition ,(cadr form) (list ,@(cddr form))
+                                                ',(cdr (assoc op '((error . simple-error) (signal . simple-condition)
+                                                                   (warn . simple-warning)))))))
+           (with-condition-restarts ,c (car zl-sys::*restart-clusters*)
+             (,op ,c))))))
+
+(defmacro with-simple-restart ((restart-name format-control &rest format-arguments) &body forms)
+  (let ((stream (gensym "STREAM")))
+    `(restart-case (progn ,@forms)
+       (,restart-name ()
+         :report (lambda (,stream) (format ,stream ,format-control ,@format-arguments))
+         (values nil t)))))
+
+;; 標準の restart の関数（CLHS 9.2）。abort・muffle-warning は restart がなければ control-error、
+;; continue・store-value・use-value は restart がなければ NIL を返す
+;; abort の restart が戻ってきたら control-error（CLHS abort。文面は SBCL 2.6.7 と同じ）
+(defun abort (&optional condition)
+  (invoke-restart (zl-sys::%find-restart-or-lose 'abort condition))
+  (error 'zl-sys::simple-control-error
+         :format-control "An ABORT restart was found that failed to transfer control dynamically."))
+
+;; muffle-warning の restart が戻ってきても control-error（SBCL 2.6.7 と同じ種類。SBCL の文面は型宣言によるもの）
+(defun muffle-warning (&optional condition)
+  (invoke-restart (zl-sys::%find-restart-or-lose 'muffle-warning condition))
+  (error 'zl-sys::simple-control-error
+         :format-control "A MUFFLE-WARNING restart was found that failed to transfer control dynamically."))
+
+(defun continue (&optional condition)
+  (let ((r (find-restart 'continue condition)))
+    (if r (invoke-restart r) nil)))
+
+(defun store-value (value &optional condition)
+  (let ((r (find-restart 'store-value condition)))
+    (if r (invoke-restart r value) nil)))
+
+(defun use-value (value &optional condition)
+  (let ((r (find-restart 'use-value condition)))
+    (if r (invoke-restart r value) nil)))
+
+;;; handler（CLHS 9.1.4.1）
+
+;; (handler-bind ((型 handler) …) 本体 …)：型は評価しない。handler は評価する
+(defmacro handler-bind (bindings &body forms)
+  `(let ((zl-sys::*handler-clusters*
+           (cons (list ,@(mapcar (lambda (b) `(cons ',(car b) ,(cadr b))) bindings))
+                 zl-sys::*handler-clusters*)))
+     ,@forms))
+
+;; (handler-case フォーム (型 ([変数]) 本体 …) … [(:no-error ラムダリスト 本体 …)])
+(defmacro handler-case (form &rest clauses)
+  (let ((no-error (assoc :no-error clauses)))
+    (if no-error
+        (let ((normal-return (gensym "NORMAL-RETURN")) (error-return (gensym "ERROR-RETURN")))
+          `(block ,error-return
+             (multiple-value-call (lambda ,(cadr no-error) ,@(cddr no-error))
+               (block ,normal-return
+                 (return-from ,error-return
+                   (handler-case (return-from ,normal-return ,form)
+                     ,@(remove no-error clauses)))))))
+        (let ((block (gensym "BLOCK")) (var (gensym "CONDITION"))
+              (bindings nil) (bodies nil))
+          (dolist (clause clauses)
+            (let ((tag (gensym "TAG")) (temp (gensym "TEMP")))
+              (push `(,(car clause) (lambda (,temp) (setq ,var ,temp) (go ,tag))) bindings)
+              (push tag bodies)
+              (push `(return-from ,block
+                       ,(if (cadr clause)
+                            `(let ((,(car (cadr clause)) ,var)) ,@(cddr clause))
+                            `(let () ,@(cddr clause))))
+                    bodies)))
+          `(block ,block
+             (let ((,var nil))
+               (declare (ignorable ,var))
+               (tagbody
+                  (handler-bind ,(reverse bindings)
+                    (return-from ,block ,form))
+                  ,@(reverse bodies))))))))
+
+(defmacro ignore-errors (&body forms)
+  (let ((c (gensym "CONDITION")))
+    `(handler-case (progn ,@forms)
+       (error (,c) (values nil ,c)))))
+
+;;; 通知（CLHS 9.1.4）
+
+;; condition の指定子（condition・型の名前と initarg・format の制御文字列と引数）を condition にする
+(defun zl-sys::%coerce-to-condition (datum arguments default-type)
+  (cond ((typep datum 'condition) datum)
+        ((symbolp datum) (apply #'make-condition datum arguments))
+        ((or (stringp datum) (functionp datum))
+         (make-condition default-type :format-control datum :format-arguments arguments))
+        (t (error 'simple-type-error
+                  :datum datum :expected-type '(or string function symbol condition)
+                  :format-control "~S is not a condition designator." :format-arguments (list datum)))))
+
+;; handler を新しい順に探して呼ぶ。handler を呼ぶ間は、その cluster より外側の handler だけを有効にする（CLHS 9.1.4.1）
+(defun zl-sys::%signal (condition)
+  (let ((clusters zl-sys::*handler-clusters*))
+    (do () ((null clusters))
+      (let ((cluster (car clusters)))
+        (setq clusters (cdr clusters))
+        (dolist (h cluster)
+          (when (typep condition (car h))
+            (let ((zl-sys::*handler-clusters* clusters))
+              (funcall (cdr h) condition))))))))
+
+(defun signal (datum &rest arguments)
+  (zl-sys::%signal (zl-sys::%coerce-to-condition datum arguments 'simple-condition))
+  nil)
+
+(defun error (datum &rest arguments)
+  (let ((condition (zl-sys::%coerce-to-condition datum arguments 'simple-error)))
+    (zl-sys::%signal condition)
+    (invoke-debugger condition)))
+
+(defun cerror (continue-format-control datum &rest arguments)
+  (let ((condition (zl-sys::%coerce-to-condition datum arguments 'simple-error)))
+    (restart-case (with-condition-restarts condition (car zl-sys::*restart-clusters*)
+                    (error condition))
+      (continue ()
+        :report (lambda (stream) (apply #'format stream continue-format-control arguments))
+        nil))))
+
+(defun warn (datum &rest arguments)
+  (let ((condition (zl-sys::%coerce-to-condition datum arguments 'simple-warning)))
+    (unless (typep condition 'warning)
+      (error 'type-error :datum condition :expected-type 'warning))
+    (restart-case (with-condition-restarts condition (car zl-sys::*restart-clusters*)
+                    (zl-sys::%signal condition)
+                    (format *error-output* "~&WARNING: ~A~%" condition))
+      (muffle-warning ()
+        :report "Skip warning."
+        nil))
+    nil))
+
+;; handler が受け止めなかった：*debugger-hook* を呼び、トップレベルへ戻る（対話的なデバッガはない。
+;; 報告に restart の一覧を書く）
+(defun invoke-debugger (condition)
+  (let ((hook *debugger-hook*))
+    (when hook
+      (let ((*debugger-hook* nil))
+        (funcall hook condition hook))))
+  (zl-sys::%unhandled-condition condition (zl-sys::%safe-report condition) (zl-sys::%restart-descriptions condition)))
+
+;; report の文字列（report の中でエラーが起きても報告を続ける）
+(defun zl-sys::%safe-report (condition)
+  (handler-case (princ-to-string condition)
+    (error () (format nil "（~S の report でエラーが起きました）" (zl-sys::%condition-type condition)))))
+
+;; 使える restart の説明（"[名前] report" のリスト）
+(defun zl-sys::%restart-descriptions (condition)
+  (mapcar (lambda (r)
+            (handler-case (format nil "[~A] ~A" (restart-name r) (princ-to-string r))
+              (error () (format nil "[~A]" (restart-name r)))))
+          (compute-restarts condition)))
+
+;; Zig で見つけたエラーを condition にして handler に通知する（src/runtime/thread.zig の callSignalHook が呼ぶ）。
+;; kind はエラーの種類のキーワード、message は説明、datum・expected は値（なければ zl-sys::%missing）。
+;; 受け止められなければ、使える restart の説明を返す（Zig の側でエラーを記録してトップレベルへ戻る）
+(defun zl-sys::%signal-zig-error (kind message datum expected)
+  (let ((condition (zl-sys::%zig-condition kind message datum expected)))
+    (zl-sys::%signal condition)
+    (let ((hook *debugger-hook*))
+      (when hook
+        (let ((*debugger-hook* nil))
+          (funcall hook condition hook))))
+    (zl-sys::%restart-descriptions condition)))
+
+(defun zl-sys::%zig-condition (kind message datum expected)
+  (let* ((has-datum (not (eq datum 'zl-sys::%missing)))
+         (has-expected (not (eq expected 'zl-sys::%missing)))
+         (control (if has-datum "~A: ~S" "~A"))
+         (arguments (if has-datum (list message datum) (list message))))
+    (flet ((simple (type &rest initargs)
+             (apply #'make-condition type :format-control control :format-arguments arguments initargs)))
+      (case kind
+        (:type-error
+         (if (and (equal message "") has-expected)
+             (make-condition 'type-error :datum datum :expected-type expected)
+             (simple 'simple-type-error :datum (if has-datum datum nil) :expected-type (if has-expected expected t))))
+        (:unbound-variable (make-condition 'unbound-variable :name datum))
+        (:undefined-function (make-condition 'undefined-function :name datum))
+        (:division-by-zero
+         (make-condition 'division-by-zero :operation (if has-expected (car expected) nil)
+                                           :operands (if has-expected (cdr expected) nil)))
+        (:floating-point-overflow (make-condition 'floating-point-overflow))
+        (:floating-point-invalid-operation (make-condition 'floating-point-invalid-operation))
+        (:program-error (simple 'zl-sys::simple-program-error))
+        (:control-error (simple 'zl-sys::simple-control-error))
+        (:parse-error (simple 'zl-sys::simple-parse-error))
+        (:reader-error (simple 'zl-sys::simple-reader-error :stream (if (and has-datum (streamp datum)) datum nil)))
+        (:package-error (simple 'zl-sys::simple-package-error :package (if has-datum datum nil)))
+        (:stream-error (simple 'zl-sys::simple-stream-error :stream (if (and has-datum (streamp datum)) datum nil)))
+        (:end-of-file
+         (if (and has-datum (streamp datum))
+             (make-condition 'end-of-file :stream datum)
+             (simple 'zl-sys::simple-end-of-file :stream nil)))
+        (:file-error (simple 'zl-sys::simple-file-error :pathname (if has-datum datum nil)))
+        (:print-not-readable (make-condition 'print-not-readable :object (if has-datum datum nil)))
+        (:storage-condition (simple 'zl-sys::simple-storage-condition))
+        (:unimplemented (simple 'zilisp:unimplemented))
+        (t (simple 'simple-error))))))
+
+;;; 型の分岐と検査（CLHS 5.3・9.2）
+
+(defun zl-sys::%case-failure (name datum expected-type possibilities)
+  (error 'zl-sys::case-failure :name name :datum datum :expected-type expected-type :possibilities possibilities))
+
+;; case の節のキーを並べる（ecase の報告に使う）
+(defun zl-sys::%case-keys (clauses)
+  (mapcan (lambda (c) (if (listp (car c)) (copy-list (car c)) (list (car c)))) clauses))
+
+(defmacro ecase (keyform &rest clauses)
+  (let ((v (gensym "KEY")) (keys (zl-sys::%case-keys clauses)))
+    `(let ((,v ,keyform))
+       (case ,v ,@clauses
+         (otherwise (zl-sys::%case-failure 'ecase ,v '(member ,@keys) ',keys))))))
+
+(defun zl-sys::%typecase-clauses (v clauses)
+  (mapcar (lambda (c)
+            (if (member (car c) '(t otherwise))
+                `(t ,@(or (cdr c) '(nil)))
+                `((typep ,v ',(car c)) ,@(or (cdr c) '(nil)))))
+          clauses))
+
+(defmacro typecase (keyform &rest clauses)
+  (let ((v (gensym "KEY")))
+    `(let ((,v ,keyform))
+       (cond ,@(zl-sys::%typecase-clauses v clauses)))))
+
+(defmacro etypecase (keyform &rest clauses)
+  (let ((v (gensym "KEY")) (types (mapcar #'car clauses)))
+    `(let ((,v ,keyform))
+       (cond ,@(zl-sys::%typecase-clauses v clauses)
+             (t (zl-sys::%case-failure 'etypecase ,v '(or ,@types) ',types))))))
+
+;; 新しい値を読む（store-value の :interactive）
+(defun zl-sys::%read-new-value ()
+  (format *query-io* "~&Enter a form to be evaluated: ")
+  (force-output *query-io*)
+  (list (eval (read *query-io*))))
+
+;; ccase・ctypecase：漏れたら store-value の restart で場所に新しい値を入れて、もう一度分岐する。
+;; 場所の部分式（添字など）は、setf の展開で最初に1回だけ評価し、やり直しでも同じ場所を読み書きする（SBCL 2.6.7 と同じ。
+;; Codex のレビュー P25 2回目 #3）
+(defun zl-sys::%correctable-case (keyplace dispatch)
+  (destructuring-bind (temps vals stores store-form access) (zl-sys::%setf-expansion keyplace)
+    (let ((block (gensym "BLOCK")) (again (gensym "AGAIN")) (v (gensym "KEY")) (value (gensym "VALUE")))
+      `(let* ,(zl-sys::%zip temps vals)
+         (block ,block
+           (tagbody
+              ,again
+              (let ((,v ,access))
+                (return-from ,block
+                  ,(funcall dispatch v
+                            `(restart-case ,(funcall dispatch v nil)
+                               (store-value (,value)
+                                 :report (lambda (stream) (format stream "Supply a new value for ~S." ',keyplace))
+                                 :interactive zl-sys::%read-new-value
+                                 (let ((,(car stores) ,value)) ,store-form)
+                                 (go ,again))))))))))))
+
+(defmacro ccase (keyplace &rest clauses)
+  (let ((keys (zl-sys::%case-keys clauses)))
+    ;; dispatch：漏れたときのフォーム fallback が NIL なら、漏れの通知そのもの
+    (zl-sys::%correctable-case
+     keyplace
+     (lambda (v fallback)
+       (if fallback
+           `(case ,v ,@clauses (otherwise ,fallback))
+           `(zl-sys::%case-failure 'ccase ,v '(member ,@keys) ',keys))))))
+
+(defmacro ctypecase (keyplace &rest clauses)
+  (let ((types (mapcar #'car clauses)))
+    (zl-sys::%correctable-case
+     keyplace
+     (lambda (v fallback)
+       (if fallback
+           `(cond ,@(zl-sys::%typecase-clauses v clauses) (t ,fallback))
+           `(zl-sys::%case-failure 'ctypecase ,v '(or ,@types) ',types))))))
+
+;; (check-type 場所 型 [型の説明])：型でなければ store-value の restart のある simple-type-error（SBCL と同じ文面）
+(defun zl-sys::%check-type-error (place value type type-string)
+  (restart-case
+      (error 'simple-type-error
+             :datum value :expected-type type
+             :format-control (if type-string
+                                 "The value of ~S is ~S, which is not ~A."
+                                 "The value of ~S is ~S, which is not of type ~S.")
+             :format-arguments (list place value (or type-string type)))
+    (store-value (new-value)
+      :report (lambda (stream) (format stream "Supply a new value for ~S." place))
+      :interactive zl-sys::%read-new-value
+      new-value)))
+
+;; 場所は確かめるたびに1回読む（SBCL 2.6.7 と同じく、store-value の後は部分式を評価し直す。CLHS check-type）
+(defmacro check-type (place type &optional type-string)
+  (let ((v (gensym "VALUE")))
+    `(do ((,v ,place ,place)) ((typep ,v ',type) nil)
+       (setf ,place (zl-sys::%check-type-error ',place ,v ',type ,type-string)))))
+
+;; (assert テスト [場所のリスト [指定子 引数 …]])：偽なら continue の restart のあるエラー（場所の値を尋ねることはしない）。
+;; テストが関数の呼び出しなら、定数でない引数の値を報告に含める（SBCL 2.6.7 と同じ文面：failed with X = 3.）
+(defun zl-sys::%assert-error (assertion values datum arguments)
+  (restart-case
+      (if datum
+          (apply #'error datum arguments)
+          (error 'simple-error
+                 :format-control "The assertion ~S failed~:[.~:; with ~:*~{~S = ~S~^, ~}.~]"
+                 :format-arguments (list assertion values)))
+    (continue ()
+      :report "Retry assertion."
+      nil)))
+
+(defun zl-sys::%constant-form-p (form)
+  (or (keywordp form) (member form '(t nil)) (numberp form) (stringp form) (characterp form)
+      (and (consp form) (eq (car form) 'quote))))
+
+(defmacro assert (test-form &optional places datum &rest arguments)
+  (declare (ignore places))
+  (if (and (consp test-form) (symbolp (car test-form)) (fboundp (car test-form)) (not (macro-function (car test-form))))
+      (let* ((temps (mapcar (lambda (a) (declare (ignore a)) (gensym "ARG")) (cdr test-form)))
+             (shown (mapcan (lambda (a temp) (if (zl-sys::%constant-form-p a) nil (list `',a temp)))
+                            (cdr test-form) temps)))
+        `(do () (nil)
+           (let ,(mapcar #'list temps (cdr test-form))
+             (if (,(car test-form) ,@temps) (return nil))
+             (zl-sys::%assert-error ',test-form (list ,@shown) ,datum (list ,@arguments)))))
+      `(do () (,test-form nil)
+         (zl-sys::%assert-error ',test-form nil ,datum (list ,@arguments)))))

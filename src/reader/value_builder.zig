@@ -33,6 +33,18 @@ pub const ValueBuilder = struct {
     /// #n= のラベル（((n . オブジェクト) …)。recursive の read は外側の表を使う）
     labels: Value = Value.nil,
     labels_ptr: ?*Value = null,
+    /// ストリームの位置を、Reader が読んだところまで進める関数（ストリームから読むとき。readOp が設定する）。
+    /// Builder の中からエラーを通知する前に呼ぶ（handler がその場でストリームを読むため。Codex のレビュー P25 2回目 #1）
+    sync_position: ?SyncPosition = null,
+
+    pub const SyncPosition = struct {
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque) void,
+    };
+
+    fn syncPosition(b: *ValueBuilder) void {
+        if (b.sync_position) |s| s.f(s.ctx);
+    }
 
     pub const Datum = Value;
     /// 組み立て中のリスト（先頭と最後の cons）
@@ -205,6 +217,7 @@ pub const ValueBuilder = struct {
         const th = b.th orelse return fail(diag, loc, "#A の中身の型が正しくありません");
         const rt = b.rt;
         const expected = if (rt.findSymbol(rt.cl, type_name)) |f| f.symbol else Value.nil;
+        b.syncPosition();
         _ = th.typeError(datum, expected);
         return error.LispError;
     }
@@ -213,6 +226,7 @@ pub const ValueBuilder = struct {
     fn lengthFail(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, datum: Value) Error {
         const message = "#A の中身の長さが次元と合いません";
         const th = b.th orelse return fail(diag, loc, message);
+        b.syncPosition();
         _ = th.signal(.simple_error, message, datum, Value.unbound);
         return error.LispError;
     }

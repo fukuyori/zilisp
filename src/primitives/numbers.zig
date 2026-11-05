@@ -58,6 +58,17 @@ fn divisionByZero(th: *Thread) Value {
     return th.signal(.division_by_zero, "0 で割りました", Value.unbound, Value.unbound);
 }
 
+/// 0 除算。演算（SBCL 2.6.7 の arithmetic-error-operation の名前）と被演算子を、expected に (演算 被演算子…) で渡す
+/// （condition の :operation と :operands になる。トップレベルの報告には書かない）
+fn divisionByZeroOp(th: *Thread, op: []const u8, a: Value, b: Value) Value {
+    const rt = th.rt;
+    const opsym = (rt.findSymbol(rt.cl, op) orelse unreachable).symbol;
+    const tail = rt.cons(b, Value.nil) catch return th.outOfMemory();
+    const mid = rt.cons(a, tail) catch return th.outOfMemory();
+    const form = rt.cons(opsym, mid) catch return th.outOfMemory();
+    return th.signal(.division_by_zero, "0 で割りました", Value.unbound, form);
+}
+
 fn complexError(th: *Thread) Value {
     return th.signal(.unimplemented, "結果が複素数になる演算は未実装です（複素数は後の Phase で実装予定）", Value.unbound, Value.unbound);
 }
@@ -622,20 +633,24 @@ pub fn div2(th: *Thread, a: Value, b: Value) Value {
     const y = numArg(th, b) orelse return Value.unwind;
     switch (kindOf2(x, y)) {
         .exact => {
-            if (isInteger(y) and intSign(b) == 0) return divisionByZero(th);
+            if (isInteger(y) and intSign(b) == 0) return divisionByZeroOp(th, "/", a, b);
             if (isInteger(x) and isInteger(y)) return makeRational(th, a, b);
             return ratArith(th, .div, a, b);
         },
         .single => {
             const p = toF32(th, x) orelse return Value.unwind;
             const q = toF32(th, y) orelse return Value.unwind;
-            if (q == 0) return divisionByZero(th);
+            if (q == 0) return divisionByZeroOp(th, "/", Value.fromSingle(p), Value.fromSingle(q));
             return single(th, p / q);
         },
         .double => {
             const p = toF64(th, x) orelse return Value.unwind;
             const q = toF64(th, y) orelse return Value.unwind;
-            if (q == 0) return divisionByZero(th);
+            if (q == 0) {
+                const pd = th.rt.makeDouble(p) catch return th.outOfMemory();
+                const qd = th.rt.makeDouble(q) catch return th.outOfMemory();
+                return divisionByZeroOp(th, "/", pd, qd);
+            }
             return double(th, p / q);
         },
     }
@@ -891,7 +906,8 @@ fn quotient(th: *Thread, xv: Value, yv: Value, mode: DivMode) ?QR {
     switch (kindOf2(x, y)) {
         .exact => {
             if (sign(y) == 0) {
-                _ = divisionByZero(th);
+                // SBCL 2.6.7 は floor・mod なども、演算を / として報告する
+                _ = divisionByZeroOp(th, "/", xv, yv);
                 return null;
             }
             if (isInteger(x) and isInteger(y)) return intDivMod(th, xv, yv, mode);
@@ -920,7 +936,15 @@ fn quotient(th: *Thread, xv: Value, yv: Value, mode: DivMode) ?QR {
             const p: F = (if (k == .single) toF32(th, x) else toF64(th, x)) orelse return null;
             const q: F = (if (k == .single) toF32(th, y) else toF64(th, y)) orelse return null;
             if (q == 0) {
-                _ = divisionByZero(th);
+                const pv = if (k == .single) Value.fromSingle(p) else th.rt.makeDouble(p) catch {
+                    _ = th.outOfMemory();
+                    return null;
+                };
+                const qv = if (k == .single) Value.fromSingle(q) else th.rt.makeDouble(q) catch {
+                    _ = th.outOfMemory();
+                    return null;
+                };
+                _ = divisionByZeroOp(th, "/", pv, qv);
                 return null;
             }
             const t = p / q;
@@ -1120,7 +1144,7 @@ pub fn expt(th: *Thread, args: []const Value) Value {
             // 底が 0・1・-1 でなければ、結果は表せないほど大きい（または小さい）
             if (isExact(b) and (sign(b) == 0 or (b == .fix and (b.fix == 1 or b.fix == -1)))) {
                 if (b == .fix and b.fix == -1) return Value.fromFixnum(if (intIsOdd(args[1])) -1 else 1);
-                if (sign(b) == 0 and intSign(args[1]) < 0) return divisionByZero(th);
+                if (sign(b) == 0 and intSign(args[1]) < 0) return divisionByZeroOp(th, "EXPT", args[0], args[1]);
                 return args[0];
             }
             if (b == .single or b == .double) return floatResult(th, b == .double, std.math.pow(f64, toF64(th, b).?, intToFloat(f64, args[1])));
@@ -1130,7 +1154,7 @@ pub fn expt(th: *Thread, args: []const Value) Value {
         if (isExact(b)) {
             if (n == 0) return Value.fromFixnum(1);
             if (n > 0) return exactPow(th, args[0], @intCast(n));
-            if (sign(b) == 0) return divisionByZero(th);
+            if (sign(b) == 0) return divisionByZeroOp(th, "EXPT", args[0], args[1]);
             const d = exactPow(th, args[0], @intCast(-n));
             if (d == Value.unwind) return d;
             return div2(th, Value.fromFixnum(1), d);
@@ -1143,7 +1167,7 @@ pub fn expt(th: *Thread, args: []const Value) Value {
     const is_double = b == .double or p == .double;
     if (sign(p) == 0) return floatResult(th, is_double, 1);
     if (sign(b) == 0) {
-        if (sign(p) < 0) return divisionByZero(th);
+        if (sign(p) < 0) return divisionByZeroOp(th, "EXPT", args[0], args[1]);
         return floatResult(th, is_double, 0);
     }
     const bf = toF64(th, b) orelse return Value.unwind;

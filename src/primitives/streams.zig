@@ -538,7 +538,8 @@ pub fn atLineStart(th: *Thread, stream: Value) bool {
 }
 
 fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
-    if (prettyOn(th)) return printPretty(th, stream, v, escape);
+    // condition・restart は Lisp の印字の関数で書く（pprint の outputUgly が zl-sys::%print-record を呼ぶ。Phase 25）
+    if (prettyOn(th) or isRecord(v)) return printPretty(th, stream, v, escape);
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     if (!printTo(th, &buf.writer, v, escape)) return false;
@@ -547,6 +548,11 @@ fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
 
 fn prettyOn(th: *Thread) bool {
     return th.rt.symbolPtr(th.rt.syms.@"*print-pretty*").value != Value.nil;
+}
+
+/// condition・restart（Phase 25）
+pub fn isRecord(v: Value) bool {
+    return v.isOther() and Runtime.kindOf(v) == .record;
 }
 
 /// *print-pretty* が真のときの印字：escape を指定すれば *print-escape* を束縛する（princ は *print-readably* も偽にする）
@@ -563,6 +569,19 @@ pub fn printPretty(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
 /// 今の印字の変数に従って w に書く（escape が null なら *print-escape*）。
 /// *print-readably* で読み戻せないものは print-not-readable のエラー（Phase 24）
 pub fn printTo(th: *Thread, w: *Io.Writer, v: Value, escape: ?bool) bool {
+    if (isRecord(v)) {
+        // condition・restart：Lisp の印字の関数で文字列のストリームに書いて写す（Phase 25）
+        const ss = makeStringOutput(th) orelse return false;
+        if (!printPretty(th, ss, v, escape)) return false;
+        var bytes: std.ArrayList(u8) = .empty;
+        defer bytes.deinit(th.rt.gpa);
+        if (!takeStringOutput(th, ss, &bytes)) return false;
+        w.writeAll(bytes.items) catch {
+            _ = th.outOfMemory();
+            return false;
+        };
+        return true;
+    }
     var bad: Value = Value.nil;
     printer.writeObject(th.rt, w, v, printer.Settings.current(th.rt, escape), &bad) catch |err| switch (err) {
         error.NotReadable => {
@@ -1107,6 +1126,16 @@ const ReadOp = union(enum) {
 };
 
 /// st の位置から1つ読む。読めなければ（終わり）null を eof に入れる
+/// 読み取りのエラーの condition に入れるストリーム（stream-error-stream）。read-from-string（s が文字列）なら、
+/// 同じ中身と位置の文字列の入力ストリームを、エラーのときだけ作る（SBCL 2.6.7 と同じく condition はストリームを持つ。
+/// Codex のレビュー P25 2回目 #2）。作れなければ s のまま
+fn errorStream(th: *Thread, s: Value, st: *StreamState) Value {
+    if (isStream(s)) return s;
+    const es = makeStringInputBytes(th, st.input()) orelse return s;
+    setReadPosition(es, st.pos);
+    return es;
+}
+
 fn readFromState(th: *Thread, s: Value, st: *StreamState, preserve: bool, eof: *bool) Value {
     return readOp(th, s, null, st, preserve, false, .read, eof);
 }
@@ -1145,7 +1174,23 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
         };
         var refill_ctx: Refill = .{ .th = th, .st = st, .start = start_pos };
         if (st.kind == .stdin and !st.latin1) src.refill = .{ .ctx = &refill_ctx, .f = Refill.f };
-        var b: vb.ValueBuilder = .{ .rt = rt, .th = th, .stream = stream_obj orelse Value.nil, .stream_base = st.pos, .latin1 = st.latin1 };
+        // 読んだところまでストリームの位置を進める（エラーを通知する前に呼ぶ：handler がその場でストリームを読むことがある。
+        // SBCL と同じ。Codex のレビュー P25 #5・2回目 #1）
+        const Sync = struct {
+            st: *StreamState,
+            start: usize,
+            src: *reader.Source,
+            converted: *std.ArrayList(u8),
+            fn run(c: *@This()) void {
+                c.st.pos = c.start + if (c.st.latin1) charCount(c.converted.items[0..c.src.pos]) else c.src.pos;
+                c.st.last_len = 0;
+            }
+            fn f(ctx: *anyopaque) void {
+                run(@ptrCast(@alignCast(ctx)));
+            }
+        };
+        var sync: Sync = .{ .st = st, .start = start_pos, .src = &src, .converted = &converted };
+        var b: vb.ValueBuilder = .{ .rt = rt, .th = th, .stream = stream_obj orelse Value.nil, .stream_base = st.pos, .latin1 = st.latin1, .sync_position = .{ .ctx = &sync, .f = Sync.f } };
         if (recursive) if (th.read_builder) |outer| {
             b.labels_ptr = outer.labels_ptr orelse &outer.labels;
         };
@@ -1168,9 +1213,13 @@ fn readOp(th: *Thread, s: Value, stream_obj: ?Value, st: *StreamState, preserve:
                     st.stdin_oom = false;
                     return Value.unwind;
                 }
-                return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", s, Value.unbound);
+                sync.run();
+                return th.signal(.end_of_file, "オブジェクトの途中でストリームが終わっています", errorStream(th, s, st), Value.unbound);
             },
-            error.ReaderError => return th.signal(.reader_error, r.diagnostic.message, s, Value.unbound),
+            error.ReaderError => {
+                sync.run();
+                return th.signal(.reader_error, r.diagnostic.message, errorStream(th, s, st), Value.unbound);
+            },
             error.LispError => return Value.unwind,
         };
         if (op != .read) {
@@ -1327,7 +1376,8 @@ pub fn readFromString(th: *Thread, args: []const Value) Value {
     if (v == Value.unwind) return v;
     const index = Value.fromFixnum(@intCast(b[0] + charCount(text[0..st.pos])));
     if (eof) {
-        const r = eofResult(th, str, eof_error, eof_value);
+        const signals = eof_error == null or eof_error.? != Value.nil;
+        const r = eofResult(th, if (signals) errorStream(th, str, &st) else str, eof_error, eof_value);
         if (r == Value.unwind) return r;
         th.mv[1] = index;
         th.mv_count = 2;

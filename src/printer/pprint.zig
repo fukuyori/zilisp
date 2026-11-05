@@ -214,6 +214,15 @@ fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
         },
         else => {},
     };
+    // condition・restart：Lisp の印字の関数（zl-sys::%print-record。boot.lisp）で書く（Phase 25）
+    if (v.isOther() and Runtime.kindOf(v) == .record) {
+        const f = th.rt.symbolPtr(th.rt.sys_print_record).function;
+        if (f.isFunctionPointer()) {
+            var argv: [2]Value = .{ v, stream };
+            if (th.call(f, &argv) == Value.unwind) return error.Lisp;
+            return;
+        }
+    }
     // アトム：今の印字の変数で書く（*print-circle* の番号は outputObject が付ける）
     var buf: std.Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
@@ -662,87 +671,10 @@ fn priorityLess(th: *Thread, a: Value, b: Value) bool {
 }
 
 // ---------------------------------------------------------------------------
-// 型の判定（set-pprint-dispatch の型指定子。typep は未実装なので、ここで使う範囲だけを判定する）
+// 型の判定（set-pprint-dispatch の型指定子。src/primitives/types.zig）
 
 fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
-    const rt = th.rt;
-    if (spec == rt.t) return true;
-    if (spec == Value.nil) return false;
-    if (spec.isOther() and Runtime.kindOf(spec) == .symbol) {
-        const name = symbolNameUtf8(rt, spec);
-        const kind: ?object.ObjKind = if (v.isOther()) Runtime.kindOf(v) else null;
-        const Is = struct {
-            fn eq(n: []const u8, s: []const u8) bool {
-                return std.mem.eql(u8, n, s);
-            }
-        };
-        if (Is.eq(name, "CONS")) return v.isCons();
-        if (Is.eq(name, "LIST")) return isList(v);
-        if (Is.eq(name, "NULL")) return v == Value.nil;
-        if (Is.eq(name, "ATOM")) return !v.isCons();
-        if (Is.eq(name, "SYMBOL")) return v == Value.nil or kind == .symbol;
-        if (Is.eq(name, "KEYWORD")) return kind == .symbol and pkgOf(v) == rt.keyword.obj;
-        if (Is.eq(name, "STRING") or Is.eq(name, "SIMPLE-STRING")) return arrays.isStringLike(v);
-        if (Is.eq(name, "CHARACTER")) return v.isChar();
-        if (Is.eq(name, "NUMBER") or Is.eq(name, "REAL")) return numbers.isNumber(v);
-        if (Is.eq(name, "INTEGER")) return v.isFixnum() or kind == .bignum;
-        if (Is.eq(name, "FIXNUM")) return v.isFixnum();
-        if (Is.eq(name, "BIGNUM")) return kind == .bignum;
-        if (Is.eq(name, "RATIO")) return kind == .ratio;
-        if (Is.eq(name, "RATIONAL")) return v.isFixnum() or kind == .bignum or kind == .ratio;
-        if (Is.eq(name, "FLOAT")) return v.isSingleFloat() or kind == .double_float;
-        if (Is.eq(name, "SINGLE-FLOAT")) return v.isSingleFloat();
-        if (Is.eq(name, "DOUBLE-FLOAT")) return kind == .double_float;
-        if (Is.eq(name, "ARRAY")) return kind == .simple_vector or kind == .array or kind == .string;
-        if (Is.eq(name, "VECTOR")) return arrays.vectorView(v) != null;
-        if (Is.eq(name, "SIMPLE-VECTOR")) return kind == .simple_vector;
-        if (Is.eq(name, "SEQUENCE")) return isList(v) or arrays.vectorView(v) != null;
-        if (Is.eq(name, "HASH-TABLE")) return kind == .hash_table;
-        if (Is.eq(name, "FUNCTION")) return v.isFunctionPointer();
-        if (Is.eq(name, "PATHNAME")) return kind == .pathname;
-        if (Is.eq(name, "STREAM")) return kind == .stream;
-        if (Is.eq(name, "PACKAGE")) return kind == .package;
-        if (Is.eq(name, "READTABLE")) return kind == .readtable;
-        _ = th.signal(.unimplemented, "SET-PPRINT-DISPATCH のこの型指定子は未実装です", spec, Value.unbound);
-        return error.Lisp;
-    }
-    if (spec.isCons()) {
-        const head = Runtime.consPtr(spec).car;
-        const args = Runtime.consPtr(spec).cdr;
-        const hn = if (head.isOther() and Runtime.kindOf(head) == .symbol) symbolNameUtf8(rt, head) else "";
-        if (std.mem.eql(u8, hn, "CONS")) {
-            if (!v.isCons()) return false;
-            if (args.isCons() and !(try typep(th, Runtime.consPtr(v).car, Runtime.consPtr(args).car))) return false;
-            const rest = if (args.isCons()) Runtime.consPtr(args).cdr else Value.nil;
-            if (rest.isCons() and !(try typep(th, Runtime.consPtr(v).cdr, Runtime.consPtr(rest).car))) return false;
-            return true;
-        }
-        if (std.mem.eql(u8, hn, "MEMBER")) {
-            var x = args;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (@import("../primitives/lists.zig").eql2(v, Runtime.consPtr(x).car)) return true;
-            return false;
-        }
-        if (std.mem.eql(u8, hn, "EQL")) return args.isCons() and @import("../primitives/lists.zig").eql2(v, Runtime.consPtr(args).car);
-        if (std.mem.eql(u8, hn, "AND")) {
-            var x = args;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (!(try typep(th, v, Runtime.consPtr(x).car))) return false;
-            return true;
-        }
-        if (std.mem.eql(u8, hn, "OR")) {
-            var x = args;
-            while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (try typep(th, v, Runtime.consPtr(x).car)) return true;
-            return false;
-        }
-        if (std.mem.eql(u8, hn, "NOT")) return !(try typep(th, v, Runtime.consPtr(args).car));
-        if (std.mem.eql(u8, hn, "SATISFIES")) {
-            var argv: [1]Value = .{v};
-            const r = th.call(Runtime.consPtr(args).car, &argv);
-            if (r == Value.unwind) return error.Lisp;
-            return r != Value.nil;
-        }
-    }
-    _ = th.signal(.unimplemented, "SET-PPRINT-DISPATCH のこの型指定子は未実装です", spec, Value.unbound);
-    return error.Lisp;
+    return @import("../primitives/types.zig").typep(th, v, spec);
 }
 
 // ---------------------------------------------------------------------------

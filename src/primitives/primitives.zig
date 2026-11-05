@@ -24,6 +24,8 @@ const pathnames = @import("pathnames.zig");
 const format_mod = @import("format.zig");
 const readtable_mod = @import("../reader/readtable.zig");
 const pprint_mod = @import("../printer/pprint.zig");
+const types = @import("types.zig");
+const conditions = @import("conditions.zig");
 
 const any = function.any_args;
 
@@ -452,6 +454,9 @@ pub const table = [_]Entry{
     // 多値（Phase 17）
     .{ .name = "VALUES", .impl = functions.values, .min = 0, .max = any },
     .{ .name = "VALUES-LIST", .impl = functions.valuesList, .min = 1, .max = 1 },
+    // 型と condition（Phase 25。types.zig・conditions.zig）
+    .{ .name = "TYPEP", .impl = types.typepFn, .min = 2, .max = 3 },
+    .{ .name = "EVAL", .impl = load_mod.evalFn, .min = 1, .max = 1 },
 };
 
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
@@ -463,6 +468,7 @@ pub const sys_table = [_]Entry{
     .{ .name = "%GETF-KEY", .impl = macros.sysGetfKey, .min = 2, .max = 2 },
     .{ .name = "%CHECK-KEYS", .impl = macros.sysCheckKeys, .min = 4, .max = 4 },
     .{ .name = "%MACRO-FORM-ERROR", .impl = macros.sysMacroFormError, .min = 2, .max = 2 },
+    .{ .name = "%MACRO-SIMPLE-ERROR", .impl = macros.sysMacroSimpleError, .min = 2, .max = 2 },
     .{ .name = "%UNIMPLEMENTED-ERROR", .impl = macros.sysUnimplementedError, .min = 2, .max = 2 },
     // setf の展開先（値を返す）
     .{ .name = "%SET-CAR", .impl = lists.sysSetCar, .min = 2, .max = 2 },
@@ -490,6 +496,13 @@ pub const sys_table = [_]Entry{
     .{ .name = "%PPRINT-LENGTH-CHECK", .impl = pprint_mod.sysLengthCheck, .min = 2, .max = 2 },
     .{ .name = "%PPRINT-LENGTH-CHECK*", .impl = pprint_mod.sysLengthCheckStar, .min = 1, .max = 1 },
     .{ .name = "%OUTPUT-UGLY-OBJECT", .impl = pprint_mod.sysOutputUgly, .min = 2, .max = 2 },
+    // condition と restart（Phase 25）
+    .{ .name = "%MAKE-RECORD", .impl = conditions.sysMakeRecord, .min = 2, .max = 2 },
+    .{ .name = "%RECORD-P", .impl = conditions.sysRecordP, .min = 1, .max = 1 },
+    .{ .name = "%RECORD-CLASS", .impl = conditions.sysRecordClass, .min = 1, .max = 1 },
+    .{ .name = "%RECORD-SLOTS", .impl = conditions.sysRecordSlots, .min = 1, .max = 1 },
+    .{ .name = "%OBJECT-ADDRESS", .impl = conditions.sysObjectAddress, .min = 1, .max = 1 },
+    .{ .name = "%UNHANDLED-CONDITION", .impl = conditions.sysUnhandledCondition, .min = 3, .max = 3 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -512,6 +525,13 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_quasiquote = try rt.intern(rt.sys, "QUASIQUOTE");
     // 分解束縛の展開が引用するシンボル
     rt.sys_missing = try rt.intern(rt.sys, "%MISSING");
+    // condition（Phase 25）。関数と特殊変数は boot.lisp が定義する
+    rt.sys_handler_clusters = try rt.intern(rt.sys, "*HANDLER-CLUSTERS*");
+    rt.sys_restart_clusters = try rt.intern(rt.sys, "*RESTART-CLUSTERS*");
+    rt.sys_signal_hook = try rt.intern(rt.sys, "%SIGNAL-ZIG-ERROR");
+    rt.sys_print_record = try rt.intern(rt.sys, "%PRINT-RECORD");
+    rt.sys_class_key = try rt.intern(rt.sys, "%CLASS");
+    rt.debugger_hook = rt.findSymbol(rt.cl, "*DEBUGGER-HOOK*").?.symbol;
     _ = try rt.intern(rt.sys, "TOO-FEW");
     _ = try rt.intern(rt.sys, "TOO-MANY");
     // Resolver が直接展開するマクロ（Zig で書いたブートストラップ用のマクロ：§11.1 の 6）。

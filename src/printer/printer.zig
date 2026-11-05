@@ -341,6 +341,16 @@ const P = struct {
                 if (p.s.readably) return p.notReadable(v);
                 return w.print("#<PPRINT-DISPATCH-TABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
             },
+            .record => {
+                // condition と restart（Phase 25）。Lisp の印字の関数（streams・pprint の入口から zl-sys::%print-record）を
+                // 通らない場合（エラーの報告、pretty でない印字のリストの要素など）の形：#<クラスの名前 {アドレス}>
+                if (p.s.readably) return p.notReadable(v);
+                const object = @import("../values/object.zig");
+                const r: *object.Record = @ptrCast(@alignCast(v.pointer()));
+                try w.writeAll("#<");
+                try p.symbol(Runtime.vectorPtr(r.class).items()[object.record_class_name]);
+                return w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
             // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
             .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
         }

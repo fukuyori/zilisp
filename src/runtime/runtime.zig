@@ -80,6 +80,7 @@ pub const Syms = struct {
     symbol: Value,
     integer: Value,
     cons: Value,
+    @"simple-vector": Value,
     // 高速経路にする関数（§7.4）
     car: Value,
     cdr: Value,
@@ -244,6 +245,16 @@ pub const Runtime = struct {
     sys_quasiquote: Value = Value.nil,
     /// ZILISP-SYSTEM::%MISSING（分解束縛で、キーワード引数がないことを表す印）
     sys_missing: Value = Value.nil,
+    /// condition（Phase 25。boot.lisp）：handler・restart の特殊変数 zl-sys::*handler-clusters*・zl-sys::*restart-clusters*、
+    /// Zig で見つけたエラーを handler に通知する関数 zl-sys::%signal-zig-error（読み込む前は NIL）、record を印字する関数
+    /// zl-sys::%print-record、クラスの記述を置く属性の名前 zl-sys::%class
+    sys_handler_clusters: Value = Value.nil,
+    sys_restart_clusters: Value = Value.nil,
+    sys_signal_hook: Value = Value.nil,
+    sys_print_record: Value = Value.nil,
+    sys_class_key: Value = Value.nil,
+    /// *debugger-hook*（Zig で見つけたエラーでも呼ぶ。Phase 25）
+    debugger_hook: Value = Value.nil,
     /// 標準のマクロ文字の働きの関数（reader.Builtin の順。zl-sys::%READ-LIST など。Phase 24）
     reader_builtins: [@typeInfo(@import("../reader/reader.zig").Builtin).@"enum".field_names.len]Value = @splat(Value.nil),
     /// ZILISP-SYSTEM::*STANDARD-READTABLE*（値が標準の readtable。Phase 24）

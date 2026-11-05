@@ -54,10 +54,12 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `read-from-string` など）、バイナリの入出力、パス名（`#P`・`merge-pathnames`・`probe-file`・`directory` など）
 - 印字と読み取り：すべての指示子の `format`、印字の変数（`*print-base*`・`*print-circle*` など）、readtable と
   ユーザー定義の reader macro、pretty printer（`pprint`・`pprint-logical-block`・`set-pprint-dispatch`）
+- condition：`define-condition`・`error`・`warn`・`signal`・`handler-case`・`handler-bind`・
+  `ignore-errors`・`restart-case`・`invoke-restart`・`with-simple-restart`・`check-type`・`assert`・`typecase`・`ecase`、`typep`。
+  標準の condition の report の文面は SBCL 2.6.7 と同じ
 
 未実装（後の版で実装する予定）：
-複素数・`defstruct`・CLOS・condition
-（`handler-case`・restart）。
+複素数・`defstruct`・CLOS。
 
 ## インストール
 

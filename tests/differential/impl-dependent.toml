@@ -269,6 +269,46 @@ since = "Phase 24"
 id = "set-pprint-dispatch-type-specifiers"
 description = "set-pprint-dispatch・pprint-dispatch が扱う型指定子"
 sbcl = "すべての型指定子（typep と同じ）"
-zilisp = "T・NIL、CONS・LIST・SYMBOL・STRING・INTEGER・FLOAT・VECTOR・HASH-TABLE などの基本の型の名前と、(cons …)・(member …)・(eql …)・(and …)・(or …)・(not …)・(satisfies …)。それ以外は unimplemented のエラー（deftype・defstruct の型は後の Phase。Phase 24）"
+zilisp = "typep（src/primitives/types.zig）が判定できる型指定子。それ以外は unimplemented のエラー（deftype・defstruct の型は後の Phase。Phase 24。Phase 25 から typep と同じ）"
 clhs = "set-pprint-dispatch（型指定子は任意の型指定子）"
 since = "Phase 24"
+
+[[items]]
+id = "condition-internal-types"
+description = "処理系が通知する condition の型（標準の型の下位の型）"
+sbcl = "SB-INT:SIMPLE-PROGRAM-ERROR・SB-INT:SIMPLE-PARSE-ERROR・SB-INT:SIMPLE-CONTROL-ERROR・SB-KERNEL:CASE-FAILURE・FILE-DOES-NOT-EXIST・SB-KERNEL:INDEX-TOO-LARGE-ERROR など"
+zilisp = "ZILISP-SYSTEM::SIMPLE-PROGRAM-ERROR・SIMPLE-PARSE-ERROR・SIMPLE-CONTROL-ERROR・CASE-FAILURE・SIMPLE-FILE-ERROR など（どれも SBCL と同じ標準の型の下位。範囲外の添字などは type-error。Phase 25）"
+clhs = "9.1.1 Condition Types（処理系は標準の型の下位の型を定義してよい）"
+since = "Phase 25"
+
+[[items]]
+id = "condition-report-text"
+description = "処理系が通知する condition の report の文面"
+sbcl = "英語。コンパイラが定数を畳み込んだ式では文面が変わる（(+ \"a\" 1) は Value of \"a\" in (+ \"a\" 1) is \"a\", not a NUMBER.）。ファイルのエラーは絶対パスと OS のメッセージを含む"
+zilisp = "値で決まる標準の型（type-error・unbound-variable・undefined-function・arithmetic-error・case-failure・check-type・assert など）は SBCL 2.6.7 と同じ文面（定数の畳み込みはしないので、type-error は The value … is not of type … の形）。説明の文を持つもの（parse-integer・ファイル・パッケージ・ストリームなどのエラー）は、Zilisp の説明の文（日本語）と値（Phase 25）"
+clhs = "9.1.3 Printing Conditions（report の文面は規定されていない）"
+since = "Phase 25"
+
+[[items]]
+id = "toplevel-restarts"
+description = "トップレベルで使える restart"
+sbcl = "--script では RETRY・CONTINUE・ABORT（load の restart と、トップレベルの abort）。(continue) や (abort) はトップレベルのフォームを飛ばす・終える"
+zilisp = "なし（compute-restarts はユーザーが作った restart だけを返す。(abort) は restart がなければ control-error。Phase 25）"
+clhs = "9.1.4.2 Restarts（処理系が用意する restart は規定されていない）"
+since = "Phase 25"
+
+[[items]]
+id = "condition-print-in-list"
+description = "*print-pretty* が NIL のとき、リストやベクタの中の condition・restart の印字"
+sbcl = "print-object の形（#<SIMPLE-ERROR \"…\" {…}>・#<TYPE-ERROR expected-type: … datum: …> など）"
+zilisp = "#<型の名前 {アドレス}>（その condition だけを印字するとき、または *print-pretty* が T のときは SBCL と同じ形。Phase 25）"
+clhs = "22.1.3.13 Printing Other Objects（#<...> の中身は処理系依存）"
+since = "Phase 25"
+
+[[items]]
+id = "stack-exhaustion-handlers"
+description = "スタックが溢れたときの storage-condition を handler で受け止められるか"
+sbcl = "受け止められる（予備のスタックの領域で handler を動かす）"
+zilisp = "受け止められない（VM・ネイティブのスタック、束縛・制御スタックの溢れは handler に通知せず、トップレベルまで戻る。Phase 25 の制限）"
+clhs = "9.2 storage-condition（スタックの溢れを通知するかは処理系依存）"
+since = "Phase 25"

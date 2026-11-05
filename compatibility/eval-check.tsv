@@ -25,9 +25,9 @@ seq	id	outcome	detail
 00026	chapters/04-Level 2.md#L537	match	
 00027	chapters/04-Level 2.md#L561	match	
 00028	chapters/04-Level 2.md#L577	both-error	
-00029	chapters/05-Level 3.md#L30	zilisp-error	未実装の関数：EVAL
-00030	chapters/05-Level 3.md#L48	zilisp-error	未実装の関数：EVAL
-00031	chapters/05-Level 3.md#L67	zilisp-error	未実装の関数：EVAL
+00029	chapters/05-Level 3.md#L30	match	
+00030	chapters/05-Level 3.md#L48	match	
+00031	chapters/05-Level 3.md#L67	match	
 00032	chapters/05-Level 3.md#L85	match	
 00033	chapters/05-Level 3.md#L135	match	
 00034	chapters/05-Level 3.md#L142	match	
@@ -441,35 +441,35 @@ seq	id	outcome	detail
 00452	chapters/16-Level 12.md#L818	match	
 00453	chapters/18-Level 13.md#L36	both-error	
 00454	chapters/18-Level 13.md#L54	both-error	
-00455	chapters/18-Level 13.md#L72	zilisp-error	未実装の関数：WARN
-00456	chapters/18-Level 13.md#L91	zilisp-error	未実装：HANDLER-CASE
-00458	chapters/18-Level 13.md#L114	zilisp-error	未実装：HANDLER-CASE
-00459	chapters/18-Level 13.md#L138	zilisp-error	未実装：HANDLER-CASE
-00460	chapters/18-Level 13.md#L150	zilisp-error	未実装：HANDLER-CASE
-00461	chapters/18-Level 13.md#L174	zilisp-error	未実装：IGNORE-ERRORS
+00455	chapters/18-Level 13.md#L72	match	
+00456	chapters/18-Level 13.md#L91	match	
+00458	chapters/18-Level 13.md#L114	match	
+00459	chapters/18-Level 13.md#L138	match	
+00460	chapters/18-Level 13.md#L150	match	
+00461	chapters/18-Level 13.md#L174	match	
 00462	chapters/18-Level 13.md#L190	both-error	
 00463	chapters/18-Level 13.md#L196	both-error	
 00464	chapters/18-Level 13.md#L211	both-error	
-00465	chapters/18-Level 13.md#L262	zilisp-error	未実装：HANDLER-CASE
-00466	chapters/18-Level 13.md#L284	zilisp-error	未実装：DEFINE-CONDITION
-00467	chapters/18-Level 13.md#L310	zilisp-error	未実装：DEFINE-CONDITION
-00468	chapters/18-Level 13.md#L352	zilisp-error	未実装：RESTART-CASE
+00465	chapters/18-Level 13.md#L262	match	
+00466	chapters/18-Level 13.md#L284	match	
+00467	chapters/18-Level 13.md#L310	match	
+00468	chapters/18-Level 13.md#L352	match	
 00469	chapters/18-Level 13.md#L375	both-error	
-00470	chapters/18-Level 13.md#L399	zilisp-error	未実装：RESTART-CASE
-00471	chapters/18-Level 13.md#L437	zilisp-error	未実装：HANDLER-BIND
-00472	chapters/18-Level 13.md#L455	zilisp-error	未実装：HANDLER-CASE
-00473	chapters/18-Level 13.md#L477	zilisp-error	未実装：DEFINE-CONDITION
-00474	chapters/18-Level 13.md#L510	zilisp-error	未実装：DEFINE-CONDITION
-00475	chapters/18-Level 13.md#L545	zilisp-error	未実装：HANDLER-CASE
+00470	chapters/18-Level 13.md#L399	match	
+00471	chapters/18-Level 13.md#L437	match	
+00472	chapters/18-Level 13.md#L455	output-diff	
+00473	chapters/18-Level 13.md#L477	match	
+00474	chapters/18-Level 13.md#L510	match	
+00475	chapters/18-Level 13.md#L545	match	
 00476	chapters/18-Level 13.md#L585	both-error	
-00477	chapters/18-Level 13.md#L592	zilisp-error	未実装：HANDLER-CASE
+00477	chapters/18-Level 13.md#L592	match	
 00478	chapters/18-Level 13.md#L609	both-error	
-00479	chapters/18-Level 13.md#L616	zilisp-error	未実装：HANDLER-CASE
+00479	chapters/18-Level 13.md#L616	match	
 00480	chapters/18-Level 13.md#L633	both-error	
-00481	chapters/18-Level 13.md#L640	zilisp-error	未実装：DEFINE-CONDITION
+00481	chapters/18-Level 13.md#L640	match	
 00482	chapters/18-Level 13.md#L666	both-error	
-00483	chapters/18-Level 13.md#L672	zilisp-error	未実装：HANDLER-CASE
-00484	chapters/18-Level 13.md#L704	zilisp-error	未実装：HANDLER-CASE
+00483	chapters/18-Level 13.md#L672	match	
+00484	chapters/18-Level 13.md#L704	match	
 00485	chapters/18-Level 13.md#L732	both-error	
 00486	chapters/19-Level 14.md#L19	both-error	
 00488	chapters/19-Level 14.md#L64	zilisp-error	未定義の関数：QUIT
@@ -485,7 +485,7 @@ seq	id	outcome	detail
 00499	chapters/19-Level 14.md#L336	both-error	
 00500	chapters/19-Level 14.md#L356	zilisp-error	未実装：DECLAIM
 00501	chapters/19-Level 14.md#L407	both-error	
-00502	chapters/19-Level 14.md#L421	zilisp-error	未実装：ASSERT
+00502	chapters/19-Level 14.md#L421	match	
 00503	chapters/19-Level 14.md#L435	both-error	
 00504	chapters/19-Level 14.md#L473	both-error	
 00505	chapters/19-Level 14.md#L490	zilisp-error	未実装：TIME
@@ -498,7 +498,7 @@ seq	id	outcome	detail
 00512	chapters/19-Level 14.md#L648	match	
 00513	chapters/19-Level 14.md#L691	match	
 00514	chapters/19-Level 14.md#L701	match	
-00515	chapters/19-Level 14.md#L721	zilisp-error	未実装：ASSERT
+00515	chapters/19-Level 14.md#L721	match	
 00516	chapters/19-Level 14.md#L735	both-error	
 00517	chapters/19-Level 14.md#L763	match	
 00518	chapters/19-Level 14.md#L778	match	
@@ -509,7 +509,7 @@ seq	id	outcome	detail
 00523	chapters/19-Level 14.md#L862	match	
 00524	chapters/19-Level 14.md#L883	zilisp-error	未実装の関数：GET-INTERNAL-REAL-TIME
 00525	chapters/19-Level 14.md#L904	both-error	
-00526	chapters/19-Level 14.md#L925	zilisp-error	未実装：ECASE
+00526	chapters/19-Level 14.md#L925	match	
 00527	chapters/20-Level 15.md#L30	match	
 00529	chapters/20-Level 15.md#L61	match	
 00530	chapters/20-Level 15.md#L97	both-error	
@@ -632,21 +632,21 @@ seq	id	outcome	detail
 00660	chapters/25-Level 18-B.md#L233	both-error	
 00661	chapters/25-Level 18-B.md#L383	match	
 00662	chapters/25-Level 18-B.md#L399	both-error	
-00663	chapters/25-Level 18-B.md#L422	zilisp-error	未実装：ASSERT
+00663	chapters/25-Level 18-B.md#L422	match	
 00664	chapters/25-Level 18-B.md#L460	both-error	
 00665	chapters/25-Level 18-B.md#L488	match	
 00666	chapters/25-Level 18-B.md#L506	both-error	
 00667	chapters/25-Level 18-B.md#L537	match	
 00668	chapters/25-Level 18-B.md#L630	both-error	
-00669	chapters/25-Level 18-B.md#L665	zilisp-error	未実装：ASSERT
+00669	chapters/25-Level 18-B.md#L665	match	
 00670	chapters/25-Level 18-B.md#L750	both-error	
-00671	chapters/25-Level 18-B.md#L784	zilisp-error	未実装：ASSERT
+00671	chapters/25-Level 18-B.md#L784	match	
 00672	chapters/25-Level 18-B.md#L850	both-error	
 00673	chapters/25-Level 18-B.md#L874	match	
 00674	chapters/25-Level 18-B.md#L885	both-error	
 00675	chapters/25-Level 18-B.md#L955	match	
 00676	chapters/25-Level 18-B.md#L985	both-error	
-00677	chapters/25-Level 18-B.md#L1008	zilisp-error	未実装：TYPECASE
+00677	chapters/25-Level 18-B.md#L1008	match	
 00678	chapters/25-Level 18-B.md#L1049	both-error	
 00679	chapters/25-Level 18-B.md#L1123	match	
 00680	chapters/25-Level 18-B.md#L1148	both-error	
@@ -748,9 +748,9 @@ seq	id	outcome	detail
 00840	chapters/29-Level 20-A.md#L665	both-error	
 00841	chapters/29-Level 20-A.md#L716	match	
 00842	chapters/29-Level 20-A.md#L724	both-error	
-00843	chapters/29-Level 20-A.md#L774	zilisp-error	未実装：HANDLER-CASE
-00844	chapters/29-Level 20-A.md#L848	zilisp-error	未実装：HANDLER-CASE
-00845	chapters/29-Level 20-A.md#L903	zilisp-error	未実装：HANDLER-CASE
+00843	chapters/29-Level 20-A.md#L774	match	
+00844	chapters/29-Level 20-A.md#L848	match	
+00845	chapters/29-Level 20-A.md#L903	match	
 00846	chapters/29-Level 20-A.md#L1200	both-error	
 00847	chapters/29-Level 20-A.md#L1233	both-error	
 00848	chapters/29-Level 20-A.md#L1253	both-error	
@@ -759,9 +759,9 @@ seq	id	outcome	detail
 00851	chapters/29-Level 20-A.md#L1389	both-error	
 00852	chapters/29-Level 20-A.md#L1418	both-error	
 00853	chapters/29-Level 20-A.md#L1498	both-error	
-00854	chapters/29-Level 20-A.md#L1570	zilisp-error	未実装の関数：EVAL
+00854	chapters/29-Level 20-A.md#L1570	match	
 00861	chapters/30-Level 20-B.md#L319	match	
-00864	chapters/30-Level 20-B.md#L400	zilisp-error	未実装：HANDLER-CASE
+00864	chapters/30-Level 20-B.md#L400	match	
 00865	chapters/30-Level 20-B.md#L616	match	
 00866	chapters/30-Level 20-B.md#L656	match	
 00867	chapters/30-Level 20-B.md#L680	match	
@@ -943,7 +943,7 @@ seq	id	outcome	detail
 01094	chapters/42-Level 26.md#L451	match	
 01095	chapters/42-Level 26.md#L481	match	
 01096	chapters/42-Level 26.md#L529	match	
-01097	chapters/42-Level 26.md#L566	zilisp-error	未実装：HANDLER-CASE
+01097	chapters/42-Level 26.md#L566	match	
 01098	chapters/42-Level 26.md#L606	match	
 01099	chapters/42-Level 26.md#L635	match	
 01100	chapters/42-Level 26.md#L708	both-error	

@@ -106,6 +106,7 @@ fn evalText(
             try stderr.print("{s}:{d}:{d}: ", .{ name, loc.line, loc.col });
             try s.th.writeError(stderr);
             try stderr.writeByte('\n');
+            try s.th.writeRestarts(stderr);
             try s.th.writeBacktrace(stderr);
             try stderr.flush();
             s.th.clearError();

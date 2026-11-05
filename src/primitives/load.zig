@@ -20,6 +20,11 @@ fn cl(th: *Thread, name: []const u8) Value {
     return (th.rt.findSymbol(th.rt.cl, name) orelse unreachable).symbol;
 }
 
+/// (eval フォーム)：空の字句環境で評価する（CLHS eval。コンパイルしてから VM で実行する。Phase 25）
+pub fn evalFn(th: *Thread, args: []const Value) Value {
+    return eval_mod.eval(th, args[0]);
+}
+
 /// (load ファイル &key verbose print if-does-not-exist external-format)：読み込めば T
 pub fn load(th: *Thread, args: []const Value) Value {
     const rt = th.rt;

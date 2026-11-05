@@ -1,9 +1,11 @@
 //! スレッドの状態（詳細設計 §6.1）。1.0 は単一スレッド。
 //!
 //! Phase 08 の範囲：多値の個数、`fault`、VM、Lisp のエラーの情報。
-//! condition・handler・restart（Phase 25）ができるまでは、Lisp のエラーは
-//! `fault = .lisp_error` と `err`（種類と値）で表し、トップレベル（REPL・スクリプト）まで戻って報告する。
-//! Phase 25 で、`signal` は handler を探して呼ぶ処理に置き換え、最後は toplevel の restart へ脱出する（§6.6・§9）。
+//! handler が受け止めなかったエラーは、`fault = .lisp_error` と `err`（種類と値）で表し、トップレベル（REPL・スクリプト）
+//! まで戻って報告する（§6.6）。
+//! Phase 25：Zig で見つけたエラー（`signal`）は、handler があれば、その場で condition を作って handler を呼ぶ
+//! （boot.lisp の zl-sys::%signal-zig-error。§9）。handler と restart のスタックは Lisp の特殊変数
+//! zl-sys::*handler-clusters*・zl-sys::*restart-clusters* の動的束縛で表す（非局所脱出で抜けると束縛と一緒に戻る）。
 
 const std = @import("std");
 const value_mod = @import("../values/value.zig");
@@ -107,9 +109,13 @@ pub const ErrorKind = enum {
     print_not_readable,
     /// 未実装の機能（CL の型ではない。Zilisp の拡張：基本設計 §3.1「黙って別の値を返さない」）
     unimplemented,
+    /// Lisp の condition（Phase 25。error などで通知し、handler が受け止めなかったもの）。
+    /// datum が condition、expected がクラスの名前、detail が report の文字列
+    condition,
 
     pub fn typeName(k: ErrorKind) []const u8 {
         return switch (k) {
+            .condition => "CONDITION",
             .simple_error => "SIMPLE-ERROR",
             .type_error => "TYPE-ERROR",
             .unbound_variable => "UNBOUND-VARIABLE",
@@ -142,7 +148,13 @@ pub const LispError = struct {
     expected: Value = Value.unbound,
     /// Lisp の文字列の説明（message の代わりに使う。Lisp で書いた標準ライブラリが報告するエラー）。なければ unbound
     detail: Value = Value.unbound,
+    /// エラーを通知した時点で使えた restart の説明（文字列のリスト。Phase 25）。なければ NIL
+    restarts: Value = Value.nil,
 };
+
+/// Zig で見つけたエラーで handler を呼ぶ入れ子の深さの上限。handler の中のエラーは外側の handler が受け止めるので
+/// 入れ子になりうる。処理系の誤りやスタックの溢れで、handler を呼ぶ処理の中から同じエラーが起き続けないように止める
+pub const max_signal_depth = 32;
 
 pub const Thread = struct {
     rt: *Runtime,
@@ -183,6 +195,8 @@ pub const Thread = struct {
     backtrace_len: u32 = 0,
     /// 履歴の全体の深さ（backtrace_max を超えた分は記録しない）
     backtrace_depth: u32 = 0,
+    /// Zig で見つけたエラーで handler を呼んでいる入れ子の深さ（max_signal_depth）
+    signal_depth: u32 = 0,
 
     pub const Options = struct {
         /// VM の値スタックの要素数（§7.1。既定 1M 要素 = 8 MiB）
@@ -241,6 +255,7 @@ pub const Thread = struct {
         f(ctx, th.err.datum);
         f(ctx, th.err.expected);
         f(ctx, th.err.detail);
+        f(ctx, th.err.restarts);
         for (th.backtrace[0..th.backtrace_len]) |v| f(ctx, v);
         for (th.bindings[0..th.binding_depth]) |b| {
             f(ctx, b.sym);
@@ -255,20 +270,148 @@ pub const Thread = struct {
             f(ctx, s.err.datum);
             f(ctx, s.err.expected);
             f(ctx, s.err.detail);
+            f(ctx, s.err.restarts);
             for (s.backtrace[0..s.backtrace_len]) |v| f(ctx, v);
         }
     }
 
     // ------------------------------------------------------------------
-    // エラー（Phase 25 で condition の通知に置き換える）
+    // エラー（§6.6・§9。Phase 25 から condition として handler に通知する）
 
-    /// エラーを記録して Value.unwind を返す（呼び出し側はそのまま返す）
+    /// エラーを通知する。handler があれば、その場で（巻き戻さずに）呼ぶ。handler が脱出すれば Value.unwind
+    /// （fault は .unwind）。受け止められなければ、エラーを記録して Value.unwind を返す（呼び出し側はそのまま返す）。
+    /// handler は Lisp のコードなので、ここで GC が起きうる（Zig のローカル変数の値は、ネイティブのスタックの保守的な
+    /// 走査で守られる）。
     /// エラーの経路はまれにしか通らないので、inline 展開しない（呼び出し側の高速経路のコードを小さく保つ）
     pub noinline fn signal(th: *Thread, kind: ErrorKind, message: []const u8, datum: Value, expected: Value) Value {
+        return th.signalDetail(kind, message, datum, expected, Value.unbound);
+    }
+
+    /// スタック（VM の値スタック・フレーム、ネイティブのスタック、Zig の関数の入れ子）が溢れた：handler を動かす余地が
+    /// ないので、handler には通知せずにエラーを記録する（Phase 25 の制限。SBCL のような予備の領域はまだない）
+    pub noinline fn stackExhausted(th: *Thread, message: []const u8) Value {
         th.fault = .lisp_error;
-        th.err = .{ .kind = kind, .message = message, .datum = datum, .expected = expected };
-        th.captureBacktrace();
+        th.err = .{ .kind = .storage_condition, .message = message };
+        th.captureBacktrace(0);
         return Value.unwind;
+    }
+
+    /// signal と同じ。detail は説明の Lisp の文字列（message の代わり。なければ unbound）
+    pub noinline fn signalDetail(th: *Thread, kind: ErrorKind, message: []const u8, datum: Value, expected: Value, detail: Value) Value {
+        var restarts = Value.nil;
+        if (th.signalHookActive()) {
+            const r = th.callSignalHook(kind, message, datum, expected, detail);
+            // handler が脱出した、または handler を呼ぶ処理の中で別のエラーが起きた
+            if (r == Value.unwind) return r;
+            restarts = r;
+        }
+        th.fault = .lisp_error;
+        th.err = .{ .kind = kind, .message = message, .datum = datum, .expected = expected, .detail = detail, .restarts = restarts };
+        th.captureBacktrace(0);
+        return Value.unwind;
+    }
+
+    /// handler・restart が1つでもあるか、*debugger-hook* があれば（標準ライブラリを読み込む前は呼ばない。
+    /// *debugger-hook* は Codex のレビュー P25 2回目 #4）
+    fn signalHookActive(th: *const Thread) bool {
+        const rt = th.rt;
+        if (th.signal_depth >= max_signal_depth or rt.sys_signal_hook == Value.nil) return false;
+        const set = struct {
+            fn f(r: *Runtime, sym: Value) bool {
+                const v = r.symbolPtr(sym).value;
+                return v != Value.nil and v != Value.unbound;
+            }
+        }.f;
+        return set(rt, rt.sys_handler_clusters) or set(rt, rt.sys_restart_clusters) or set(rt, rt.debugger_hook);
+    }
+
+    /// zl-sys::%signal-zig-error を呼ぶ：エラーの種類から condition を作って handler に通知する（boot.lisp）。
+    /// 受け止められなければ、使える restart の説明のリストを返す
+    fn callSignalHook(th: *Thread, kind: ErrorKind, message: []const u8, datum: Value, expected: Value, detail: Value) Value {
+        const rt = th.rt;
+        const f = rt.symbolPtr(rt.sys_signal_hook).function;
+        if (f == Value.unbound or !f.isFunctionPointer()) return Value.nil;
+        th.signal_depth += 1;
+        defer th.signal_depth -= 1;
+        // VM の命令の途中のエラーでは、値スタックの深さ（vm.sp）を書き戻していないことがある。handler の実行が今のフレームの
+        // 値を上書きしないように、一番上のフレームが使いうる深さまで上げておく（その間の古い値は GC のルートとして走査されるが、
+        // 確保済みのオブジェクトを指すかを確かめてからマークするので安全）
+        const vm = &th.vm;
+        const saved_sp = vm.sp;
+        defer vm.sp = saved_sp;
+        if (vm.fp > 0) {
+            const fr = vm.frames[vm.fp - 1];
+            const code = function.closurePtr(fr.closure).codePtr();
+            const extent = @min(@as(usize, fr.base) + code.nlocals + code.max_stack, vm.stack.len);
+            if (extent > vm.sp) vm.sp = extent;
+        }
+        // 印字と読み取りの途中の状態は、handler の中の印字・読み取りに引き継がない
+        const saved_circle = th.pp_circle;
+        const saved_level = th.pp_level;
+        const saved_builder = th.read_builder;
+        th.pp_circle = null;
+        th.pp_level = 0;
+        th.read_builder = null;
+        defer {
+            th.pp_circle = saved_circle;
+            th.pp_level = saved_level;
+            th.read_builder = saved_builder;
+        }
+        var name_buf: [64]u8 = undefined;
+        const tag = @tagName(kind);
+        for (tag, 0..) |c, i| name_buf[i] = if (c == '_') '-' else std.ascii.toUpper(c);
+        const kw = rt.internKeyword(name_buf[0..tag.len]) catch return th.signalFailed();
+        const text = if (detail != Value.unbound) detail else (rt.makeString(message) catch return th.signalFailed());
+        var args = [_]Value{
+            kw,
+            text,
+            if (datum == Value.unbound) rt.sys_missing else datum,
+            if (expected == Value.unbound) rt.sys_missing else expected,
+        };
+        return th.call(f, &args);
+    }
+
+    /// handler を呼ぶ前の確保に失敗した：handler を呼ばずに、元のエラーを記録する（呼び出し側が続ける）
+    fn signalFailed(th: *Thread) Value {
+        _ = th;
+        return Value.nil;
+    }
+
+    /// handler が受け止めなかった Lisp の condition を記録する（zl-sys::%unhandled-condition。invoke-debugger の最後）。
+    /// report は condition を princ した文字列、restarts は使える restart の説明のリスト
+    pub fn unhandledCondition(th: *Thread, c: Value, report: Value, restarts: Value) Value {
+        const object = @import("../values/object.zig");
+        const r: *object.Record = @ptrCast(@alignCast(c.pointer()));
+        th.fault = .lisp_error;
+        th.err = .{
+            .kind = .condition,
+            .datum = c,
+            .expected = Runtime.vectorPtr(r.class).items()[object.record_class_name],
+            .detail = report,
+            .restarts = restarts,
+        };
+        // 呼び出しの履歴から、error・invoke-debugger など、condition を通知する標準ライブラリの関数を除く
+        var skip: u32 = 0;
+        const n = th.vm.fp;
+        while (skip < n and th.isSignalingFrame(th.vm.frames[n - 1 - skip].closure)) skip += 1;
+        th.captureBacktrace(skip);
+        return Value.unwind;
+    }
+
+    fn isSignalingFrame(th: *const Thread, closure: Value) bool {
+        const rt = th.rt;
+        const name = function.closurePtr(closure).codePtr().name;
+        if (!(name.isOther() and Runtime.kindOf(name) == .symbol)) return false;
+        const s = rt.symbolPtr(name);
+        if (s.package == rt.sys.obj) return true;
+        if (s.package != rt.cl.obj) return false;
+        const str = Runtime.stringPtr(s.name);
+        if (str.width() != 1) return false;
+        const bytes = str.data[0..str.length()];
+        for ([_][]const u8{ "ERROR", "CERROR", "INVOKE-DEBUGGER", "SIGNAL", "WARN" }) |n| {
+            if (std.mem.eql(u8, bytes, n)) return true;
+        }
+        return false;
     }
 
     pub fn typeError(th: *Thread, datum: Value, expected: Value) Value {
@@ -294,6 +437,12 @@ pub const Thread = struct {
             .internal => return w.writeAll("処理系の内部エラー"),
             .unwind => return w.writeAll("CONTROL-ERROR: 脱出先がありません"),
             .none => return w.writeAll("（エラーはありません）"),
+        }
+        if (e.kind == .condition) {
+            try printer.prin1(rt, w, e.expected);
+            try w.writeAll(": ");
+            if (e.detail.isOther() and Runtime.kindOf(e.detail) == .string) try Runtime.writeStringUtf8(e.detail, w);
+            return;
         }
         try w.print("{s}: ", .{e.kind.typeName()});
         switch (e.kind) {
@@ -349,12 +498,27 @@ pub const Thread = struct {
         th.backtrace_depth = 0;
     }
 
-    /// VM のフレームの関数を、新しい順に記録する（エラーの報告用。ネイティブのフレームは Phase 25 以降）
-    fn captureBacktrace(th: *Thread) void {
-        const n = th.vm.fp;
+    /// VM のフレームの関数を、新しい順に記録する（エラーの報告用。新しい方の skip 個は除く。ネイティブのフレームは記録しない）
+    fn captureBacktrace(th: *Thread, skip: u32) void {
+        const n = th.vm.fp - skip;
         th.backtrace_depth = @intCast(n);
         th.backtrace_len = @intCast(@min(n, backtrace_max));
         for (0..th.backtrace_len) |i| th.backtrace[i] = th.vm.frames[n - 1 - i].closure;
+    }
+
+    /// エラーを通知した時点で使えた restart を書く（あるときだけ。各行は 2 字下げで、改行で終わる）
+    pub fn writeRestarts(th: *Thread, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        if (th.fault != .lisp_error or !th.err.restarts.isCons()) return;
+        try w.writeAll("  使える restart:\n");
+        var x = th.err.restarts;
+        var i: usize = 0;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const s = Runtime.consPtr(x).car;
+            try w.print("    {d}: ", .{i});
+            if (s.isOther() and Runtime.kindOf(s) == .string) try Runtime.writeStringUtf8(s, w);
+            try w.writeByte('\n');
+            i += 1;
+        }
     }
 
     /// 呼び出しの履歴を書く（関数の中で起きたエラーのときだけ）。各行は 2 字下げで、改行で終わる
@@ -403,7 +567,7 @@ pub const Thread = struct {
     /// sym を v で動的に束縛する。束縛のスタックが溢れたら Value.unwind（それ以外は NIL）
     pub fn bind(th: *Thread, sym: Value, v: Value) Value {
         if (th.binding_depth >= th.bindings.len)
-            return th.signal(.storage_condition, "動的束縛が深すぎます", Value.unbound, Value.unbound);
+            return th.stackExhausted("動的束縛が深すぎます");
         const s = th.rt.symbolPtr(sym);
         th.bindings[th.binding_depth] = .{ .sym = sym, .old = s.value };
         th.binding_depth += 1;
@@ -463,7 +627,7 @@ pub const Thread = struct {
 
     pub fn pushControl(th: *Thread, kind: ControlEntry.Kind, token: Value, fp: usize, sp: usize, ip: usize) Value {
         if (th.control_depth + th.unwind_depth >= th.control.len)
-            return th.signal(.storage_condition, "block・catch・unwind-protect の入れ子が深すぎます", Value.unbound, Value.unbound);
+            return th.stackExhausted("block・catch・unwind-protect の入れ子が深すぎます");
         th.control[th.control_depth] = .{
             .kind = kind,
             .token = token,
@@ -518,7 +682,7 @@ pub const Thread = struct {
     fn startTransfer(th: *Thread, target: u32, primary: Value) Value {
         th.abandonSuspended(target);
         if (th.unwind_depth >= th.unwinds.len)
-            return th.signal(.storage_condition, "非局所脱出の入れ子が深すぎます", Value.unbound, Value.unbound);
+            return th.stackExhausted("非局所脱出の入れ子が深すぎます");
         const count = th.mv_count;
         var rest = Value.nil;
         if (count > 1) {
@@ -689,7 +853,7 @@ pub const Thread = struct {
         const entry = function.functionHeader(fv).entry;
         if (entry == &vm_mod.closureEntry) return entry(th, fv, args.ptr, @intCast(args.len));
         if (th.native_depth >= max_native_depth)
-            return th.signal(.storage_condition, "呼び出しが深すぎます（Zig の関数を挟んだ呼び出しの入れ子が上限を超えました）", Value.unbound, Value.unbound);
+            return th.stackExhausted("呼び出しが深すぎます（Zig の関数を挟んだ呼び出しの入れ子が上限を超えました）");
         th.native_depth += 1;
         defer th.native_depth -= 1;
         return entry(th, fv, args.ptr, @intCast(args.len));

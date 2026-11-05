@@ -38,6 +38,8 @@ pub const ObjKind = enum(u8) {
     readtable,
     /// pprint-dispatch の表（Phase 24。src/printer/pprint.zig）
     pprint_dispatch,
+    /// condition と restart（Phase 25。src/primitives/conditions.zig）。CLOS（Phase 27）で instance にまとめる
+    record,
     _,
 };
 
@@ -238,6 +240,19 @@ pub const PprintDispatch = extern struct {
 
     pub const initial_flag: u8 = 1 << 0;
 };
+
+/// condition と restart（Phase 25）。class はクラスの記述（Lisp で作る simple-vector。record_class_* の位置に
+/// 名前と、自身を含む上位のクラスの名前のリスト（CPL）を置く。src/lisp/boot.lisp）、slots はスロットの値の simple-vector。
+/// CLOS（Phase 27）で instance にまとめる
+pub const Record = extern struct {
+    header: ObjHeader,
+    class: Value,
+    slots: Value,
+};
+
+/// クラスの記述（simple-vector）の中の位置（boot.lisp の %make-class と合わせる）
+pub const record_class_name = 0;
+pub const record_class_cpl = 1;
 
 /// GC が中を走査しない数の配列。header.len は要素の数、header.aux は要素のバイト数（4 か 8）
 pub const RawVector = extern struct {

@@ -1,0 +1,97 @@
+
+:DIV 
+(5 LIST) 
+NO-SUCH-VAR-XYZ 
+NO-SUCH-FN-XYZ 
+(/ (1 0)) 
+:PARSE 
+("plain" NIL) 
+:FIRST 
+:OR-TYPE inner saw boom 1
+
+(:OUTER "boom 1") 
+:OUTER 
+"second" 
+(:OK 1 2) 
+:ERR 
+(1 2 3) 
+(NIL T) 
+cleanup
+handled u
+
+(:OUTER :OUTER) 
+dyn=AT-SIGNAL
+
+:OK 
+(:AGAIN (1 0)) 
+NIL 
+"sig 1" 
+(7 :DFLT T T NIL "Base error") 
+9 
+(0 :DFLT) 
+"150 is out of range [0, 100]" 
+:CAUGHT 
+"NO-SUCH-CONDITION does not designate a condition class." 
+3 
+(R1 R3) 
+(NIL T) 
+(10) 
+"Foo report" 
+"BAR" 
+"No restart NONEXISTENT is active." 
+:ABORTED 
+(NIL NIL) 
+(:USED 5) 
+0 
+(:ASSOC T NIL) 
+:R1-VIA-CONDITION 
+(NIL :AFTER) 
+:DONE 
+warned: loud 2
+
+:DONE 
+(:I :OTHER NIL) 
+"3 fell through ETYPECASE expression. Wanted one of (STRING SYMBOL)." 
+"3 fell through ECASE expression. Wanted one of (1 2 4)." 
+"The value of X is 3, which is not of type STRING." 
+"The assertion (= X 2) failed with X = 3." 
+"x was 3" 
+"fixed" 
+:TWO 
+(T T NIL T T NIL T T) 
+(:CONTROL :DATUM) 
+NIL 
+"An ABORT restart was found that failed to transfer control dynamically." 
+:CONTROL-ERROR 
+(T NIL) 
+(T NIL T) 
+#\) 
+(:EOF :END) 
+T 
+#\  
+#\  
+(T T T (:NONE 0)) 
+(:OK #(1 8) 0) 
+(:STR #("a" 8) 0) 
+(:SECOND #(9 "s") 2) 
+((5 7 5 7 :H) (6 8 6 8 :H)) 
+((5 (5 . 5) (:H 5)) (6 (6 . 6) (:H 6))) 
+"Condition ERROR was signalled." 
+"a 1" 
+"The variable FOO is unbound." 
+"The function COMMON-LISP-USER::FOO is undefined." 
+"The value
+  1
+is not of type
+  STRING" 
+"#<TYPE-ERROR expected-type: STRING datum: 1>" 
+"arithmetic error DIVISION-BY-ZERO signalled
+Operation was (/ 1 0)." 
+"end of file on NIL" 
+"error on file \"x.txt\"" 
+"arithmetic error DIVISION-BY-ZERO signalled
+Operation was (/ 10 0)." 
+[The value
+   "a"
+ is not of type
+   NUMBER]

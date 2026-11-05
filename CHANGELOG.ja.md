@@ -4,8 +4,34 @@
 
 ## Unreleased
 
+### Added
+- Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
+  `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
+  `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・
+  `restart-case`（`:report`・`:interactive`・`:test`、通知する condition への関連付け）・`with-simple-restart`・
+  `with-condition-restarts`・`compute-restarts`・`find-restart`・`invoke-restart`・`invoke-restart-interactively`・`restart-name`・
+  `abort`・`continue`・`muffle-warning`・`store-value`・`use-value`、condition のアクセサ（`type-error-datum` など）。
+  Zig で見つけたエラー（`car` の type-error、0 除算、未束縛の変数など）も handler で受け止められ、restart も使える。
+  標準の condition の report の文面と印字は SBCL 2.6.7 と同じ。受け止められなかったエラーの報告に、使える restart の一覧を加えた
+  （番号で選ぶ操作は後の Phase）
+- `typep`（数の範囲・`mod`・`member`・`and`・`or`・`not`・`satisfies`・`cons`・ベクタと配列の要素の型と大きさ・condition の型）、
+  `typecase`・`etypecase`・`ctypecase`・`ecase`・`ccase`・`check-type`・`assert`（文面は SBCL と同じ）、関数としての `eval`
+- 試験：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
+  教材 Level 13 は、ファイルのエラーの文面の 1 つ（処理系依存）以外は SBCL と同じ出力。教材のブロックの一致は 478 から 514 に。
+  起動時間は 12.72 ms
+- Codex のレビュー（P25）で見つけた 6 件を直した（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` の引数の評価順、
+  マクロを展開すると `signal`・`error` になるフォームの restart の関連付け、`abort`・`muffle-warning` の restart が戻ったときの
+  control-error、`typep` の `(vector t n)`・`(string n)` を fill-pointer でなく次元で照合、reader-error・end-of-file の handler
+  から読んだときの位置、reader-error の `stream-error-stream`。`*break-on-signals*` はデバッガのフェーズ（tque #351）で扱う
+- Codex の 2 回目のレビュー（P25）の 4 件を直した：`#A` の中身の誤りのときのストリームの位置、`read-from-string` の
+  reader-error・end-of-file のストリーム、`ccase`・`ctypecase` の場所の部分式を1回だけ評価、handler・restart がなくても
+  Zig で見つけたエラーで `*debugger-hook*` を呼ぶ
+
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした
+- `do`・`do*`・`psetq` の形の誤りを、SBCL 2.6.7 と同じく simple-error にした（今までは program-error）
+- スタックの溢れ（VM・ネイティブのスタック、動的束縛と制御スタック）の storage-condition は、handler に通知しない
+  （handler を動かす予備の領域がないため）
 
 ## 0.3.0 - 2026-11-04
 

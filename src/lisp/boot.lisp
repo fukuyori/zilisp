@@ -1512,7 +1512,11 @@
             ((eq (car o) :report)
              (let ((r (cadr o)))
                (setq report (cond ((stringp r) r)
-                                  ((symbolp r) `',r)
+                                  ;; シンボルは定義した場所の字句環境で (function r) として扱う（局所関数を指せる）。
+                                  ;; 呼ぶときに探すので、後から defun した関数でもよい（Codex のレビュー P25 12回目）
+                                  ((symbolp r)
+                                   (let ((c (gensym "C")) (s (gensym "S")))
+                                     `(lambda (,c ,s) (funcall (function ,r) ,c ,s))))
                                   (t `(function ,r))))))
             ((eq (car o) :default-initargs)
              (do ((x (cdr o) (cddr x)))

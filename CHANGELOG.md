@@ -64,6 +64,9 @@
   form is a special operator such as `if` or `let` (it evaluated the branch not taken, and evaluated the bindings of
   `let` as forms). `special-operator-p` is implemented for this (it agrees with SBCL 2.6.7 on the 25 special operators
   of CL)
+- Fixed the issue of the twelfth Codex review of P25: a symbol given to the `:report` option of `define-condition`
+  now names the function in the lexical environment of the form (`(function name)`, CLHS), so it can be a local
+  function of `flet` or `labels`. It used to be quoted, so the global function was always called
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

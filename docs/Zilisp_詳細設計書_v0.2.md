@@ -1260,7 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
-| P25 | 1929 | 13.55 ms | 2.35 MB |
+| P25 | 1933 | 13.55 ms | 2.35 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1395,8 +1395,9 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、9回目）**、1 件（SBCL 2.6.7 と照合した）：`cons` の型の `realness` は、部分が `nil` なら yes（空の型）、両方の部分が空でないと言い切れれば no（`*`、`nil` 以外のアトム、`realness` が no の型）、それ以外は unknown。`complex` の合成の型は、`(complex)`・`(complex *)` だけが no で、ほかは unknown（SBCL では `(complex nil)`・`(complex (integer 0 0))` が空）。
 - **Codex のレビューの修正（Phase 25、10回目）**、1 件（SBCL 2.6.7 と照合した）：`invoke-restart`・`invoke-restart-interactively` が使う `zl-sys::%find-restart-or-lose` は、restart のオブジェクトが `zl-sys::*restart-clusters*` の中にあれば（`zl-sys::%restart-active-p`）そのまま受け付け、`:test` を呼び直さない。condition なしで呼び直していたので、`(find-restart 名前 condition)` で見つけた restart を拒否し、condition を渡した `continue`・`store-value`・`use-value` も動かなかった。名前は今までどおり `find-restart` で探す（`:test` は NIL を受け取る。SBCL と同じ）。抜けた `restart-case` の restart をオブジェクトで呼ぶと、Zilisp は control-error（restart は dynamic extent なので結果は未定義。SBCL 2.6.7 は memory fault）。この例は言語試験でなく `eval_test.zig` で確かめる。
 - **Codex のレビューの修正（Phase 25、11回目）**、1 件（SBCL 2.6.7 と照合した）：`assert` がテストの式の引数を一時変数に入れる（値を報告するため）のは、関数の呼び出しのときだけ。Zilisp では特殊演算子も `fboundp` が真なので、`(assert (if t t (incf n)))` は選ばれない分岐を評価し、`(assert (let ((x 1)) (= x 1)))` は `((x 1))` を式として評価していた。判定に `(not (special-operator-p 演算子))` を加えた。`special-operator-p` は新しいプリミティブ（`functions.specialOperatorP`）で、シンボルの `special_operator` の印を読む。CL の外部シンボルで真になるのは、SBCL 2.6.7 と同じ 25 個。
+- **Codex のレビューの修正（Phase 25、12回目）**、1 件（SBCL 2.6.7 と照合した）：`define-condition` の `:report` に書いたシンボルを引用して保存していたので、印字するといつも大域の関数が呼ばれていた。CLHS では `(function report-name)` を現在の字句環境で評価するので、`flet`・`labels` の局所関数を指さなければならない。シンボルは `(lambda (c s) (funcall (function 名前) c s))` に展開するようにした。lambda の中の `function` は、局所関数があればそれを指し、なければ呼んだときに大域の関数を探す（`define-condition` の後で定義した関数も使える。SBCL と同じ）。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
-- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1929 に）。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1933 に）。
 
 ### 11.3 標準ライブラリのビルド
 

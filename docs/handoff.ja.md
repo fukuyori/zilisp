@@ -7,7 +7,7 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。P25 のコミットは `5214e36`（本体）・`d6c0d6e`（3 回目の指摘）・`f1b6ab8`（4〜6 回目の指摘）・`25c48bb`（7 回目の指摘）・`d3dd091`（8 回目の指摘）・`3edff0f`（9 回目の指摘）・`01ce1bd`（10 回目の指摘）と、11 回目の指摘の修正（この文書の更新と同じコミット）。デバッガの要件の文書（v1.1）は `b615282`。
+- ブランチ：`main`。P25 のコミットは `5214e36`（本体）・`d6c0d6e`（3 回目の指摘）・`f1b6ab8`（4〜6 回目の指摘）・`25c48bb`（7 回目の指摘）・`d3dd091`（8 回目の指摘）・`3edff0f`（9 回目の指摘）・`01ce1bd`（10 回目の指摘）・`5c1d02a`（11 回目の指摘）と、12 回目の指摘の修正（この文書の更新と同じコミット）。デバッガの要件の文書（v1.1）は `b615282`。
 - P25 の修正の要点：
   - `zilisp:unimplemented` を `error` の下位から外した（`serious-condition` の下位。`ignore-errors` や `(handler-case … (error …))` に飲み込まれない）。
   - Codex の 4 回目のレビューの 5 件の修正（マクロ・特殊演算子の `funcall`、`typep` の未実装の判定、`pprint-logical-block`・`loop` の誤りの型、`etypecase`・`ctypecase` の `otherwise`、`(setf (values …))`）。
@@ -18,19 +18,21 @@
   - Codex の 9 回目のレビューの 1 件の修正：部分が `nil` の `cons`（`(cons nil t)` など）は空の型なので `complex` の引数に使える。空かどうか言い切れない `cons` と `complex` の合成の型（`(complex nil)` など）は `zilisp:unimplemented`（SBCL は NIL。2026-11-06 にレモンが合意）。
   - Codex の 10 回目のレビューの 1 件の修正：`invoke-restart`・`invoke-restart-interactively` に restart のオブジェクトを渡したら、いま有効か（`zl-sys::*restart-clusters*` の中にあるか）だけを確かめ、`:test` を condition なしで呼び直さない（boot.lisp の `zl-sys::%find-restart-or-lose`・`%restart-active-p`）。抜けた `restart-case` の restart をオブジェクトで呼ぶ例は、SBCL 2.6.7 が memory fault になる（結果は未定義）ので、`eval_test.zig` で確かめる。
   - Codex の 11 回目のレビューの 1 件の修正：`assert` は、テストの式が特殊演算子（`if`・`let` など）なら引数を先に評価しない。そのために `special-operator-p` を実装した（primitives の `functions.specialOperatorP`。CL の 25 個で SBCL と一致）。
+  - Codex の 12 回目のレビューの 1 件の修正：`define-condition` の `:report` のシンボルを `(lambda (c s) (funcall (function 名前) c s))` に展開する（CLHS：`(function report-name)` を現在の字句環境で評価）。`flet`・`labels` の局所関数を指せ、後から `defun` した関数も呼べる（SBCL と同じ）。
 - P25（tque #317）の内容：condition・handler・restart、`typep`、型の分岐と `check-type`・`assert`、関数としての `eval`、`do`・`do*`・`psetq` の形の誤りを simple-error に。
   - 文書：設計書（英日）の §6.6・§7 の表・§9・Phase 25 の節・起動時間の表、CHANGELOG（英日）、README（英日）、`tests/differential/impl-dependent.toml`、`compatibility/eval-status.md`・`eval-check.tsv`（eval-check が生成）。
   - 決めたこと（2026-11-05、レモン）：condition は専用の `record` で表し P27 で CLOS にまとめる／標準の condition の report は SBCL の英語の文面／Zig で見つけたエラーは `th.signal` の場所ですぐ handler を呼ぶ／REPL は restart の一覧の表示まで。
-- 全体の検証（2026-11-06、11 回目の指摘の修正。コミットの前の作業ツリーで。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 513・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 79、起動時間の中央値 12.78 ms（ReleaseFast。最小 11.49 ms）。`01ce1bd` の検証も同じ数（起動時間は 12.91 ms）。
+- 全体の検証（2026-11-06、`5c1d02a` の内容。コミットの前の作業ツリーで。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 513・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 79、起動時間の中央値 12.78 ms（ReleaseFast。最小 11.49 ms）。`01ce1bd` の検証も同じ数（起動時間は 12.91 ms）。
   - 一致が 514 から 513 に減ったのは Level 13 L704。未実装の `get-universal-time` を `ignore-errors` が受け止めなくなったため（`zilisp:unimplemented` の変更の結果）。
   - 文書の起動時間 13.55 ms は、`3edff0f` の版を `d3dd091` と交互に 41 回ずつ測った中央値（`d3dd091` は 13.67 ms。CPU の負荷が 69% のときの測定）。
-  - **未確認**：WSL の 1 skipped が前から同じか。11 回目の修正への Codex のレビュー。
+  - 12 回目の修正の後に流したのは test（Debug）・lang-test 65/65・fmt だけ（どれも通過）。`conditions.lisp` は SBCL・Zilisp の通常実行・GC stress で一致。文書の boot.lisp の行数は 1933 に直したが、起動時間は測り直していない。
+  - **未確認**：12 回目の修正の後の全体の検証（ReleaseSafe・ReleaseFast の test、native-test、クロス、WSL、eval-check、起動時間）。WSL の 1 skipped が前から同じか。12 回目の修正への Codex のレビュー。
 - tque の #317 はまだ完了にしていない。#309（0.3 リリース）も完了にしていない。
 
 ## 2. 次の作業（tque）
 
-- P25 の残り：11 回目の修正への Codex の再レビュー。名前で restart を探すとき、SBCL より多く後ろの `:test-function` を呼ぶ差がある（Codex の 11 回目の参考。仕様違反かは未確認）。#317 を完了にするかは、レモンの指示を待つ。
-  - Codex のレビュー 4〜11 回目：依頼は `request5.md`〜`request12.md`、結果は `result5.md`〜`result12.md`（同じフォルダ）。指摘はすべて直した。
+- P25 の残り：上の未確認の検証、12 回目の修正への Codex の再レビュー。名前で restart を探すとき、SBCL より多く後ろの `:test-function` を呼ぶ差は、仕様違反ではない（処理系の差）。CLHS の `find-restart` の Notes に `(find-restart identifier) == (find identifier (compute-restarts) :key :restart-name)` とあり、`restart-bind` の `:test-function` には呼ぶ時期・回数の定めがない（2026-11-06 に原文を確認）。`assert` の場所（places）の値を尋ねない制限は、設計書（Phase 25 の Lisp 側の説明）に書いたとおりまだ残る。#317 を完了にするかは、レモンの指示を待つ。
+  - Codex のレビュー 4〜12 回目：依頼は `request5.md`〜`request13.md`、結果は `result5.md`〜`result13.md`（同じフォルダ）。指摘はすべて直した。
   - Codex のレビュー 1 回目（2026-11-05）：7 件。#1〜#6 は直した（言語試験 `conditions.lisp` に再現の例を入れた）。#7 `*break-on-signals*` はデバッガのフェーズへ。2 回目（再レビュー）：4 件、すべて直した（`*debugger-hook*` の例は、`sbcl --script` が呼ばないので単体テスト）。3 回目（`5214e36` に対して）：3 件、すべて直した（直した後の試験：test Debug・lang-test 65/65・native-test Debug 36/36・fmt 通過。ReleaseSafe・ReleaseFast とクロス・WSL は未確認）。依頼文と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`（`request.md`・`result1.md`）。
 - **デバッガ（tque #351、#317 の後）**：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。2026-11-05 に作成し、レモンが決定）。要点：外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。共通の中核の上に、JSON の出力・一括のデバッガ・MCP・DAP・Swank・REPL を載せる。0.4 に入れるのは段階 1（中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）で、tque #356。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
 - `zilisp:unimplemented` は `error` の下位にしない（`serious-condition` の下位。2026-11-05 にレモンが推奨の案で決定）。CL の未実装の関数・変数も handler には `zilisp:unimplemented` として通知する（`src/runtime/thread.zig` の callSignalHook）。

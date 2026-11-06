@@ -349,6 +349,17 @@
          (do-external-symbols (s "COMMON-LISP") (if (special-operator-p s) (push (symbol-name s) r)))
          (sort r #'string<)))
 
+;;; Codex のレビューの 12 回目の指摘（SBCL 2.6.7 と比較）：:report のシンボルは定義した場所の字句環境の関数（局所関数を指せる）
+(defun p25-report (c s) (declare (ignore c)) (write-string "global" s))
+(flet ((p25-report (c s) (declare (ignore c)) (write-string "local" s)))
+  (define-condition p25-report-local (condition) () (:report p25-report)))
+(print (princ-to-string (make-condition 'p25-report-local)))
+(define-condition p25-report-late (condition) () (:report p25-report-later))
+(defun p25-report-later (c s) (declare (ignore c)) (write-string "late" s))
+(print (princ-to-string (make-condition 'p25-report-late)))
+(define-condition p25-report-global (condition) () (:report p25-report))
+(print (princ-to-string (make-condition 'p25-report-global)))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

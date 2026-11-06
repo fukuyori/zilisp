@@ -2076,6 +2076,8 @@ test "conditions not handled reach the top level (Phase 25)" {
     try expectValue(&e, "(let ((n 0)) (assert (if t t (incf n))) (assert (let ((x 1)) (= x 1))) n)", "0");
     try expectValue(&e, "(list (special-operator-p 'if) (special-operator-p 'when) (special-operator-p 'car))", "(T NIL NIL)");
     try expectError(&e, "(special-operator-p 1)", .type_error);
+    // :report のシンボルは局所関数を指せる。flet の範囲を抜けた後に印字しても局所関数が呼ばれる（Codex のレビュー P25 12回目）
+    try expectValue(&e, "(progn (defun p25-rep (c s) (declare (ignore c)) (write-string \"global\" s)) (flet ((p25-rep (c s) (declare (ignore c)) (write-string \"local\" s))) (define-condition p25-rep-c (condition) () (:report p25-rep))) (list (princ-to-string (make-condition 'p25-rep-c)) (princ-to-string (make-condition 'p25-rep-c))))", "(\"local\" \"local\")");
     try expectValue(&e, "(progn (restart-case 1 (p25-gone () nil)) (handler-bind ((error #'identity)) 1) (list (find-restart 'p25-gone) zl-sys::*restart-clusters* zl-sys::*handler-clusters*))", "(NIL NIL NIL)");
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");

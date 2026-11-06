@@ -2141,7 +2141,9 @@
 
 (defmacro assert (test-form &optional places datum &rest arguments)
   (declare (ignore places))
-  (if (and (consp test-form) (symbolp (car test-form)) (fboundp (car test-form)) (not (macro-function (car test-form))))
+  ;; 引数を先に評価して表示するのは関数の呼び出しだけ。特殊演算子（if・let など）はそのまま評価する（Codex のレビュー P25 11回目）
+  (if (and (consp test-form) (symbolp (car test-form)) (fboundp (car test-form)) (not (macro-function (car test-form)))
+           (not (special-operator-p (car test-form))))
       (let* ((temps (mapcar (lambda (a) (declare (ignore a)) (gensym "ARG")) (cdr test-form)))
              (shown (mapcan (lambda (a temp) (if (zl-sys::%constant-form-p a) nil (list `',a temp)))
                             (cdr test-form) temps)))

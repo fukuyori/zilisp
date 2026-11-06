@@ -60,6 +60,10 @@
   restart object, it only checks that the restart is active (it no longer calls `:test` again without the condition).
   A restart found for a condition (also through `continue`, `store-value` and `use-value`) was rejected with a
   control-error
+- Fixed the issue of the eleventh Codex review of P25: `assert` no longer evaluates the arguments first when the test
+  form is a special operator such as `if` or `let` (it evaluated the branch not taken, and evaluated the bindings of
+  `let` as forms). `special-operator-p` is implemented for this (it agrees with SBCL 2.6.7 on the 25 special operators
+  of CL)
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

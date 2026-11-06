@@ -79,6 +79,14 @@ pub fn fboundp(th: *Thread, args: []const Value) Value {
     return Value.nil;
 }
 
+/// special-operator-p：特殊演算子の名前なら T（CLHS special-operator-p。Codex のレビュー P25 11回目：assert が使う）
+pub fn specialOperatorP(th: *Thread, args: []const Value) Value {
+    const name = args[0];
+    if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
+    const flags = @import("../values/object.zig").SymbolFlags;
+    return if (th.rt.symbolPtr(name).hasFlag(flags.special_operator)) th.rt.t else Value.nil;
+}
+
 /// symbol-function：シンボルの関数セルの関数（なければ undefined-function）
 pub fn symbolFunction(th: *Thread, args: []const Value) Value {
     const name = args[0];

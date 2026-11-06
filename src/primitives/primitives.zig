@@ -130,6 +130,7 @@ pub const table = [_]Entry{
     .{ .name = "TERPRI", .impl = streams.terpri, .min = 0, .max = 1 },
     // 関数の参照（Phase 10）
     .{ .name = "FBOUNDP", .impl = functions.fboundp, .min = 1, .max = 1 },
+    .{ .name = "SPECIAL-OPERATOR-P", .impl = functions.specialOperatorP, .min = 1, .max = 1 },
     .{ .name = "SYMBOL-FUNCTION", .impl = functions.symbolFunction, .min = 1, .max = 1 },
     // 特殊変数の値（Phase 14）
     .{ .name = "BOUNDP", .impl = functions.boundp, .min = 1, .max = 1 },

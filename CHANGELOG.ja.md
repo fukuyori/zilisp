@@ -52,6 +52,9 @@
 - Codex の 10 回目のレビュー（P25）の 1 件を直した：`invoke-restart`・`invoke-restart-interactively` に restart の
   オブジェクトを渡したら、いま有効かだけを確かめる（`:test` を condition なしで呼び直さない）。condition を指定して
   見つけた restart（`continue`・`store-value`・`use-value` の経路も）を control-error で拒否していた
+- Codex の 11 回目のレビュー（P25）の 1 件を直した：`assert` は、テストの式が特殊演算子（`if`・`let` など）なら引数を
+  先に評価しない（選ばれない分岐を評価し、`let` の束縛の並びを式として評価していた）。そのために `special-operator-p` を
+  実装した（CL の 25 個の特殊演算子で SBCL 2.6.7 と一致）
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

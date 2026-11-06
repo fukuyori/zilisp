@@ -2072,6 +2072,10 @@ test "conditions not handled reach the top level (Phase 25)" {
     // Codex のレビュー P25 10回目：抜けた restart-case の restart は、オブジェクトで呼んでも control-error
     // （restart は dynamic extent なので結果は未定義。SBCL 2.6.7 は memory fault）。抜けた後に束縛は残らない
     try expectValue(&e, "(let ((r (restart-case (find-restart 'p25-gone) (p25-gone () nil)))) (list (restart-name r) (handler-case (invoke-restart r) (control-error () :ce)) (handler-case (invoke-restart-interactively r) (control-error () :ce))))", "(P25-GONE :CE :CE)");
+    // Codex のレビュー P25 11回目：assert は特殊演算子の引数を先に評価しない。special-operator-p
+    try expectValue(&e, "(let ((n 0)) (assert (if t t (incf n))) (assert (let ((x 1)) (= x 1))) n)", "0");
+    try expectValue(&e, "(list (special-operator-p 'if) (special-operator-p 'when) (special-operator-p 'car))", "(T NIL NIL)");
+    try expectError(&e, "(special-operator-p 1)", .type_error);
     try expectValue(&e, "(progn (restart-case 1 (p25-gone () nil)) (handler-bind ((error #'identity)) 1) (list (find-restart 'p25-gone) zl-sys::*restart-clusters* zl-sys::*handler-clusters*))", "(NIL NIL NIL)");
     // エラーで抜けた後、handler・restart の束縛は残らない
     try expectValue(&e, "(list zl-sys::*handler-clusters* zl-sys::*restart-clusters*)", "(NIL NIL)");

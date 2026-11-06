@@ -1260,7 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
-| P25 | 1927 | 13.55 ms | 2.35 MB |
+| P25 | 1929 | 13.55 ms | 2.35 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1394,8 +1394,9 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、8回目）**、2 件（どれも SBCL 2.6.7 と照合した）：`surelyNotReal` を `realness` に替えた。返すのは yes（確かに `real` の下位）・no（実数でない要素を必ず含む）・unknown の 3 つ。実数の型の名前と `nil` は yes、ほかのアトムは no。`and` は `t` を除き、0 個なら `t`（no）、1 個ならその型、それ以外はどれかが yes なら yes、なければ unknown。`or` はどれかが no なら no、すべて yes なら yes。`(not (not X))` は X、`(not t)` は yes。アトムと、`and`・`or`・`satisfies` 以外の合成の型の `not` は no（そうした型は実数でない値をすべて含むことがない）。それ以外の `not` は、部分が yes なら no、そうでなければ unknown。`eql`・`member` は要素がすべて実数なら yes、そうでなければ no。`satisfies` は unknown。no は `simple-error`、unknown は `zilisp:unimplemented` を通知する。そのため `(complex (and string symbol))` などの空の交わりは未実装になる（SBCL は NIL。互いに素な型を見分けるには `subtypep` が要る）。
 - **Codex のレビューの修正（Phase 25、9回目）**、1 件（SBCL 2.6.7 と照合した）：`cons` の型の `realness` は、部分が `nil` なら yes（空の型）、両方の部分が空でないと言い切れれば no（`*`、`nil` 以外のアトム、`realness` が no の型）、それ以外は unknown。`complex` の合成の型は、`(complex)`・`(complex *)` だけが no で、ほかは unknown（SBCL では `(complex nil)`・`(complex (integer 0 0))` が空）。
 - **Codex のレビューの修正（Phase 25、10回目）**、1 件（SBCL 2.6.7 と照合した）：`invoke-restart`・`invoke-restart-interactively` が使う `zl-sys::%find-restart-or-lose` は、restart のオブジェクトが `zl-sys::*restart-clusters*` の中にあれば（`zl-sys::%restart-active-p`）そのまま受け付け、`:test` を呼び直さない。condition なしで呼び直していたので、`(find-restart 名前 condition)` で見つけた restart を拒否し、condition を渡した `continue`・`store-value`・`use-value` も動かなかった。名前は今までどおり `find-restart` で探す（`:test` は NIL を受け取る。SBCL と同じ）。抜けた `restart-case` の restart をオブジェクトで呼ぶと、Zilisp は control-error（restart は dynamic extent なので結果は未定義。SBCL 2.6.7 は memory fault）。この例は言語試験でなく `eval_test.zig` で確かめる。
+- **Codex のレビューの修正（Phase 25、11回目）**、1 件（SBCL 2.6.7 と照合した）：`assert` がテストの式の引数を一時変数に入れる（値を報告するため）のは、関数の呼び出しのときだけ。Zilisp では特殊演算子も `fboundp` が真なので、`(assert (if t t (incf n)))` は選ばれない分岐を評価し、`(assert (let ((x 1)) (= x 1)))` は `((x 1))` を式として評価していた。判定に `(not (special-operator-p 演算子))` を加えた。`special-operator-p` は新しいプリミティブ（`functions.specialOperatorP`）で、シンボルの `special_operator` の印を読む。CL の外部シンボルで真になるのは、SBCL 2.6.7 と同じ 25 個。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
-- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1927 に）。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1929 に）。
 
 ### 11.3 標準ライブラリのビルド
 

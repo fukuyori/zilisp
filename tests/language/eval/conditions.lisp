@@ -337,6 +337,18 @@
 ;; 抜けた restart-case の restart をオブジェクトで呼ぶ例は、結果が未定義（restart は dynamic extent。
 ;; SBCL 2.6.7 は memory fault）なので eval_test.zig で確かめる
 
+;;; Codex のレビューの 11 回目の指摘（SBCL 2.6.7 と比較）：assert は特殊演算子の引数を先に評価しない
+(print (let ((n 0)) (assert (if t t (incf n))) n))
+(print (handler-case (progn (assert (if t t (error "must not run"))) :ok) (error () :error)))
+(print (let ((n 0)) (assert (or t (incf n))) n))
+(print (let ((n 0)) (assert (and t (progn (incf n) t))) n))
+(print (handler-case (progn (assert (let ((x 1)) (= x 1))) :ok) (error () :error)))
+(print (let ((n 0)) (handler-case (assert (progn (incf n) nil)) (error () (list :error n)))))
+(print (mapcar #'special-operator-p '(if let let* quote progn setq the when and car assert)))
+(print (let ((r nil))
+         (do-external-symbols (s "COMMON-LISP") (if (special-operator-p s) (push (symbol-name s) r)))
+         (sort r #'string<)))
+
 ;;; 計算の途中で VM の命令が見つけたエラー（未束縛の変数）：handler が同じ関数の catch に戻っても、途中の値は壊れない
 (defvar *p25-unbound*)
 (defun p25-mid (x y) (list x y x y (catch 'p25-tag (+ x *p25-unbound*))))

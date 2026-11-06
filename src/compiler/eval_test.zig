@@ -2078,6 +2078,8 @@ test "conditions not handled reach the top level (Phase 25)" {
     try expectError(&e, "(special-operator-p 1)", .type_error);
     // eval の空の本体・リーダーマクロの後の EOF・要素のない reduce は値 1 つ（Codex のレビュー P25 14回目）
     try expectValue(&e, "(list (multiple-value-list (eval '(progn (values 1 2 3) (progn)))) (multiple-value-list (eval '(eval-when (:compile-toplevel) 1))) (let ((*readtable* (copy-readtable))) (set-macro-character #\\! (lambda (s c) (declare (ignore s c)) (values))) (multiple-value-list (read (make-string-input-stream \"!\") nil :eof))) (multiple-value-list (reduce (lambda () (values 0 7)) '())))", "((NIL) (NIL) (:EOF) (0))");
+    // 値を 1 つにするのは正常に戻ったときだけ：report・satisfies の中から throw で返す多値は保たれる（Codex のレビュー P25 15回目の提案）
+    try expectValue(&e, "(progn (define-condition p25-th-c (condition) () (:report (lambda (c s) (declare (ignore c s)) (throw 'p25-th (values 1 2 3))))) (list (multiple-value-list (catch 'p25-th (princ-to-string (make-condition 'p25-th-c)))) (multiple-value-list (catch 'p25-th (typep 1 '(satisfies identity)))) (multiple-value-list (catch 'p25-th (format nil \"~A\" (make-condition 'p25-th-c))))))", "((1 2 3) (T) (1 2 3))");
     // 印字の中で呼んだ関数が値を返さなくても、印字の関数の値は文字列 1 つ（Codex のレビュー P25 13回目）
     try expectValue(&e, "(progn (define-condition p25-mv-c (condition) () (:report (lambda (c s) (declare (ignore c)) (write-string \"m\" s) (values)))) (list (multiple-value-list (princ-to-string (make-condition 'p25-mv-c))) (multiple-value-list (format nil \"~A\" (make-condition 'p25-mv-c)))))", "((\"m\") (\"m\"))");
     // :report のシンボルは局所関数を指せる。flet の範囲を抜けた後に印字しても局所関数が呼ばれる（Codex のレビュー P25 12回目）

@@ -220,6 +220,8 @@ fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
         if (f.isFunctionPointer()) {
             var argv: [2]Value = .{ v, stream };
             if (th.call(f, &argv) == Value.unwind) return error.Lisp;
+            // 呼んだ関数（report など）の値の個数を残さない：印字の関数の値は単値（Codex のレビュー P25 13回目）
+            th.mv_count = 1;
             return;
         }
     }
@@ -378,6 +380,7 @@ fn runBody(th: *Thread, ps: Value, body: Body) Fail!void {
             if (stdOf(th, c.f)) |k| return runStd(th, ps, k, c.obj);
             var argv: [2]Value = .{ ps, c.obj };
             if (th.call(c.f, &argv) == Value.unwind) return error.Lisp;
+            th.mv_count = 1; // pprint-dispatch の関数の値の個数を残さない
         },
         .builtin => |b| return runStd(th, ps, b.k, b.obj),
         .list => |l| return listBlock(th, ps, l.obj, l.colon, l.style),
@@ -442,6 +445,7 @@ fn descend(th: *Thread, ps: Value, obj: Value, prefix: ?[]const u21, per_line: b
         .lisp => |f| {
             var argv: [3]Value = .{ ps, obj, state };
             if (th.call(f, &argv) == Value.unwind) return error.Lisp;
+            th.mv_count = 1; // 本体の関数の値の個数を残さない
         },
         .zig => |z| try z.f(z.ctx, th, ps, state),
     }

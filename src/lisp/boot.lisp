@@ -476,7 +476,8 @@
     (if from-end (setq items (reverse items)))
     (if key (setq items (mapcar key items)))
     (if (null items)
-        (if initial-value-p initial-value (funcall function))
+        ;; 要素がなければ関数を引数なしで呼ぶ。値は主値だけ（SBCL 2.6.7 と同じ。Codex のレビュー P25 14回目の調査）
+        (if initial-value-p initial-value (values (funcall function)))
         (let ((acc (if initial-value-p initial-value (car items))))
           (dolist (x (if initial-value-p items (cdr items)) acc)
             (setq acc (if from-end (funcall function x acc) (funcall function acc x))))))))

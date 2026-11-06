@@ -1260,7 +1260,7 @@ instance                      rack
 | P21.6 | 949 | 8.74 ms | 1.79 MB |
 | P22 | 1016 | 9.08 ms | 1.85 MB |
 | P23 | 1061 | 9.47 ms | 1.97 MB |
-| P25 | 1933 | 13.55 ms | 2.35 MB |
+| P25 | 1934 | 13.55 ms | 2.35 MB |
 
 - boot.lisp の空でない行が 100 行増えるごとに、約 0.3 ms 延びる。P21 の内訳は、空のプログラムでもかかる起動が約 4.1 ms、boot.lisp より前の準備が約 1.7 ms、boot.lisp の読み込みが約 3.0 ms。
 - **決まり（2026-11-03 決定）**：各フェーズの終わりに同じ方法で起動時間を測り、CHANGELOG とこの表に記録する。**20 ms** を超えたら、§11.3 の2段階ビルドを前倒しにする。
@@ -1396,8 +1396,10 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、10回目）**、1 件（SBCL 2.6.7 と照合した）：`invoke-restart`・`invoke-restart-interactively` が使う `zl-sys::%find-restart-or-lose` は、restart のオブジェクトが `zl-sys::*restart-clusters*` の中にあれば（`zl-sys::%restart-active-p`）そのまま受け付け、`:test` を呼び直さない。condition なしで呼び直していたので、`(find-restart 名前 condition)` で見つけた restart を拒否し、condition を渡した `continue`・`store-value`・`use-value` も動かなかった。名前は今までどおり `find-restart` で探す（`:test` は NIL を受け取る。SBCL と同じ）。抜けた `restart-case` の restart をオブジェクトで呼ぶと、Zilisp は control-error（restart は dynamic extent なので結果は未定義。SBCL 2.6.7 は memory fault）。この例は言語試験でなく `eval_test.zig` で確かめる。
 - **Codex のレビューの修正（Phase 25、11回目）**、1 件（SBCL 2.6.7 と照合した）：`assert` がテストの式の引数を一時変数に入れる（値を報告するため）のは、関数の呼び出しのときだけ。Zilisp では特殊演算子も `fboundp` が真なので、`(assert (if t t (incf n)))` は選ばれない分岐を評価し、`(assert (let ((x 1)) (= x 1)))` は `((x 1))` を式として評価していた。判定に `(not (special-operator-p 演算子))` を加えた。`special-operator-p` は新しいプリミティブ（`functions.specialOperatorP`）で、シンボルの `special_operator` の印を読む。CL の外部シンボルで真になるのは、SBCL 2.6.7 と同じ 25 個。
 - **Codex のレビューの修正（Phase 25、12回目）**、1 件（SBCL 2.6.7 と照合した）：`define-condition` の `:report` に書いたシンボルを引用して保存していたので、印字するといつも大域の関数が呼ばれていた。CLHS では `(function report-name)` を現在の字句環境で評価するので、`flet`・`labels` の局所関数を指さなければならない。シンボルは `(lambda (c s) (funcall (function 名前) c s))` に展開するようにした。lambda の中の `function` は、局所関数があればそれを指し、なければ呼んだときに大域の関数を探す（`define-condition` の後で定義した関数も使える。SBCL と同じ）。
+- **Codex のレビューの修正（Phase 25、13回目）**、1 件（SBCL 2.6.7 と照合した）：印字は Zig から Lisp の関数を 4 か所で呼ぶ（condition・restart の `zl-sys::%print-record`、`set-pprint-dispatch` の関数、`pprint-logical-block` の本体、`format` の `~/名前/`）が、その後で `th.mv_count` を戻していなかった。そのため、呼んだ関数の値が `princ-to-string`・`write-to-string`・`format nil` の値に混ざっていた（report が `(values 1 2 3)` を返すと `("r3" 2 3)`、`(values)` を返すと NIL）。4 か所とも、正常に戻ったら `th.mv_count = 1` にする（エラーと非局所脱出の経路は変えない）。調べる途中で別の問題が見つかった：印字を挟んだ際限のない再帰（report の中で自分の condition を `~A` で印字するなど）は Zig のスタックを溢れさせ、`storage-condition` にならずにプロセスが落ちる。Phase 25 の外の問題として別に扱う（tque #377）。
+- **Codex のレビューの修正（Phase 25、14回目）**、同じ種類の 3 件（SBCL 2.6.7 と照合した）と、確かめる途中で見つけた 1 件：`typep` の `(satisfies …)` の述語（`types.zig`）が値の個数を残していた（`(values nil 2 3)` を返す述語を `set-pprint-dispatch` に登録すると `write-to-string` が `("5" 2 3)`）。`eval` に渡した空の `progn`、`:execute` がないか本体のない `eval-when`（`eval.zig`）は、前のフォームやマクロの展開関数の値を残したまま NIL を返していた。`(values)` を返すリーダーマクロの直後に入力が終わると、`read` が終わりの値を返さず値なしになっていた（`streams.zig` の `eofResult`）。`:initial-value` なしで要素のない列の `reduce`（`boot.lisp`）は、関数の値をすべて返していた。どれも値 1 つにした。Zig から Lisp を呼ぶ 24 か所（`th.call`）をすべて確かめ、関数を受け取る関数の 45 例（列・リスト・集合・木・ハッシュ表・reader・マクロの展開・signal）を SBCL 2.6.7 と比べた。これら以外の違いは `union` の順（処理系依存）だけ。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
-- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1933 に）。
+- 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1934 に）。
 
 ### 11.3 標準ライブラリのビルド
 

@@ -67,6 +67,13 @@
 - Fixed the issue of the twelfth Codex review of P25: a symbol given to the `:report` option of `define-condition`
   now names the function in the lexical environment of the form (`(function name)`, CLHS), so it can be a local
   function of `flet` or `labels`. It used to be quoted, so the global function was always called
+- Fixed the issue of the thirteenth Codex review of P25: the values of a function called while printing (the report of
+  a condition or restart, `~/name/` of `format`, a `set-pprint-dispatch` function) no longer leak into the values of
+  `princ-to-string`, `write-to-string` or `format`. A report returning `(values)` made `princ-to-string` return NIL
+- Fixed the issues of the fourteenth Codex review of P25, all of the same kind: the values of a `(satisfies …)`
+  predicate (seen through `set-pprint-dispatch`), the values left before an empty `progn` or `eval-when` given to
+  `eval`, and the values of a reader macro just before the end of input no longer leak into the result. `reduce` on
+  an empty sequence without `:initial-value` now returns only the primary value of the function
 
 ### Changed
 - Releases no longer include `SHA256SUMS.txt`, and the release notes no longer say whether the packages are signed

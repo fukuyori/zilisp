@@ -23,6 +23,8 @@ pub fn eval(th: *Thread, form: Value) Value {
     while (f.isCons()) {
         const head = Runtime.consPtr(f).car;
         if (head == rt.syms.progn) {
+            // 本体が空なら NIL 1 つ（前の多値を残さない。Codex のレビュー P25 14回目）
+            th.mv_count = 1;
             var result = Value.nil;
             var x = Runtime.consPtr(f).cdr;
             while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
@@ -34,6 +36,7 @@ pub fn eval(th: *Thread, form: Value) Value {
         if (head == rt.syms.@"eval-when") {
             const rest = Runtime.consPtr(f).cdr;
             if (!rest.isCons()) break; // 形の誤りは Resolver が報告する
+            th.mv_count = 1; // 実行しない、または本体が空なら NIL 1 つ
             if (!hasExecute(th, Runtime.consPtr(rest).car)) return Value.nil;
             var result = Value.nil;
             var x = Runtime.consPtr(rest).cdr;

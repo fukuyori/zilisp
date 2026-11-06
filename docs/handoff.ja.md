@@ -7,7 +7,7 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。P25 のコミットは `5214e36`（本体）・`d6c0d6e`（3 回目の指摘）・`f1b6ab8`（4〜6 回目の指摘）・`25c48bb`（7 回目の指摘）・`d3dd091`（8 回目の指摘）・`3edff0f`（9 回目の指摘）・`01ce1bd`（10 回目の指摘）・`5c1d02a`（11 回目の指摘）と、12 回目の指摘の修正（この文書の更新と同じコミット）。デバッガの要件の文書（v1.1）は `b615282`。
+- ブランチ：`main`。P25 のコミットは `5214e36`（本体）・`d6c0d6e`（3 回目の指摘）・`f1b6ab8`（4〜6 回目の指摘）・`25c48bb`（7 回目の指摘）・`d3dd091`（8 回目の指摘）・`3edff0f`（9 回目の指摘）・`01ce1bd`（10 回目の指摘）・`5c1d02a`（11 回目の指摘）・`59fa8ac`（12 回目の指摘）と、13 回目・14 回目の指摘の修正（この文書の更新と同じコミット）。デバッガの要件の文書（v1.1）は `b615282`。
 - P25 の修正の要点：
   - `zilisp:unimplemented` を `error` の下位から外した（`serious-condition` の下位。`ignore-errors` や `(handler-case … (error …))` に飲み込まれない）。
   - Codex の 4 回目のレビューの 5 件の修正（マクロ・特殊演算子の `funcall`、`typep` の未実装の判定、`pprint-logical-block`・`loop` の誤りの型、`etypecase`・`ctypecase` の `otherwise`、`(setf (values …))`）。
@@ -19,20 +19,22 @@
   - Codex の 10 回目のレビューの 1 件の修正：`invoke-restart`・`invoke-restart-interactively` に restart のオブジェクトを渡したら、いま有効か（`zl-sys::*restart-clusters*` の中にあるか）だけを確かめ、`:test` を condition なしで呼び直さない（boot.lisp の `zl-sys::%find-restart-or-lose`・`%restart-active-p`）。抜けた `restart-case` の restart をオブジェクトで呼ぶ例は、SBCL 2.6.7 が memory fault になる（結果は未定義）ので、`eval_test.zig` で確かめる。
   - Codex の 11 回目のレビューの 1 件の修正：`assert` は、テストの式が特殊演算子（`if`・`let` など）なら引数を先に評価しない。そのために `special-operator-p` を実装した（primitives の `functions.specialOperatorP`。CL の 25 個で SBCL と一致）。
   - Codex の 12 回目のレビューの 1 件の修正：`define-condition` の `:report` のシンボルを `(lambda (c s) (funcall (function 名前) c s))` に展開する（CLHS：`(function report-name)` を現在の字句環境で評価）。`flet`・`labels` の局所関数を指せ、後から `defun` した関数も呼べる（SBCL と同じ）。
+  - Codex の 13 回目のレビューの 1 件の修正：印字の中で Zig から Lisp の関数を呼ぶ 4 か所（`src/printer/pprint.zig` の `zl-sys::%print-record`・pprint-dispatch の関数・`pprint-logical-block` の本体、`src/primitives/format.zig` の `~/名前/`）で、呼んだ後に `th.mv_count = 1` にした（report の値が `princ-to-string`・`format` の値に混ざっていた）。
+  - Codex の 14 回目のレビューの同じ種類の 3 件と、確かめる途中で見つけた 1 件の修正：`typep` の `satisfies` の述語（`types.zig`）、`eval` の空の `progn`・`eval-when`（`eval.zig`）、リーダーマクロの直後の入力の終わり（`streams.zig` の `eofResult`）、要素のない列の `reduce`（`boot.lisp`）で、値を 1 つにした。Zig から Lisp を呼ぶ 24 か所をすべて確かめ、関数を受け取る関数の 45 例を SBCL と比べた（ほかの違いは `union` の順だけ。処理系依存）。
 - P25（tque #317）の内容：condition・handler・restart、`typep`、型の分岐と `check-type`・`assert`、関数としての `eval`、`do`・`do*`・`psetq` の形の誤りを simple-error に。
   - 文書：設計書（英日）の §6.6・§7 の表・§9・Phase 25 の節・起動時間の表、CHANGELOG（英日）、README（英日）、`tests/differential/impl-dependent.toml`、`compatibility/eval-status.md`・`eval-check.tsv`（eval-check が生成）。
   - 決めたこと（2026-11-05、レモン）：condition は専用の `record` で表し P27 で CLOS にまとめる／標準の condition の report は SBCL の英語の文面／Zig で見つけたエラーは `th.signal` の場所ですぐ handler を呼ぶ／REPL は restart の一覧の表示まで。
-- 全体の検証（2026-11-06、`5c1d02a` の内容。コミットの前の作業ツリーで。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 513・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 79、起動時間の中央値 12.78 ms（ReleaseFast。最小 11.49 ms）。`01ce1bd` の検証も同じ数（起動時間は 12.91 ms）。
+- 全体の検証（2026-11-06、`5c1d02a` の内容。コミットの前の作業ツリーで。`59fa8ac` の検証も同じ数（起動時間は 13.48 ms、最小 12.51 ms）。13 回目の修正（コミットの前の作業ツリー）の全体の検証もすべて通過し同じ数（起動時間は 13.06 ms、最小 12.27 ms）。14 回目の修正の全体の検証はまだ。`verify_p215.ps1`）：test 3 モード通過、lang-test 65/65、native-test 36/36（Debug・ReleaseFast、通常と GC stress）、クロス5種通過、WSL の試験 125 passed・1 skipped・0 failed、reader-check・fmt 通過、eval-check 一致 513・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 79、起動時間の中央値 12.78 ms（ReleaseFast。最小 11.49 ms）。`01ce1bd` の検証も同じ数（起動時間は 12.91 ms）。
   - 一致が 514 から 513 に減ったのは Level 13 L704。未実装の `get-universal-time` を `ignore-errors` が受け止めなくなったため（`zilisp:unimplemented` の変更の結果）。
   - 文書の起動時間 13.55 ms は、`3edff0f` の版を `d3dd091` と交互に 41 回ずつ測った中央値（`d3dd091` は 13.67 ms。CPU の負荷が 69% のときの測定）。
-  - 12 回目の修正の後に流したのは test（Debug）・lang-test 65/65・fmt だけ（どれも通過）。`conditions.lisp` は SBCL・Zilisp の通常実行・GC stress で一致。文書の boot.lisp の行数は 1933 に直したが、起動時間は測り直していない。
-  - **未確認**：12 回目の修正の後の全体の検証（ReleaseSafe・ReleaseFast の test、native-test、クロス、WSL、eval-check、起動時間）。WSL の 1 skipped が前から同じか。12 回目の修正への Codex のレビュー。
+  - 14 回目の修正の後に流したのは test（Debug）・lang-test 65/65・fmt だけ（どれも通過）。`conditions.lisp` は SBCL・Zilisp の通常実行・GC stress で一致し、修正前の版では一致しないことを確かめた。boot.lisp の空でない行は 1934（文書も直した）。起動時間は測り直していない。
+  - **未確認**：14 回目の修正の後の全体の検証（ReleaseSafe・ReleaseFast の test、native-test、クロス、WSL、eval-check、起動時間）。WSL の 1 skipped が前から同じか。14 回目の修正への Codex のレビュー。
 - tque の #317 はまだ完了にしていない。#309（0.3 リリース）も完了にしていない。
 
 ## 2. 次の作業（tque）
 
-- P25 の残り：上の未確認の検証、12 回目の修正への Codex の再レビュー。名前で restart を探すとき、SBCL より多く後ろの `:test-function` を呼ぶ差は、仕様違反ではない（処理系の差）。CLHS の `find-restart` の Notes に `(find-restart identifier) == (find identifier (compute-restarts) :key :restart-name)` とあり、`restart-bind` の `:test-function` には呼ぶ時期・回数の定めがない（2026-11-06 に原文を確認）。`assert` の場所（places）の値を尋ねない制限は、設計書（Phase 25 の Lisp 側の説明）に書いたとおりまだ残る。#317 を完了にするかは、レモンの指示を待つ。
-  - Codex のレビュー 4〜12 回目：依頼は `request5.md`〜`request13.md`、結果は `result5.md`〜`result13.md`（同じフォルダ）。指摘はすべて直した。
+- P25 の残り：上の未確認の検証、14 回目の修正への Codex の再レビュー。名前で restart を探すとき、SBCL より多く後ろの `:test-function` を呼ぶ差は、仕様違反ではない（処理系の差）。CLHS の `find-restart` の Notes に `(find-restart identifier) == (find identifier (compute-restarts) :key :restart-name)` とあり、`restart-bind` の `:test-function` には呼ぶ時期・回数の定めがない（2026-11-06 に原文を確認）。`assert` の場所（places）の値を尋ねない制限（CLHS は `continue` の前に場所を変える機会を求める）は、デバッガのフェーズで直す（2026-11-06、レモン）。そのとき `y-or-n-p`・`yes-or-no-p`（いまは未定義）を足し、`continue` の restart の `:interactive` で場所ごとに SBCL と同じ「The old value of X is 1.」「Do you want to supply a new value?  (y or n)」を出す。デバッガの要件 v1.2 の段階 1 に加える。#317 を完了にするかは、レモンの指示を待つ。
+  - Codex のレビュー 4〜14 回目：依頼は `request5.md`〜`request15.md`、結果は `result5.md`〜`result15.md`（同じフォルダ）。指摘はすべて直した。
   - Codex のレビュー 1 回目（2026-11-05）：7 件。#1〜#6 は直した（言語試験 `conditions.lisp` に再現の例を入れた）。#7 `*break-on-signals*` はデバッガのフェーズへ。2 回目（再レビュー）：4 件、すべて直した（`*debugger-hook*` の例は、`sbcl --script` が呼ばないので単体テスト）。3 回目（`5214e36` に対して）：3 件、すべて直した（直した後の試験：test Debug・lang-test 65/65・native-test Debug 36/36・fmt 通過。ReleaseSafe・ReleaseFast とクロス・WSL は未確認）。依頼文と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`（`request.md`・`result1.md`）。
 - **デバッガ（tque #351、#317 の後）**：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。2026-11-05 に作成し、レモンが決定）。要点：外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。共通の中核の上に、JSON の出力・一括のデバッガ・MCP・DAP・Swank・REPL を載せる。0.4 に入れるのは段階 1（中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）で、tque #356。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
 - `zilisp:unimplemented` は `error` の下位にしない（`serious-condition` の下位。2026-11-05 にレモンが推奨の案で決定）。CL の未実装の関数・変数も handler には `zilisp:unimplemented` として通知する（`src/runtime/thread.zig` の callSignalHook）。
@@ -41,6 +43,7 @@
   - #344 P23 の受入の残り（Level 17 の text-tools を SBCL と比べる。P25 ができたので着手できる）
   - #349 印字の速さの改善（印字は SBCL の約 1.8 倍の時間）
   - #350 exit・quit（`*exit-hooks*` を入れるかは未決定）
+  - #377 印字の中の再帰でスタックが溢れるとプロセスが落ちる（report の中で自分の condition を `~A` で印字する・`~/名前/` の中で同じ `~/名前/` を使う・`pprint-logical-block` の再帰・pprint-dispatch の関数の中で同じ型を印字する。終了コード -1073741819、`Stack overflow (no address available)`）。Zig の関数を挟んだ入れ子の上限（`max_native_depth = 1000`。`src/runtime/thread.zig`）に届く前に Zig のスタックが溢れる（※推測です。zilisp.exe のスタックの大きさは未確認）。直し方の案：生成した実行ファイルと同じ残りのスタックの検査（`src/native/rt.zig` の `stack_limit`）を `th.call` にも入れる。Codex の 13 回目の調査で見つけた。P25 の外の作業にする（2026-11-06、レモン）。
 
 ## 3. リリースの手順（0.3 で決めたこと）
 

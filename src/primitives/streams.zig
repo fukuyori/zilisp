@@ -905,6 +905,8 @@ fn eofResult(th: *Thread, s: Value, eof_error: ?Value, eof_value: ?Value) Value 
     if (takeStdinOom(s)) return Value.unwind;
     if (eof_error == null or eof_error.? != Value.nil)
         return th.signal(.end_of_file, "ストリームの終わりです", s, Value.unbound);
+    // 直前に呼んだリーダーマクロの値の個数を残さない（Codex のレビュー P25 14回目）
+    th.mv_count = 1;
     return eof_value orelse Value.nil;
 }
 

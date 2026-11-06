@@ -2076,6 +2076,10 @@ test "conditions not handled reach the top level (Phase 25)" {
     try expectValue(&e, "(let ((n 0)) (assert (if t t (incf n))) (assert (let ((x 1)) (= x 1))) n)", "0");
     try expectValue(&e, "(list (special-operator-p 'if) (special-operator-p 'when) (special-operator-p 'car))", "(T NIL NIL)");
     try expectError(&e, "(special-operator-p 1)", .type_error);
+    // eval の空の本体・リーダーマクロの後の EOF・要素のない reduce は値 1 つ（Codex のレビュー P25 14回目）
+    try expectValue(&e, "(list (multiple-value-list (eval '(progn (values 1 2 3) (progn)))) (multiple-value-list (eval '(eval-when (:compile-toplevel) 1))) (let ((*readtable* (copy-readtable))) (set-macro-character #\\! (lambda (s c) (declare (ignore s c)) (values))) (multiple-value-list (read (make-string-input-stream \"!\") nil :eof))) (multiple-value-list (reduce (lambda () (values 0 7)) '())))", "((NIL) (NIL) (:EOF) (0))");
+    // 印字の中で呼んだ関数が値を返さなくても、印字の関数の値は文字列 1 つ（Codex のレビュー P25 13回目）
+    try expectValue(&e, "(progn (define-condition p25-mv-c (condition) () (:report (lambda (c s) (declare (ignore c)) (write-string \"m\" s) (values)))) (list (multiple-value-list (princ-to-string (make-condition 'p25-mv-c))) (multiple-value-list (format nil \"~A\" (make-condition 'p25-mv-c)))))", "((\"m\") (\"m\"))");
     // :report のシンボルは局所関数を指せる。flet の範囲を抜けた後に印字しても局所関数が呼ばれる（Codex のレビュー P25 12回目）
     try expectValue(&e, "(progn (defun p25-rep (c s) (declare (ignore c)) (write-string \"global\" s)) (flet ((p25-rep (c s) (declare (ignore c)) (write-string \"local\" s))) (define-condition p25-rep-c (condition) () (:report p25-rep))) (list (princ-to-string (make-condition 'p25-rep-c)) (princ-to-string (make-condition 'p25-rep-c))))", "(\"local\" \"local\")");
     try expectValue(&e, "(progn (restart-case 1 (p25-gone () nil)) (handler-bind ((error #'identity)) 1) (list (find-restart 'p25-gone) zl-sys::*restart-clusters* zl-sys::*handler-clusters*))", "(NIL NIL NIL)");

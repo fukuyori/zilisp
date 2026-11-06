@@ -58,6 +58,12 @@
 - Codex の 12 回目のレビュー（P25）の 1 件を直した：`define-condition` の `:report` に書いたシンボルは、その形の字句環境の
   関数（`(function 名前)`。CLHS）を指すようにした。`flet`・`labels` の局所関数も書ける（引用して保存していたので、
   いつも大域の関数が呼ばれていた）
+- Codex の 13 回目のレビュー（P25）の 1 件を直した：印字の中で呼んだ関数（condition・restart の report、`format` の
+  `~/名前/`、`set-pprint-dispatch` の関数）の値が、`princ-to-string`・`write-to-string`・`format` の値に混ざらないように
+  した（report が `(values)` を返すと `princ-to-string` が NIL を返していた）
+- Codex の 14 回目のレビュー（P25）の同じ種類の 3 件を直した：`(satisfies …)` の述語の値（`set-pprint-dispatch` で見える）、
+  `eval` に渡した空の `progn`・`eval-when` の前の値、入力の終わりの直前のリーダーマクロの値が、結果に混ざらないように
+  した。`:initial-value` なしで要素のない列に `reduce` を使うと、関数の主値だけを返すようにした
 
 ### Changed
 - リリースに `SHA256SUMS.txt` を付けず、リリースノートに配布物の署名の有無を書かないようにした

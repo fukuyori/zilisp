@@ -1004,6 +1004,8 @@ fn callWithStream(c: *Ctx, o: *Out, f: Value, args: []const Value, extra: []cons
     @memcpy(argv[1 + args.len .. 1 + args.len + extra.len], extra);
     const r = th.call(f, argv[0 .. 1 + args.len + extra.len]);
     if (r == Value.unwind) return error.Lisp;
+    // 呼んだ関数の値の個数を残さない：format の値は単値（Codex のレビュー P25 13回目）
+    th.mv_count = 1;
     if (o.stream != null) {
         o.base_col = streams.columnOf(th, s);
         o.base_line_start = streams.atLineStart(th, s);

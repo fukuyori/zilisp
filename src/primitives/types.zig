@@ -540,6 +540,8 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
         var argv: [1]Value = .{v};
         const r = th.call(first orelse return unknown(th, spec), &argv);
         if (r == Value.unwind) return error.Lisp;
+        // 述語の値の個数を残さない（印字・format の値に混ざる。Codex のレビュー P25 14回目）
+        th.mv_count = 1;
         return r != Value.nil;
     }
     if (Is.eq(hn, "INTEGER")) return isInteger(v) and try inRange(th, v, args);

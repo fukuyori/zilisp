@@ -7,11 +7,12 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。最新のコミットは `4833203`（Phase 25 の後の引き継ぎの更新）。**Phase 26（defstruct）と時刻の関数（#378）は作業ツリーにあり、コミットしていない**（2026-11-10 の時点。`git status -sb` で確かめること）。
-- tque：#317（P25）は完了。#318（P26）・#378（時刻）・#380（リストの中の condition の印字）は、実装は作業ツリーにあるが、tque では未完了のまま（完了にするのはレモンの指示を受けてから）。今は 0.4（#316）の途中。
-- 2026-11-10 に作業ツリーで確かめたこと（全体の検証のスクリプトは走らせていない）：test Debug、lang-test 69/69、native-test Debug 38/38（通常と GC stress）、fmt、reader-check（Zilisp だけがエラーは 5。`#C` の 2 つと、`##`・コロンの 3 つ。`#S` によるものはない）、eval-check 一致 545・output-diff 1（Level 13 L455。処理系依存）・zilisp-error 47、クロス 2 種（x86_64-linux-musl・aarch64-macos。ReleaseFast）、Linux 版を WSL で実行して `time.lisp`・`defstruct.lisp` が期待値と一致、起動時間の中央値 14.06 ms（ReleaseFast。`4833203` と交互に 41 回ずつ。`4833203` は 13.40 ms）。
-  - **未確認**：test の ReleaseSafe・ReleaseFast、native-test の ReleaseFast、クロスの残り 3 種（aarch64-linux-musl・x86_64-macos・aarch64-windows）、WSL の単体テスト、macOS での時刻の関数の動作（クロスビルドが通ることだけを確かめた）。
-- 全体の検証（`verify_p215.ps1`）が最後に通ったのは `b9949a1`（2026-11-06。Phase 26 の前）。
+- ブランチ：`main`。Phase 26（defstruct）と時刻の関数（#378）のコミットは `7cb07fe`（2026-11-10 に push）。**Codex のレビュー 1 回目の 5 件の修正は、この文書と同じコミットに入れる**（2026-11-10 の時点では作業ツリーにあり、コミットしていない。`git status -sb` と `git log --oneline -3` で確かめること）。
+- tque：#317（P25）は完了。#318（P26）・#378（時刻）・#380（リストの中の condition の印字）は、実装は済んでいるが、tque では未完了のまま（完了にするのはレモンの指示を受けてから）。今は 0.4（#316）の途中。
+- 全体の検証（`verify_p215.ps1`）が最後に通ったのは `7cb07fe`（2026-11-10）：test 3 モード、lang-test 69/69、native-test 38/38（Debug・ReleaseFast、通常と GC stress）、クロス 5 種、WSL の試験 126 passed・1 skipped・0 failed、reader-check・fmt、eval-check 一致 545・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 47、起動時間の中央値 14.19 ms（ReleaseFast。最小 13.18 ms）。
+  - Codex の 1 回目の修正の後に確かめたのは、fmt、test Debug、lang-test 69/69、`defstruct.lisp`・`time.lisp` の SBCL・VM・GC stress・ネイティブ（通常と GC stress）での一致まで。**未確認**：修正の後の native-test の全体、eval-check、クロス、WSL。
+  - Linux 版を WSL（Asia/Tokyo）で実行して `time.lisp`・`defstruct.lisp` が期待値と一致することは、`7cb07fe` と同じソースで確かめた。**未確認**：macOS での時刻の関数の動作（クロスビルドが通ることだけ）、夏時間のある地域の動作、WSL の 1 skipped が前から同じ試験か。
+  - 起動時間は、`4833203`（Phase 26 の前）と交互に 41 回ずつ測ると 13.40 ms → 14.06 ms。
 
 ## 2. P26（defstruct）と時刻の関数のまとめ
 
@@ -25,11 +26,12 @@
   - 構造体・condition を中に含むリスト・ベクタは、`*print-pretty*` が NIL でも pretty printer の経路で書く（`streams.hasLispPrinted`）。これで #380 の `prin1` の形は SBCL と同じになった（`condition-print-in-list` の項目を処理系依存の一覧から外した）。
   - `tests/language/gc-stress/` に試験を足すときは、`名前.args`（`--gc-stress --script`）も置く（ないと別の引数で実行されて失敗する）。
 - README（英日）の「0.3.0 で実装したもの」の一覧に、構造体と時刻の行を足した（condition の行と同じ場所）。0.3.0 のリリースには入っていない機能なので、見出しを分けるかはレモンの判断待ち。
-- Codex のレビューは、P26 についてはまだ行っていない。
+- Codex のレビュー（P26）：1 回目（`7cb07fe` に対して）は 5 件。どれも Zilisp と SBCL 2.6.7 で再現し、直した（`#n#` で自分を指す `#S`、BOA の supplied-p の変数と同じ名前のスロット、`:include` で型を書き換えたときの元の型、`decode-universal-time` の time-zone が秒にして整数にならない場合、オプションの余分な引数と重なり。内容は設計書の「Codex のレビューの修正（Phase 26、1回目）」）。依頼と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\d4a5fc96-8737-44b4-9d02-2040df687ef5\scratchpad\codex\`（`request1.md`・`result1.md`、再現の `r1.lisp`・`r2.lisp`）。
+  - `#n=` の仮の値は car が unbound の cons（`value_builder.zig` の `labelDefine`）。`zl-sys::%check-slot-type` はこれを検査せず、`labelFinish` が置き換えた後で `zl-sys::%check-structure-slots` を呼ぶ。
 
 ## 3. 次の作業（tque）
 
-- **P26 の仕上げ**：レモンの指示を受けて、コミット、全体の検証（`verify_p215.ps1`）、Codex のレビュー（§5 の流れ）。その後で #318・#378・#380 を完了にするかを確かめる。
+- **P26 の仕上げ**：レモンの指示を受けて、1 回目の修正のコミット、全体の検証（`verify_p215.ps1`）、Codex のレビューの 2 回目（§5 の流れ。指摘がなくなるまで）。その後で #318・#378・#380 を完了にするかを確かめる。
 - **見つけた違い（tque には未登録）**：`*print-pretty*` が NIL のとき、type-error を `princ` すると `The value   1 is not of type   STRING` と空白が余分に入る（SBCL 2.6.7 は空白 1 つ。report の `~2@T` の扱いと推測される。※推測です。Phase 26 の変更の前から同じ）。
 - **デバッガ（#351）**：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。v1.1、`b615282`）。外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。0.4 に入れるのは段階 1（#356：中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
   - 次にするのは要件の文書の v1.2（英日）。段階 1 に `assert` の場所の問い合わせを加える：`y-or-n-p`・`yes-or-no-p`（いまは未定義）を足し、`continue` の restart の `:interactive` で場所ごとに SBCL と同じ「The old value of X is 1.」「Do you want to supply a new value?  (y or n)」を出す（CLHS は `continue` の前に場所を変える機会を求める）。`*break-on-signals*`（Codex P25 1 回目 #7）も段階 1。

@@ -20,6 +20,11 @@
 - Tests: the language tests `defstruct.lisp` and `time.lisp` (the same output as SBCL 2.6.7; also gc-stress versions and
   native) and unit tests. The curriculum blocks that use `defstruct` (31 blocks in Levels 7, 19, 23, 24 and 26) and one that
   uses `get-universal-time` now give the same output as SBCL; curriculum blocks matching went from 513 to 545
+- Fixed 5 issues from the Codex review of Phase 26 (all checked against SBCL 2.6.7): a structure that refers to itself
+  through `#n#`, as in `#1=#S(node :next #1#)`, can be read (the placeholder stayed in the slot; typed slots are checked
+  after the replacement), a slot named like the supplied-p variable of a BOA constructor, the original type of a slot is
+  still checked when `:include` overrides its type, `decode-universal-time` signals a type-error when the time-zone is not a
+  whole number of seconds, and extra arguments and repeated options of `defstruct` are errors
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

@@ -2214,7 +2214,8 @@
   (let ((west 0) (daylight nil) (zone time-zone))
     ;; time-zone を指定したら夏時間は考えない（CLHS decode-universal-time）
     (if time-zone
-        (setq west (* time-zone 3600))
+        ;; 秒にした値は整数（SBCL 2.6.7 と同じ：1/7 や 1/7200 は type-error。Codex のレビュー P26 1回目 #4）
+        (setq west (zl-sys::%time-arg (* time-zone 3600) 'fixnum))
         (multiple-value-bind (w d) (zl-sys::%seconds-west universal-time)
           (setq west w daylight d zone (if d (1+ (/ w 3600)) (/ w 3600)))))
     (multiple-value-bind (days secs) (floor (- universal-time west) 86400)
@@ -2340,6 +2341,9 @@
                     (var (if (consp head) (cadr head) head))
                     (slot (zl-sys::%find-structure-slot var slots)))
                (push var bound)
+               ;; supplied-p の変数も、同じ名前のスロットの値になる（Codex のレビュー P26 1回目 #2）
+               (if (and (consp item) (consp (cdr item)) (consp (cddr item)) (not (eq state '&aux)))
+                   (push (caddr item) bound))
                (push (cond ((and (consp item) (consp (cdr item))) item)
                            ((and slot (not (eq state '&aux))) (list head (cadr slot)))
                            (t item))
@@ -2356,7 +2360,7 @@
 (defun zl-sys::%expand-defstruct (name-and-options slot-descriptions)
   (let* ((name (if (consp name-and-options) (car name-and-options) name-and-options))
          (options (if (consp name-and-options) (cdr name-and-options) nil))
-         (conc-name nil)
+         (conc-name nil) (conc-name-p nil)
          (constructors nil) (constructor-p nil)
          (copier nil) (copier-p nil)
          (predicate nil) (predicate-p nil)
@@ -2369,8 +2373,20 @@
     (dolist (option options)
       (let ((key (if (consp option) (car option) option))
             (args (if (consp option) (cdr option) nil)))
+        ;; 引数の個数・型と、同じオプションの重なり（SBCL 2.6.7 もエラー。:constructor は重ねてよい。
+        ;; Codex のレビュー P26 1回目 #5）
+        (when (or (not (listp args))
+                  (and (member key '(:conc-name :copier :predicate :print-function :print-object)) (cdr args))
+                  (and (eq key :constructor) (cddr args))
+                  (and (eq key :conc-name) conc-name-p)
+                  (and (eq key :copier) copier-p)
+                  (and (eq key :predicate) predicate-p))
+          (zl-sys::%macro-form-error "DEFSTRUCT のオプションの引数が多すぎるか、同じオプションが重なっています" option))
+        (when (and (member key '(:copier :predicate)) args (not (symbolp (car args))))
+          (error 'type-error :datum (car args) :expected-type 'symbol))
         (cond ((eq key :conc-name)
-               (setq conc-name (if (and args (car args)) (string (car args)) "")))
+               (setq conc-name-p t
+                     conc-name (if (and args (car args)) (string (car args)) "")))
               ((eq key :constructor)
                (setq constructor-p t)
                (cond ((null args) (push (list (intern (concatenate 'string "MAKE-" (symbol-name name)))) constructors))
@@ -2417,7 +2433,12 @@
             (unless s
               (zl-sys::%macro-form-error "DEFSTRUCT の :include のスロットが、元の構造体にありません" spec))
             (setf (cadr s) (cadr o))
-            (if (nth 4 o) (setf (caddr s) (caddr o)))
+            ;; 型を書き換えても、元の構造体の型は満たさなければならない（元のアクセサからも読むので）：両方の型にする
+            ;; （SBCL 2.6.7 も両方で検査する。Codex のレビュー P26 1回目 #3）
+            (if (nth 4 o)
+                (setf (caddr s) (cond ((eq (caddr s) t) (caddr o))
+                                      ((or (eq (caddr o) t) (equal (caddr o) (caddr s))) (caddr s))
+                                      (t (list 'and (caddr s) (caddr o))))))
             (if (nth 5 o)
                 (if (and (nth 3 s) (not (nth 3 o)))
                     (zl-sys::%macro-form-error "DEFSTRUCT の :include で、read-only のスロットを書き換えられるようにはできません" spec)
@@ -2517,6 +2538,14 @@
         (funcall printer object stream)
         (zl-sys::%default-structure-print object stream class))
     object))
+
+;; 構造体のスロットの型を確かめ直す。reader が、#n# の仮の値を置き換えた構造体に対して呼ぶ（構築子は仮の値を検査
+;; しない：#1=#S(node :next #1#)。src/reader/value_builder.zig の labelFinish。Codex のレビュー P26 1回目 #1）
+(defun zl-sys::%check-structure-slots (object)
+  (let ((class (zl-sys::%structure-class-of object)) (index 0))
+    (dolist (s (svref class 3) object)
+      (zl-sys::%check-slot-type (zl-sys::%structure-ref object (svref class 0) index) (caddr s))
+      (setq index (1+ index)))))
 
 ;;; #S(名前 スロット 値 …) の読み取り（src/reader/value_builder.zig の structure が呼ぶ）。標準の構築子を呼ぶ。
 ;;; 形の誤りは数を返す（reader-error にするのは Zig の側）：1 リストでない・名前がない、2 構造体がない、3 構築子がない、

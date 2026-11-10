@@ -18,6 +18,10 @@
 - 試験：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
   教材の `defstruct` を使うブロック（Level 7・19・23・24・26 の 31 個）と `get-universal-time` を使う 1 個が SBCL と同じ出力になり、
   教材のブロックの一致は 513 から 545 に
+- Codex のレビュー（P26）で見つけた 5 件を直した（どれも SBCL 2.6.7 と照合した）：`#1=#S(node :next #1#)` のように `#n#` で
+  自分を指す構造体を読める（スロットに仮の値が残っていた。型のあるスロットは置き換えた後で確かめる）、BOA の構築子の
+  supplied-p の変数と同じ名前のスロット、`:include` でスロットの型を書き換えても元の型を検査する、`decode-universal-time` の
+  time-zone が秒にして整数にならなければ type-error、`defstruct` のオプションの余分な引数と重なりをエラーにする
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

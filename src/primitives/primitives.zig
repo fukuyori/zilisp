@@ -548,6 +548,7 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_signal_hook = try rt.intern(rt.sys, "%SIGNAL-ZIG-ERROR");
     rt.sys_print_record = try rt.intern(rt.sys, "%PRINT-RECORD");
     rt.sys_read_structure = try rt.intern(rt.sys, "%READ-STRUCTURE");
+    rt.sys_check_structure = try rt.intern(rt.sys, "%CHECK-STRUCTURE-SLOTS");
     rt.sys_class_key = try rt.intern(rt.sys, "%CLASS");
     rt.debugger_hook = rt.findSymbol(rt.cl, "*DEBUGGER-HOOK*").?.symbol;
     _ = try rt.intern(rt.sys, "TOO-FEW");

@@ -41,6 +41,12 @@
 (try (encode-universal-time 0 0 0 1 1 2000 30))
 (try (encode-universal-time 1.0 0 0 1 1 2000 0))
 (try (encode-universal-time 0 0 0 1 1 3000 0))
+;; time-zone を秒にした値が整数でなければ type-error（Codex のレビュー P26 1回目 #4）
+(try (decode-universal-time 3944123456 1/7))
+(try (decode-universal-time 3944123456 1/7200))
+(try (decode-universal-time 3944123456 1/3600))
+(try (encode-universal-time 0 0 0 1 1 2000 1/7))
+(try (encode-universal-time 0 0 0 1 1 2000 1/3600))
 ;; その土地の時刻：往復すると元に戻る
 (try (let ((u (encode-universal-time 1 2 3 4 5 1950))) (subseq (multiple-value-list (decode-universal-time u)) 0 6)))
 (try (let ((u (encode-universal-time 0 0 0 1 1 3000))) (subseq (multiple-value-list (decode-universal-time u)) 0 6)))

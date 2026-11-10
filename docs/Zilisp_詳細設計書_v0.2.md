@@ -1435,6 +1435,12 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
   - 32 ビットの `time_t` の範囲の外の時刻は、その年の 3 月 1 日からの秒数を 2035 年（後ろ）・1903 年（前）の 3 月 1 日に足した時刻の規則を使う（SBCL の方式）。
   - `get-internal-real-time`・`get-internal-run-time`・`internal-time-units-per-second`・`sleep` は未実装のまま。
 - **試験**：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ。Linux（WSL）でも同じ）。`time.lisp` は、その土地の時刻と今の年によって変わるものは値の形だけを確かめる。
+- **Codex のレビューの修正（Phase 26、1回目）**、5 件（どれも SBCL 2.6.7 と照合した）：
+  - `#1=#S(node :next #1#)` のように `#n#` で自分（や外側のオブジェクト）を指す構造体：reader の `#n#` の置き換え（`value_builder.zig` の `patch`）が構造体のスロットをたどっていなかったので、仮の値がスロットに残っていた。`patch` が構造体のスロットも置き換える。`#n=` の仮の値は car が unbound の cons にして、ほかの cons と区別できるようにした。`zl-sys::%check-slot-type` は仮の値を検査せず、置き換えた後で reader が `zl-sys::%check-structure-slots` でその構造体のスロットの型を確かめる（型に合わなければ、そこで type-error）。
+  - BOA の構築子の supplied-p の変数（`(&optional (a 10 present))` の `present`）も、同じ名前のスロットの値にする（initform が入っていた）。
+  - `:include` でスロットの型を書き換えたとき、元の型も満たさなければならない（元の構造体のアクセサからも読むため）。型は `(and 元の型 新しい型)` として持つ（片方が `t` か、同じならそのまま）。
+  - `decode-universal-time` は、time-zone を秒にした値が整数でなければ type-error（`1/7`・`1/7200`。秒が比になっていた）。
+  - `defstruct` のオプションの余分な引数（`(:copier nil extra)` など）、シンボルでない `:copier`・`:predicate` の名前、`:conc-name`・`:copier`・`:predicate` の重なりをエラーにする（`:constructor` は重ねてよい）。
 - 結果（受入：Level 19 の主要コード）：Level 19 で `defstruct` のために Zilisp だけがエラーだった 10 ブロックは、すべて SBCL 2.6.7 と同じ出力（Level 19 に Zilisp だけがエラーのブロックはなくなった）。ほかの Level の `defstruct` のブロック（Level 7 の 7、Level 23 の 9、Level 24 の 2、Level 26 の 3）と、`get-universal-time` を呼ぶ Level 13 の 1 つも同じ出力になった。教材のブロックの一致は 513 から 545 に、Zilisp だけがエラーは 79 から 47 に（出力の違いは L455 の 1 つのまま）。boot.lisp の空でない行は 1934 から 2282 に。起動時間は 14.06 ms（変更の前の `4833203` と交互に 41 回ずつ測った中央値。変更の前は 13.40 ms）。pretty でない印字で先にリストを走査する費用は、4 万回の `prin1-to-string` で約 1 ms（起動時間の差を除く）。
 
 ### 11.3 標準ライブラリのビルド

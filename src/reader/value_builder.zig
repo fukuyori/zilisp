@@ -320,7 +320,9 @@ pub const ValueBuilder = struct {
         if (n > std.math.maxInt(i32)) return fail(diag, loc, "#n= の数が大きすぎます");
         if (b.labelEntry(n) != null) return fail(diag, loc, "同じ #n= のラベルが2回あります");
         const rt = b.rt;
-        const ph = try rt.cons(Value.nil, Value.nil);
+        // 仮の値は car が unbound の cons（利用者のデータには現れないので、ほかの cons と区別できる。構造体のスロットの型の
+        // 検査 zl-sys::%check-slot-type は、仮の値を検査しない。Codex のレビュー P26 1回目 #1）
+        const ph = try rt.cons(Value.unbound, Value.nil);
         const e = try rt.cons(Value.fromFixnum(@intCast(n)), ph);
         const cell = b.labelsCell();
         cell.* = try rt.cons(e, cell.*);
@@ -332,7 +334,19 @@ pub const ValueBuilder = struct {
         if (obj == ph) return fail(diag, loc, "#n= の直後に同じ #n# は置けません");
         const e = b.labelEntry(n).?;
         Runtime.consPtr(e).cdr = obj;
-        try patch(b.rt, obj, ph, obj);
+        // 仮の値を置き換えた構造体は、置き換えた後でスロットの型を確かめる（構築子は仮の値を検査しなかった。
+        // Codex のレビュー P26 1回目 #1）。構造体は obj からたどれるので、検査の間も GC に回収されない
+        var patched: std.ArrayList(Value) = .empty;
+        defer patched.deinit(b.rt.gpa);
+        try patch(b.rt, obj, ph, obj, &patched);
+        if (patched.items.len != 0) if (b.th) |th| {
+            const f = if (b.rt.sys_check_structure == Value.nil) Value.nil else b.rt.symbolPtr(b.rt.sys_check_structure).function;
+            if (f.isFunctionPointer()) for (patched.items) |s| {
+                var argv: [1]Value = .{s};
+                if (th.call(f, &argv) == Value.unwind) return error.LispError;
+                th.mv_count = 1;
+            };
+        };
         return obj;
     }
 
@@ -512,8 +526,9 @@ fn isCharType(rt: *Runtime, t: Value) bool {
     return false;
 }
 
-/// obj の中（cons・単純ベクタ・配列の要素）の ph を val に置き換える。循環していてもよい（一度通ったものは見ない）
-fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
+/// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）の ph を val に置き換える。循環していてもよい
+/// （一度通ったものは見ない）。スロットを置き換えた構造体は patched に足す
+fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, patched: *std.ArrayList(Value)) Error!void {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);
@@ -521,7 +536,7 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
     defer stack.deinit(gpa);
     try stack.append(gpa, obj);
     while (stack.pop()) |x| {
-        if (!(x.isCons() or (x.isOther() and (Runtime.kindOf(x) == .simple_vector or Runtime.kindOf(x) == .array)))) continue;
+        if (!(x.isCons() or (x.isOther() and (Runtime.kindOf(x) == .simple_vector or Runtime.kindOf(x) == .array or Runtime.kindOf(x) == .structure)))) continue;
         const g = try seen.getOrPut(gpa, x.raw());
         if (g.found_existing) continue;
         if (x.isCons()) {
@@ -532,6 +547,18 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
             for (Runtime.vectorPtr(x).items()) |*it| {
                 if (it.* == ph) it.* = val else try stack.append(gpa, it.*);
             }
+        } else if (Runtime.kindOf(x) == .structure) {
+            // 構造体（Phase 26）：#1=#S(node :next #1#) のように、スロットに仮の値が入っている
+            const object = @import("../values/object.zig");
+            const s: *object.Structure = @ptrCast(@alignCast(x.pointer()));
+            var changed = false;
+            for (s.slots()) |*it| {
+                if (it.* == ph) {
+                    it.* = val;
+                    changed = true;
+                } else try stack.append(gpa, it.*);
+            }
+            if (changed) try patched.append(gpa, x);
         } else {
             const object = @import("../values/object.zig");
             const a: *object.Array = @ptrCast(@alignCast(x.pointer()));

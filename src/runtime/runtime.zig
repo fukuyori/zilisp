@@ -255,6 +255,8 @@ pub const Runtime = struct {
     sys_print_record: Value = Value.nil,
     /// #S(…) を構造体にする関数 zl-sys::%read-structure（boot.lisp。Phase 26）
     sys_read_structure: Value = Value.nil,
+    /// 構造体のスロットの型を確かめ直す関数 zl-sys::%check-structure-slots（#n# を置き換えた後に reader が呼ぶ）
+    sys_check_structure: Value = Value.nil,
     sys_class_key: Value = Value.nil,
     /// *debugger-hook*（Zig で見つけたエラーでも呼ぶ。Phase 25）
     debugger_hook: Value = Value.nil,

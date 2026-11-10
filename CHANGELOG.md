@@ -112,6 +112,9 @@
 - With `*print-pretty*` NIL, conditions and restarts inside lists and vectors print in the same form as SBCL 2.6.7
   (they printed as `#<type {address}>`)
 - Top-level error reports write structure values in the `#S(...)` form
+- `zig build native-test` runs the tests in parallel (the number of jobs comes from the environment variable
+  `ZILISP_NATIVE_TEST_JOBS`, by default half the logical processors, 1 to 8; results are printed in name order; Debug for
+  38 files went from about 37 minutes to about 7)
 
 ## 0.3.0 - 2026-11-04
 

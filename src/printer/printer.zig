@@ -351,6 +351,41 @@ const P = struct {
                 try p.symbol(Runtime.vectorPtr(r.class).items()[object.record_class_name]);
                 return w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
             },
+            .structure => {
+                // 構造体（Phase 26）。印字はいつも Lisp の印字の関数（zl-sys::%print-record）を通る。ここは、それを通らない
+                // 場合（トップレベルのエラーの報告の中の値など）の形：#S(名前 :スロット 値 …)（:print-function などは使わない）。
+                // 読み戻せる形が要るとき（ネイティブの定数のテキスト）は、読み戻せないものとする（構造体のリテラルは
+                // 実行時にしか読めない）
+                if (p.s.readably) return p.notReadable(v);
+                const object = @import("../values/object.zig");
+                const st: *object.Structure = @ptrCast(@alignCast(v.pointer()));
+                const class = Runtime.vectorPtr(st.class).items();
+                if (st.header.len > 0 and p.levelExceeded(depth)) return w.writeByte('#');
+                try w.writeAll("#S(");
+                try p.symbol(class[object.record_class_name]);
+                // クラスの記述の位置 3 がスロットの (名前 …) のリスト（boot.lisp の defstruct）
+                var names = if (class.len > 3) class[3] else Value.nil;
+                for (st.slots(), 0..) |x, i| {
+                    if (p.s.length) |l| if (i >= l) {
+                        try w.writeAll(" ...");
+                        break;
+                    };
+                    if (names.isCons()) {
+                        const slot = Runtime.consPtr(names).car;
+                        names = Runtime.consPtr(names).cdr;
+                        if (slot.isCons() and Runtime.consPtr(slot).car != Value.nil and Runtime.kindOf(Runtime.consPtr(slot).car) == .symbol) {
+                            var name_buf: Writer.Allocating = .init(rt.gpa);
+                            defer name_buf.deinit();
+                            Runtime.writeStringUtf8(rt.symbolPtr(Runtime.consPtr(slot).car).name, &name_buf.writer) catch return error.WriteFailed;
+                            try w.writeAll(" :");
+                            try writeSymbolName(rt, w, name_buf.written(), &p.s);
+                        }
+                    }
+                    try w.writeByte(' ');
+                    try p.obj(x, depth + 1);
+                }
+                return w.writeByte(')');
+            },
             // raw_vector はハッシュ表の中だけで使い、Lisp からは見えない
             .raw_vector, _ => return w.print("#<object {x}>", .{v.raw()}),
         }

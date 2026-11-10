@@ -1682,9 +1682,10 @@
            (format stream "#<~S ~S {~X}>" name (zl-sys::%slot-or c 'name nil) address))
           (t (format stream "#<~S {~X}>" name address)))))
 
-;; record（condition・restart）の印字（Zig の印字の入口が呼ぶ：src/printer/pprint.zig の outputUgly）
+;; record（condition・restart）と構造体（Phase 26）の印字（Zig の印字の入口が呼ぶ：src/printer/pprint.zig の outputUgly）
 (defun zl-sys::%print-record (object stream)
-  (cond (*print-readably* (error 'print-not-readable :object object))
+  (cond ((zl-sys::%structure-p object) (zl-sys::%print-structure object stream))
+        (*print-readably* (error 'print-not-readable :object object))
         ((typep object 'restart)
          (if *print-escape*
              (format stream "#<RESTART ~S {~X}>" (restart-name object) (zl-sys::%object-address object))
@@ -2158,3 +2159,380 @@
              (zl-sys::%assert-error ',test-form (list ,@shown) ,datum (list ,@arguments)))))
       `(do () (,test-form nil)
          (zl-sys::%assert-error ',test-form nil ,datum (list ,@arguments)))))
+
+;;; ---------------------------------------------------------------------------
+;;; 時刻（CLHS 25.1.4）。get-universal-time と、その土地の時刻との差（zl-sys::%timezone）は Zig（src/primitives/time.zig）。
+;;; 引数の型と、範囲の外の年の扱いは SBCL 2.6.7 に合わせる
+
+(defun zl-sys::%time-arg (value type)
+  (unless (typep value type) (error 'type-error :datum value :expected-type type))
+  value)
+
+(defun zl-sys::%leap-year-p (year)
+  (and (zerop (mod year 4)) (or (not (zerop (mod year 100))) (zerop (mod year 400)))))
+
+;; 1900-01-01 から year 年の 1 月 1 日までの日数
+(defun zl-sys::%days-before-year (year)
+  (let ((y (1- year)))
+    (+ (* 365 (- year 1900)) (- (+ (floor y 4) (floor y 400)) (floor y 100) 460))))
+
+;; 1900-01-01 からの日数を、年・月・日にする
+(defun zl-sys::%civil-from-days (days)
+  (let ((year (+ 1900 (floor (* days 400) 146097))))
+    (do () ((>= days (zl-sys::%days-before-year year))) (setq year (1- year)))
+    (do () ((< days (zl-sys::%days-before-year (1+ year)))) (setq year (1+ year)))
+    (let ((rest (- days (zl-sys::%days-before-year year)))
+          (leap (zl-sys::%leap-year-p year))
+          (month 1))
+      (dolist (n '(31 28 31 30 31 30 31 31 30 31 30 31))
+        (let ((len (if (and leap (= month 2)) 29 n)))
+          (if (< rest len) (return))
+          (setq rest (- rest len) month (1+ month))))
+      (values year month (1+ rest)))))
+
+;; year 年の 3 月 1 日 00:00:00 UTC の universal time
+(defun zl-sys::%march-1 (year)
+  (* 86400 (+ (zl-sys::%days-before-year year) 59 (if (zl-sys::%leap-year-p year) 1 0))))
+
+;; universal time を、OS に渡す Unix の時刻にする。32 ビットの time_t の範囲の外は、その年の 3 月 1 日からの秒数を
+;; 2035 年（後ろ）か 1903 年（前）の 3 月 1 日に足した時刻にする（どちらも次の年がうるう年。夏時間の規則は近い年のものを使う）
+(defun zl-sys::%unix-range (universal-time)
+  (let ((unix (- universal-time 2208988800)))
+    (if (and (>= unix -2147483648) (< unix 2147483648))
+        unix
+        (multiple-value-bind (year month) (zl-sys::%civil-from-days (floor universal-time 86400))
+          (let ((offset (- universal-time (zl-sys::%march-1 (if (>= month 3) year (1- year))))))
+            (- (+ (zl-sys::%march-1 (if (minusp unix) 1903 2035)) offset) 2208988800))))))
+
+;; その土地の時刻の UTC からの西向きの秒数（夏時間を含む）と、夏時間かどうか
+(defun zl-sys::%seconds-west (universal-time)
+  (zl-sys::%timezone (zl-sys::%unix-range universal-time)))
+
+(defun decode-universal-time (universal-time &optional time-zone)
+  (zl-sys::%time-arg universal-time 'unsigned-byte)
+  (zl-sys::%time-arg time-zone '(or null (rational -24 24)))
+  (let ((west 0) (daylight nil) (zone time-zone))
+    ;; time-zone を指定したら夏時間は考えない（CLHS decode-universal-time）
+    (if time-zone
+        (setq west (* time-zone 3600))
+        (multiple-value-bind (w d) (zl-sys::%seconds-west universal-time)
+          (setq west w daylight d zone (if d (1+ (/ w 3600)) (/ w 3600)))))
+    (multiple-value-bind (days secs) (floor (- universal-time west) 86400)
+      (multiple-value-bind (year month date) (zl-sys::%civil-from-days days)
+        (multiple-value-bind (hour r) (floor secs 3600)
+          (multiple-value-bind (minute second) (floor r 60)
+            ;; 1900-01-01 は月曜（曜日は 0 が月曜）
+            (values second minute hour date month year (mod days 7) daylight zone)))))))
+
+(defun get-decoded-time ()
+  (decode-universal-time (get-universal-time)))
+
+;; 2 桁の年は、今の年の前後 50 年の中の年にする（CLHS encode-universal-time）
+(defun zl-sys::%pick-year (year)
+  (let* ((current (nth-value 5 (get-decoded-time)))
+         (guess (+ year (* (truncate (- current 50) 100) 100))))
+    (if (> (- current guess) 50) (+ guess 100) guess)))
+
+(defun encode-universal-time (second minute hour date month year &optional time-zone)
+  (zl-sys::%time-arg second '(mod 60))
+  (zl-sys::%time-arg minute '(mod 60))
+  (zl-sys::%time-arg hour '(mod 24))
+  (zl-sys::%time-arg date '(integer 1 31))
+  (zl-sys::%time-arg month '(integer 1 12))
+  (zl-sys::%time-arg year '(or (mod 100) (integer 1899)))
+  (zl-sys::%time-arg time-zone '(or null (rational -24 24)))
+  (let* ((year (if (< year 100) (zl-sys::%pick-year year) year))
+         (days (+ (1- date)
+                  (nth (1- month) '(0 31 59 90 120 151 181 212 243 273 304 334))
+                  (if (and (> month 2) (zl-sys::%leap-year-p year)) 1 0)
+                  (zl-sys::%days-before-year year)))
+         (hours (+ hour (* days 24))))
+    (zl-sys::%time-arg
+     (if time-zone
+         (+ second (* 60 (+ minute (* 60 (+ hours time-zone)))))
+         ;; その土地の時刻：まず、その時刻を UTC とみなしたときの差で見当を付け、見当の時刻の差で直す
+         (let* ((guess-west (zl-sys::%seconds-west (* hours 3600)))
+                (guess (+ second (* 60 (+ minute (* hours 60))) guess-west)))
+           (+ guess (- (zl-sys::%seconds-west guess) guess-west))))
+     'unsigned-byte)))
+
+;;; ---------------------------------------------------------------------------
+;;; Phase 26：defstruct（CLHS defstruct。詳細設計 §10.5）
+;;; 構造体は、クラスの記述とスロットの値を直接並べた 1 つのオブジェクト（Zig の zl-sys::%make-structure。
+;;; src/primitives/structures.zig）。クラスの記述は simple-vector で、名前のシンボルの属性 zl-sys::%class に置く
+;;; （condition と同じ場所。位置 0・1 は Zig の typep と印字が読む）：
+;;;   #(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数)
+;;;   CPL は自身を含む上位の構造体の名前のリスト（最後は structure-object）、
+;;;   スロットは (名前 initform 型 read-only アクセサの名前) のリスト（:include した構造体のスロットを先頭に含む。値の順）、
+;;;   標準の構築子はキーワードの引数の構築子（#S の読み取りが呼ぶ。なければ NIL）、
+;;;   印字の関数は (lambda (構造体 ストリーム) …) か NIL（NIL なら #S(…) の形）。
+;;; (:type …)・:named・:initial-offset は未実装（zilisp:unimplemented）。print-object のメソッドは CLOS の Phase。
+
+(setf (get 'structure-object 'zl-sys::%class) (vector 'structure-object '(structure-object) nil nil nil nil))
+
+;; 構造体のクラスの記述。構造体の名前でなければ NIL
+(defun zl-sys::%structure-class (name)
+  (let ((class (zl-sys::%find-class name nil)))
+    (if (and class (member 'structure-object (svref class 1))) class nil)))
+
+;; 構造体を定義する（defstruct の展開先。コンパイル時にも実行する：後ろの defstruct の :include が読む）。
+;; 印字の関数は :include した構造体のものを引き継ぐ（:print-function・:print-object があれば、後で置き換える）
+(defun zl-sys::%define-structure (name include slots constructor)
+  (let ((parent (if include (zl-sys::%structure-class include) nil)))
+    (setf (get name 'zl-sys::%class)
+          (vector name
+                  (cons name (if parent (svref parent 1) '(structure-object)))
+                  include slots constructor
+                  (if parent (svref parent 5) nil)))
+    name))
+
+(defun zl-sys::%set-structure-printer (name function)
+  (setf (svref (zl-sys::%structure-class name) 5) function)
+  name)
+
+;; スロットの記述 → (名前 initform 型 read-only :type があったか :read-only があったか)
+(defun zl-sys::%parse-structure-slot (spec)
+  (cond ((symbolp spec) (list spec nil t nil nil nil))
+        ((and (consp spec) (symbolp (car spec)) (listp (cdr spec)))
+         (let ((type t) (read-only nil) (type-p nil) (read-only-p nil))
+           (do ((o (cddr spec) (cddr o)))
+               ((null o))
+             (cond ((not (and (consp o) (consp (cdr o))))
+                    (zl-sys::%macro-form-error "DEFSTRUCT のスロットのオプションが正しくありません" spec))
+                   ((eq (car o) :type) (setq type (cadr o) type-p t))
+                   ((eq (car o) :read-only) (setq read-only (if (cadr o) t nil) read-only-p t))
+                   (t (zl-sys::%macro-form-error "DEFSTRUCT のスロットのオプションが正しくありません" spec))))
+           (list (car spec) (cadr spec) type read-only type-p read-only-p)))
+        (t (zl-sys::%macro-form-error "DEFSTRUCT のスロットの記述が正しくありません" spec))))
+
+;; スロットのリストの中の、名前（文字列として同じ）のスロット
+(defun zl-sys::%find-structure-slot (name slots)
+  (dolist (s slots nil)
+    (if (string= (symbol-name (car s)) (symbol-name name)) (return s))))
+
+(defun zl-sys::%slot-keyword (name)
+  (intern (symbol-name name) "KEYWORD"))
+
+;; 値の式に、スロットの型の検査を付ける
+(defun zl-sys::%checked-slot-form (form type)
+  (if (eq type t) form `(zl-sys::%check-slot-type ,form ',type)))
+
+;; キーワードの引数の構築子。引数の変数は gensym（initform はスロットの名前の変数を見ない。CLHS defstruct）
+(defun zl-sys::%structure-keyword-constructor (constructor name slots)
+  (let ((vars (mapcar (lambda (s) (gensym (symbol-name (car s)))) slots)))
+    `(defun ,constructor (&key ,@(mapcar (lambda (s v) `((,(zl-sys::%slot-keyword (car s)) ,v) ,(cadr s))) slots vars))
+       (zl-sys::%make-structure ',name ,@(mapcar (lambda (s v) (zl-sys::%checked-slot-form v (caddr s))) slots vars)))))
+
+;; 引数の並びを指定した構築子（BOA。CLHS 3.4.6）：既定値のない &optional・&key の変数はスロットの initform を既定値にし、
+;; 並びにないスロットは initform の値にする
+(defun zl-sys::%structure-boa-constructor (constructor name slots lambda-list)
+  (let ((state :required) (new nil) (bound nil))
+    (dolist (item lambda-list)
+      (cond ((member item '(&optional &rest &key &aux &allow-other-keys))
+             (unless (eq item '&allow-other-keys) (setq state item))
+             (push item new))
+            ((member state '(:required &rest))
+             (push item bound)
+             (push item new))
+            (t
+             ;; &optional・&key・&aux：変数、(変数)、(変数 既定値 …)、((キーワード 変数) …)
+             (let* ((head (if (consp item) (car item) item))
+                    (var (if (consp head) (cadr head) head))
+                    (slot (zl-sys::%find-structure-slot var slots)))
+               (push var bound)
+               (push (cond ((and (consp item) (consp (cdr item))) item)
+                           ((and slot (not (eq state '&aux))) (list head (cadr slot)))
+                           (t item))
+                     new)))))
+    `(defun ,constructor ,(reverse new)
+       (zl-sys::%make-structure
+        ',name
+        ,@(mapcar (lambda (s)
+                    (let ((var (dolist (b bound nil)
+                                 (if (string= (symbol-name b) (symbol-name (car s))) (return b)))))
+                      (zl-sys::%checked-slot-form (if var var (cadr s)) (caddr s))))
+                  slots)))))
+
+(defun zl-sys::%expand-defstruct (name-and-options slot-descriptions)
+  (let* ((name (if (consp name-and-options) (car name-and-options) name-and-options))
+         (options (if (consp name-and-options) (cdr name-and-options) nil))
+         (conc-name nil)
+         (constructors nil) (constructor-p nil)
+         (copier nil) (copier-p nil)
+         (predicate nil) (predicate-p nil)
+         (include nil) (overrides nil)
+         (printer nil) (printer-p nil)
+         (slots nil) (forms nil))
+    (unless (and name (symbolp name))
+      (zl-sys::%macro-form-error "DEFSTRUCT の名前が正しくありません" name-and-options))
+    (setq conc-name (concatenate 'string (symbol-name name) "-"))
+    (dolist (option options)
+      (let ((key (if (consp option) (car option) option))
+            (args (if (consp option) (cdr option) nil)))
+        (cond ((eq key :conc-name)
+               (setq conc-name (if (and args (car args)) (string (car args)) "")))
+              ((eq key :constructor)
+               (setq constructor-p t)
+               (cond ((null args) (push (list (intern (concatenate 'string "MAKE-" (symbol-name name)))) constructors))
+                     ((null (car args)))
+                     (t (push args constructors))))
+              ((eq key :copier)
+               (setq copier-p t
+                     copier (if args (car args) (intern (concatenate 'string "COPY-" (symbol-name name))))))
+              ((eq key :predicate)
+               (setq predicate-p t
+                     predicate (if args (car args) (intern (concatenate 'string (symbol-name name) "-P")))))
+              ((eq key :include)
+               (when (or include (null args))
+                 (zl-sys::%macro-form-error "DEFSTRUCT の :include が正しくありません" option))
+               (setq include (car args) overrides (cdr args)))
+              ((member key '(:print-function :print-object))
+               (when printer-p
+                 (zl-sys::%macro-form-error "DEFSTRUCT の印字の関数の指定は 1 つだけです" option))
+               (setq printer-p t)
+               (when args
+                 ;; 関数は呼ぶときに探す（後から defun した関数でもよい。define-condition の :report と同じ）
+                 (let ((f (car args)) (o (gensym "OBJECT")) (s (gensym "STREAM")))
+                   (setq printer
+                         (if (eq key :print-function)
+                             `(lambda (,o ,s) (funcall (function ,f) ,o ,s (zl-sys::%print-depth)))
+                             `(lambda (,o ,s) (funcall (function ,f) ,o ,s)))))))
+              ((member key '(:type :named :initial-offset))
+               (zl-sys::%unimplemented-error "DEFSTRUCT の :type・:named・:initial-offset は未実装です" option))
+              (t (zl-sys::%macro-form-error "DEFSTRUCT のオプションが正しくありません" option)))))
+    (unless constructor-p
+      (push (list (intern (concatenate 'string "MAKE-" (symbol-name name)))) constructors))
+    (unless copier-p (setq copier (intern (concatenate 'string "COPY-" (symbol-name name)))))
+    (unless predicate-p (setq predicate (intern (concatenate 'string (symbol-name name) "-P"))))
+    (setq constructors (reverse constructors))
+    ;; :include した構造体のスロット（既定値・型・read-only は書き換えられる）
+    (when include
+      (let ((parent (zl-sys::%structure-class include)))
+        (unless parent
+          (zl-sys::%macro-form-error "DEFSTRUCT の :include の構造体が定義されていません" include))
+        (setq slots (mapcar #'copy-list (svref parent 3)))
+        (dolist (spec overrides)
+          (let* ((o (zl-sys::%parse-structure-slot spec))
+                 (s (zl-sys::%find-structure-slot (car o) slots)))
+            (unless s
+              (zl-sys::%macro-form-error "DEFSTRUCT の :include のスロットが、元の構造体にありません" spec))
+            (setf (cadr s) (cadr o))
+            (if (nth 4 o) (setf (caddr s) (caddr o)))
+            (if (nth 5 o)
+                (if (and (nth 3 s) (not (nth 3 o)))
+                    (zl-sys::%macro-form-error "DEFSTRUCT の :include で、read-only のスロットを書き換えられるようにはできません" spec)
+                    (setf (nth 3 s) (nth 3 o))))))))
+    ;; 文書の文字列
+    (if (stringp (car slot-descriptions)) (setq slot-descriptions (cdr slot-descriptions)))
+    (let ((inherited (length slots)) (index 0) (own nil))
+      (dolist (spec slot-descriptions)
+        (let ((s (zl-sys::%parse-structure-slot spec)))
+          (when (or (zl-sys::%find-structure-slot (car s) slots) (zl-sys::%find-structure-slot (car s) own))
+            (zl-sys::%macro-form-error "DEFSTRUCT のスロットの名前が重なっています" spec))
+          (push (list (car s) (cadr s) (caddr s) (nth 3 s) nil) own)))
+      (setq slots (append slots (reverse own)))
+      ;; アクセサ。:include した構造体のアクセサと同じ名前になるものは、定義し直さない（元のアクセサがそのまま使える）
+      (dolist (s slots)
+        (let ((accessor (if (string= conc-name "")
+                            (car s)
+                            (intern (concatenate 'string conc-name (symbol-name (car s)))))))
+          (unless (and (< index inherited) (eq accessor (nth 4 s)))
+            (push `(defun ,accessor (object) (zl-sys::%structure-ref object ',name ,index)) forms)
+            (unless (nth 3 s)
+              (push `(defun (setf ,accessor) (value object)
+                       (zl-sys::%structure-set object ',name ,index ,(zl-sys::%checked-slot-form 'value (caddr s))))
+                    forms)))
+          (setf (nth 4 s) accessor)
+          (setq index (1+ index)))))
+    (dolist (c constructors)
+      (push (if (cdr c)
+                (zl-sys::%structure-boa-constructor (car c) name slots (cadr c))
+                (zl-sys::%structure-keyword-constructor (car c) name slots))
+            forms))
+    (when copier
+      (push `(defun ,copier (object)
+               (if (zl-sys::%structure-p object ',name)
+                   (copy-structure object)
+                   (error 'type-error :datum object :expected-type ',name)))
+            forms))
+    (when predicate
+      (push `(defun ,predicate (object) (zl-sys::%structure-p object ',name)) forms))
+    `(progn
+       (eval-when (:compile-toplevel :load-toplevel :execute)
+         (zl-sys::%define-structure ',name ',include ',slots
+                                    ',(dolist (c constructors nil) (if (null (cdr c)) (return (car c))))))
+       ,@(if printer-p `((zl-sys::%set-structure-printer ',name ,printer)) nil)
+       ,@(reverse forms)
+       ',name)))
+
+(defmacro defstruct (name-and-options &rest slot-descriptions)
+  (zl-sys::%expand-defstruct name-and-options slot-descriptions))
+
+;;; 印字（SBCL 2.6.7 の default-structure-print と同じ形：#S(名前 :スロット 値 …)）
+
+(defun zl-sys::%print-structure-slot (object name slot index stream)
+  ;; スロットの名前は、いつもキーワードとして : を付けて書く（SBCL の output-symbol）
+  (write (zl-sys::%slot-keyword (car slot)) :stream stream :escape t)
+  (write-char #\Space stream)
+  (if *print-pretty* (pprint-newline :miser stream))
+  (write (zl-sys::%structure-ref object name index) :stream stream))
+
+(defun zl-sys::%default-structure-print (object stream class)
+  (let ((name (svref class 0)) (slots (svref class 3)))
+    (cond ((null slots)
+           ;; スロットのない構造体は、*print-level* の深さに数えない
+           (write-string "#S(" stream)
+           (prin1 name stream)
+           (write-char #\) stream))
+          (*print-pretty*
+           (pprint-logical-block (stream nil :prefix "#S(" :suffix ")")
+             (write name :stream stream)
+             (write-char #\Space stream)
+             (pprint-newline :linear stream)
+             (do ((index 0 (1+ index)) (remaining slots (cdr remaining)))
+                 (nil)
+               (pprint-pop)
+               (zl-sys::%print-structure-slot object name (car remaining) index stream)
+               (if (null (cdr remaining)) (return nil))
+               (write-char #\Space stream)
+               (pprint-newline :linear stream))))
+          ((and *print-level* (not *print-readably*) (>= (zl-sys::%print-depth) *print-level*))
+           (write-char #\# stream))
+          (t
+           (zl-sys::%print-descend
+            (lambda ()
+              (write-string "#S(" stream)
+              (write name :stream stream)
+              (do ((index 0 (1+ index)) (remaining slots (cdr remaining))
+                   (limit (if (and *print-length* (not *print-readably*)) *print-length* nil)))
+                  ((or (null remaining) (and limit (>= index limit)))
+                   (write-string (if remaining " ...)" ")") stream))
+                (write-char #\Space stream)
+                (zl-sys::%print-structure-slot object name (car remaining) index stream))))))))
+
+(defun zl-sys::%print-structure (object stream)
+  (let* ((class (zl-sys::%structure-class-of object))
+         (printer (svref class 5)))
+    (if printer
+        (funcall printer object stream)
+        (zl-sys::%default-structure-print object stream class))
+    object))
+
+;;; #S(名前 スロット 値 …) の読み取り（src/reader/value_builder.zig の structure が呼ぶ）。標準の構築子を呼ぶ。
+;;; 形の誤りは数を返す（reader-error にするのは Zig の側）：1 リストでない・名前がない、2 構造体がない、3 構築子がない、
+;;; 4 スロットと値の並びの誤り、5 構築子がまだ定義されていない
+(defun zl-sys::%read-structure (form)
+  (if (not (and (consp form) (car form) (symbolp (car form))))
+      1
+      (let ((class (zl-sys::%structure-class (car form))) (args nil))
+        (cond ((null class) 2)
+              ((null (svref class 4)) 3)
+              ;; コンパイル時には構造体の定義だけがあり、構築子はまだない（構造体のリテラルは実行時にだけ読める）
+              ((not (fboundp (svref class 4))) 5)
+              (t (do ((x (cdr form) (cddr x)))
+                     ((null x) (apply (svref class 4) (nreverse args)))
+                   (if (or (not (consp x)) (not (consp (cdr x)))
+                           (not (or (symbolp (car x)) (stringp (car x)) (characterp (car x)))))
+                       (return 4))
+                   (push (intern (string (car x)) "KEYWORD") args)
+                   (push (cadr x) args)))))))

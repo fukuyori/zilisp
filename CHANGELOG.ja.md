@@ -5,6 +5,19 @@
 ## Unreleased
 
 ### Added
+- Phase 26：`defstruct`（CLHS defstruct）。オプション `:conc-name`・`:constructor`（キーワードの引数のものと、引数の並びを
+  指定するもの（BOA）。複数可）・`:copier`・`:predicate`・`:include`（スロットの既定値・型・read-only の書き換え）・
+  `:print-function`・`:print-object`、スロットの `:type`（構築子と `setf` で検査し、合わなければ type-error）・`:read-only`、
+  `copy-structure`、`#S(…)` の印字と読み取り、`typep`（構造体の名前と `structure-object`）、`equalp` と `equalp` のハッシュ表。
+  印字は SBCL 2.6.7 と同じ形（pretty printer の改行の位置、`*print-level*`・`*print-length*`・`*print-circle*` も）。
+  `(:type list)`・`(:type vector)`・`:named`・`:initial-offset` は未実装（`zilisp:unimplemented`）。構造体のリテラルは、
+  定義を実行した後に読むときだけ使える（ネイティブでコンパイルするファイルには書けない）
+- 時刻：`get-universal-time`・`get-decoded-time`・`decode-universal-time`・`encode-universal-time`（引数の型と、範囲の外の年の
+  扱いは SBCL 2.6.7 と同じ。その土地の時刻との差は、Windows は OS の規則、ほかは `/etc/localtime` から求める）
+- `fboundp` が `(setf 名前)` を受け取る
+- 試験：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
+  教材の `defstruct` を使うブロック（Level 7・19・23・24・26 の 31 個）と `get-universal-time` を使う 1 個が SBCL と同じ出力になり、
+  教材のブロックの一致は 513 から 545 に
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・
@@ -73,6 +86,9 @@
   `zilisp:unimplemented` として通知する
 - スタックの溢れ（VM・ネイティブのスタック、動的束縛と制御スタック）の storage-condition は、handler に通知しない
   （handler を動かす予備の領域がないため）
+- `*print-pretty*` が NIL のとき、リスト・ベクタの中の condition・restart も SBCL 2.6.7 と同じ形で印字する
+  （今までは `#<型 {アドレス}>`）
+- トップレベルのエラーの報告は、構造体の値を `#S(…)` の形で書く
 
 ## 0.3.0 - 2026-11-04
 

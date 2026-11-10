@@ -538,8 +538,8 @@ pub fn atLineStart(th: *Thread, stream: Value) bool {
 }
 
 fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
-    // condition・restart は Lisp の印字の関数で書く（pprint の outputUgly が zl-sys::%print-record を呼ぶ。Phase 25）
-    if (prettyOn(th) or isRecord(v)) return printPretty(th, stream, v, escape);
+    // condition・restart・構造体は Lisp の印字の関数で書く（pprint の outputUgly が zl-sys::%print-record を呼ぶ。Phase 25・26）
+    if (prettyOn(th) or hasLispPrinted(v)) return printPretty(th, stream, v, escape);
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     if (!printTo(th, &buf.writer, v, escape)) return false;
@@ -550,9 +550,45 @@ fn prettyOn(th: *Thread) bool {
     return th.rt.symbolPtr(th.rt.syms.@"*print-pretty*").value != Value.nil;
 }
 
-/// condition・restart（Phase 25）
-pub fn isRecord(v: Value) bool {
-    return v.isOther() and Runtime.kindOf(v) == .record;
+/// Lisp の印字の関数で書くもの（condition・restart：Phase 25、構造体：Phase 26）か、それをリスト・ベクタの中に含むか。
+/// 含むなら、*print-pretty* が偽でも pretty printer の経路（要素ごとに outputObject を通る）で書く。
+/// 調べきれない（とても大きい・深い・循環している）ときは真を返す（どちらの経路でも印字の結果は同じ）
+pub fn hasLispPrinted(v: Value) bool {
+    var budget: usize = 1 << 20;
+    return scanLispPrinted(v, &budget, 0);
+}
+
+fn scanLispPrinted(v: Value, budget: *usize, depth: usize) bool {
+    var x = v;
+    while (true) {
+        if (x.isCons()) {
+            if (budget.* == 0 or depth > 1000) return true;
+            budget.* -= 1;
+            const c = Runtime.consPtr(x);
+            if (scanLispPrinted(c.car, budget, depth + 1)) return true;
+            x = c.cdr;
+            continue;
+        }
+        if (!x.isOther() or x == Value.nil) return false;
+        switch (Runtime.kindOf(x) orelse return false) {
+            .record, .structure => return true,
+            .simple_vector => {
+                if (depth > 1000) return true;
+                for (Runtime.vectorPtr(x).items()) |e| {
+                    if (budget.* == 0) return true;
+                    budget.* -= 1;
+                    if (scanLispPrinted(e, budget, depth + 1)) return true;
+                }
+                return false;
+            },
+            .array => {
+                const a: *object.Array = @ptrCast(@alignCast(x.pointer()));
+                x = a.data;
+                continue;
+            },
+            else => return false,
+        }
+    }
 }
 
 /// *print-pretty* が真のときの印字：escape を指定すれば *print-escape* を束縛する（princ は *print-readably* も偽にする）
@@ -569,8 +605,8 @@ pub fn printPretty(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
 /// 今の印字の変数に従って w に書く（escape が null なら *print-escape*）。
 /// *print-readably* で読み戻せないものは print-not-readable のエラー（Phase 24）
 pub fn printTo(th: *Thread, w: *Io.Writer, v: Value, escape: ?bool) bool {
-    if (isRecord(v)) {
-        // condition・restart：Lisp の印字の関数で文字列のストリームに書いて写す（Phase 25）
+    if (hasLispPrinted(v)) {
+        // condition・restart・構造体：Lisp の印字の関数で文字列のストリームに書いて写す（Phase 25・26）
         const ss = makeStringOutput(th) orelse return false;
         if (!printPretty(th, ss, v, escape)) return false;
         var bytes: std.ArrayList(u8) = .empty;

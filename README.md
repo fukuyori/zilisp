@@ -63,8 +63,11 @@ Added in 0.3.0:
 - Conditions: `define-condition`, `error`, `warn`, `signal`,
   `handler-case`, `handler-bind`, `ignore-errors`, `restart-case`, `invoke-restart`, `with-simple-restart`,
   `check-type`, `assert`, `typecase`/`ecase`, and `typep`; the report texts of the standard conditions follow SBCL 2.6.7
+- Structures: `defstruct` (`:include`, `:constructor`, `:conc-name`, `:print-function`, ...), `copy-structure`, and printing
+  and reading `#S(...)`; printing has the same form as SBCL 2.6.7
+- Time: `get-universal-time`, `get-decoded-time`, `decode-universal-time` and `encode-universal-time`
 
-Not yet implemented (planned for later releases): complex numbers, `defstruct`, and CLOS.
+Not yet implemented (planned for later releases): complex numbers and CLOS.
 
 Error messages are currently written in Japanese.
 

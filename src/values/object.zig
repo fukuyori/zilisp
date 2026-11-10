@@ -40,6 +40,8 @@ pub const ObjKind = enum(u8) {
     pprint_dispatch,
     /// condition と restart（Phase 25。src/primitives/conditions.zig）。CLOS（Phase 27）で instance にまとめる
     record,
+    /// 構造体（Phase 26。src/primitives/structures.zig）。スロットは本体に直接並べる
+    structure,
     _,
 };
 
@@ -248,6 +250,19 @@ pub const Record = extern struct {
     header: ObjHeader,
     class: Value,
     slots: Value,
+};
+
+/// 構造体（Phase 26。defstruct）。class はクラスの記述（Lisp で作る simple-vector。位置 0 が名前、位置 1 が自身を含む
+/// 上位の構造体の名前のリスト（最後は structure-object）。src/lisp/boot.lisp の defstruct）。スロットの値はヘッダと class の
+/// 直後に並べる（header.len がスロットの数）
+pub const Structure = extern struct {
+    header: ObjHeader,
+    class: Value,
+
+    pub fn slots(s: *Structure) []Value {
+        const base: [*]Value = @ptrCast(@alignCast(@as([*]u8, @ptrCast(s)) + @sizeOf(Structure)));
+        return base[0..s.header.len];
+    }
 };
 
 /// クラスの記述（simple-vector）の中の位置（boot.lisp の %make-class と合わせる）

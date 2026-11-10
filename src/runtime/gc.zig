@@ -135,6 +135,11 @@ const Marker = struct {
                     m.markValue(r.class);
                     m.markValue(r.slots);
                 },
+                .structure => {
+                    const s: *object.Structure = @ptrFromInt(e);
+                    m.markValue(s.class);
+                    for (s.slots()) |x| m.markValue(x);
+                },
                 .pathname => {
                     const p: *object.Pathname = @ptrFromInt(e);
                     m.markValue(p.host);

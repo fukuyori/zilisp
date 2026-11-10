@@ -5,6 +5,21 @@
 ## Unreleased
 
 ### Added
+- Phase 26: `defstruct` (CLHS defstruct). The options `:conc-name`, `:constructor` (the keyword one and the ones with an
+  argument list (BOA); several allowed), `:copier`, `:predicate`, `:include` (overriding the default, type and read-only of
+  slots), `:print-function` and `:print-object`; the slot options `:type` (checked by constructors and `setf`, a type-error on
+  a mismatch) and `:read-only`; `copy-structure`; printing and reading `#S(...)`; `typep` (structure names and
+  `structure-object`); `equalp` and `equalp` hash tables. Printing has the same form as SBCL 2.6.7 (including the pretty
+  printer's line breaks, `*print-level*`, `*print-length*` and `*print-circle*`). `(:type list)`, `(:type vector)`, `:named`
+  and `:initial-offset` are not implemented (`zilisp:unimplemented`). A structure literal can be used only when it is read
+  after the definition has run (it cannot be written in a file compiled natively)
+- Time: `get-universal-time`, `get-decoded-time`, `decode-universal-time` and `encode-universal-time` (the argument types and
+  the handling of years outside the range are the same as SBCL 2.6.7; the offset of local time comes from the OS rules on
+  Windows and from `/etc/localtime` elsewhere)
+- `fboundp` accepts `(setf name)`
+- Tests: the language tests `defstruct.lisp` and `time.lisp` (the same output as SBCL 2.6.7; also gc-stress versions and
+  native) and unit tests. The curriculum blocks that use `defstruct` (31 blocks in Levels 7, 19, 23, 24 and 26) and one that
+  uses `get-universal-time` now give the same output as SBCL; curriculum blocks matching went from 513 to 545
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with
@@ -83,6 +98,9 @@
   and variables are also signaled to handlers as `zilisp:unimplemented`
 - The storage-condition of a stack overflow (the VM and native stacks, the dynamic binding and control stacks) is not
   signaled to handlers (there is no reserve area to run them in)
+- With `*print-pretty*` NIL, conditions and restarts inside lists and vectors print in the same form as SBCL 2.6.7
+  (they printed as `#<type {address}>`)
+- Top-level error reports write structure values in the `#S(...)` form
 
 ## 0.3.0 - 2026-11-04
 

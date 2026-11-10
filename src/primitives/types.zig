@@ -51,11 +51,14 @@ pub fn classOf(rt: *Runtime, name: Value) ?Value {
     return null;
 }
 
-/// record（condition・restart）が型 name のクラスか、その下位のクラスか
+/// record（condition・restart）か構造体（Phase 26）が、型 name のクラスか、その下位のクラスか
 pub fn recordTypep(v: Value, name: Value) bool {
-    if (kindOf(v) != .record) return false;
-    const r: *object.Record = @ptrCast(@alignCast(v.pointer()));
-    var x = Runtime.vectorPtr(r.class).items()[object.record_class_cpl];
+    const class = switch (kindOf(v) orelse return false) {
+        .record => @as(*object.Record, @ptrCast(@alignCast(v.pointer()))).class,
+        .structure => @as(*object.Structure, @ptrCast(@alignCast(v.pointer()))).class,
+        else => return false,
+    };
+    var x = Runtime.vectorPtr(class).items()[object.record_class_cpl];
     while (x.isCons()) : (x = Runtime.consPtr(x).cdr) if (Runtime.consPtr(x).car == name) return true;
     return false;
 }
@@ -160,6 +163,37 @@ fn completeType(th: *Thread, spec: Value) bool {
             if (!completeType(th, part)) return false;
         }
     }
+    return true;
+}
+
+/// 構造体のスロットの :type の検査に使える型指定子か（Phase 26）：typep が、どの値に対してもエラーなしで判定できるもの。
+/// まだ定義していない型（後で定義する構造体など）や、判定が未実装の型（特殊化した配列・complex の合成の型）は偽
+/// （その間はスロットの型を検査しない）
+pub fn slotCheckable(th: *Thread, spec: Value) bool {
+    if (validate(th, spec) != .ok) return false;
+    if (!spec.isCons()) return true;
+    var buf: [64]u8 = undefined;
+    const name = asciiName(th.rt, Runtime.consPtr(spec).car, &buf) orelse return false;
+    var args = Runtime.consPtr(spec).cdr;
+    if (inNames(name, &.{ "AND", "OR", "NOT", "CONS" })) {
+        while (args.isCons()) : (args = Runtime.consPtr(args).cdr) {
+            const part = Runtime.consPtr(args).car;
+            if (std.mem.eql(u8, name, "CONS") and isStar(th, part)) continue;
+            if (!slotCheckable(th, part)) return false;
+        }
+        return true;
+    }
+    if (std.mem.eql(u8, name, "SATISFIES")) return false; // 呼ぶ関数がエラーになりうる
+    if (inNames(name, &.{ "VECTOR", "ARRAY", "SIMPLE-ARRAY" })) {
+        // 要素の型は *・t・character だけ（ほかは特殊化した配列がないので未実装）
+        if (!args.isCons()) return true;
+        const etype = Runtime.consPtr(args).car;
+        if (isStar(th, etype) or etype == th.rt.t) return true;
+        if (!isSymbol(etype)) return false;
+        const en = asciiName(th.rt, etype, &buf) orelse return false;
+        return th.rt.symbolPtr(etype).package == th.rt.cl.obj and std.mem.eql(u8, en, "CHARACTER");
+    }
+    if (std.mem.eql(u8, name, "COMPLEX")) return args == Value.nil;
     return true;
 }
 

@@ -26,6 +26,8 @@ const readtable_mod = @import("../reader/readtable.zig");
 const pprint_mod = @import("../printer/pprint.zig");
 const types = @import("types.zig");
 const conditions = @import("conditions.zig");
+const time_mod = @import("time.zig");
+const structures = @import("structures.zig");
 
 const any = function.any_args;
 
@@ -458,6 +460,10 @@ pub const table = [_]Entry{
     // 型と condition（Phase 25。types.zig・conditions.zig）
     .{ .name = "TYPEP", .impl = types.typepFn, .min = 2, .max = 3 },
     .{ .name = "EVAL", .impl = load_mod.evalFn, .min = 1, .max = 1 },
+    // 時刻（time.zig。decode-universal-time などは boot.lisp）
+    // 構造体（Phase 26。structures.zig。defstruct は boot.lisp）
+    .{ .name = "COPY-STRUCTURE", .impl = structures.copyStructure, .min = 1, .max = 1 },
+    .{ .name = "GET-UNIVERSAL-TIME", .impl = time_mod.getUniversalTime, .min = 0, .max = 0 },
 };
 
 /// ZILISP-SYSTEM パッケージのプリミティブ（コンパイラが展開先として使う内部の関数）
@@ -504,6 +510,16 @@ pub const sys_table = [_]Entry{
     .{ .name = "%RECORD-SLOTS", .impl = conditions.sysRecordSlots, .min = 1, .max = 1 },
     .{ .name = "%OBJECT-ADDRESS", .impl = conditions.sysObjectAddress, .min = 1, .max = 1 },
     .{ .name = "%UNHANDLED-CONDITION", .impl = conditions.sysUnhandledCondition, .min = 3, .max = 3 },
+    // 構造体（Phase 26）
+    .{ .name = "%MAKE-STRUCTURE", .impl = structures.sysMakeStructure, .min = 1, .max = any },
+    .{ .name = "%STRUCTURE-REF", .impl = structures.sysStructureRef, .min = 3, .max = 3 },
+    .{ .name = "%STRUCTURE-SET", .impl = structures.sysStructureSet, .min = 4, .max = 4 },
+    .{ .name = "%STRUCTURE-P", .impl = structures.sysStructureP, .min = 1, .max = 2 },
+    .{ .name = "%STRUCTURE-CLASS-OF", .impl = structures.sysStructureClass, .min = 1, .max = 1 },
+    .{ .name = "%CHECK-SLOT-TYPE", .impl = structures.sysCheckSlotType, .min = 2, .max = 2 },
+    .{ .name = "%PRINT-DEPTH", .impl = structures.sysPrintDepth, .min = 0, .max = 0 },
+    .{ .name = "%PRINT-DESCEND", .impl = structures.sysPrintDescend, .min = 1, .max = 1 },
+    .{ .name = "%TIMEZONE", .impl = time_mod.sysTimezone, .min = 1, .max = 1 },
 };
 
 pub fn install(rt: *Runtime) runtime.Error!void {
@@ -531,6 +547,7 @@ pub fn install(rt: *Runtime) runtime.Error!void {
     rt.sys_restart_clusters = try rt.intern(rt.sys, "*RESTART-CLUSTERS*");
     rt.sys_signal_hook = try rt.intern(rt.sys, "%SIGNAL-ZIG-ERROR");
     rt.sys_print_record = try rt.intern(rt.sys, "%PRINT-RECORD");
+    rt.sys_read_structure = try rt.intern(rt.sys, "%READ-STRUCTURE");
     rt.sys_class_key = try rt.intern(rt.sys, "%CLASS");
     rt.debugger_hook = rt.findSymbol(rt.cl, "*DEBUGGER-HOOK*").?.symbol;
     _ = try rt.intern(rt.sys, "TOO-FEW");

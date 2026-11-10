@@ -6,10 +6,10 @@
 
 | 結果 | 意味 | ブロック数 |
 |---|---|---|
-| match | 両方とも正常に終わり、標準出力が同じ | 513 |
+| match | 両方とも正常に終わり、標準出力が同じ | 545 |
 | both-error | 両方ともエラーで終わった | 362 |
 | output-diff | 両方とも正常に終わったが、標準出力が違う | 1 |
-| zilisp-error | Zilisp だけがエラー | 79 |
+| zilisp-error | Zilisp だけがエラー | 47 |
 | sbcl-error | SBCL だけがエラー | 0 |
 | timeout | 時間内に終わらなかった | 0 |
 | 計 | | 955 |
@@ -18,7 +18,6 @@
 
 | 最初のエラー | ブロック数 |
 |---|---|
-| 未実装：DEFSTRUCT | 31 |
 | 未実装：DEFCLASS | 21 |
 | 未実装：TRACE | 3 |
 | READER-ERROR | 2 |
@@ -32,7 +31,6 @@
 | 未実装の関数：DISASSEMBLE | 1 |
 | 未実装の関数：DOCUMENTATION | 1 |
 | 未実装の関数：GET-INTERNAL-REAL-TIME | 1 |
-| 未実装の関数：GET-UNIVERSAL-TIME | 1 |
 | 未実装の関数：INSPECT | 1 |
 | 未実装の関数：LOGBITP | 1 |
 | 未実装の関数：RATIONALIZE | 1 |

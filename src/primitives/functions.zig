@@ -71,6 +71,18 @@ pub fn sysDefun(th: *Thread, args: []const Value) Value {
 /// fboundp：関数・マクロ・特殊演算子の名前なら真（関数ならその関数を返す。SBCL 2.6.7 と同じ）
 pub fn fboundp(th: *Thread, args: []const Value) Value {
     const name = args[0];
+    // (setf 名前)：setf の関数があるか（CLHS fboundp は関数の名前を受け取る。Phase 26：構造体のアクセサの確認に使う）
+    if (name.isCons()) {
+        const c = Runtime.consPtr(name);
+        const setf_sym = (th.rt.findSymbol(th.rt.cl, "SETF") orelse unreachable).symbol;
+        if (c.car == setf_sym and c.cdr.isCons() and Runtime.consPtr(c.cdr).cdr == Value.nil) {
+            const sym = Runtime.consPtr(c.cdr).car;
+            if (isSymbol(sym) and sym != Value.nil) {
+                const f = th.rt.symbolPtr(sym).setf_function;
+                return if (f != Value.unbound) f else Value.nil;
+            }
+        }
+    }
     if (!isSymbol(name)) return th.typeError(name, th.rt.syms.symbol);
     const s = th.rt.symbolPtr(name);
     if (s.function != Value.unbound) return s.function;

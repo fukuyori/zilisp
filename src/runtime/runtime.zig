@@ -81,6 +81,7 @@ pub const Syms = struct {
     integer: Value,
     cons: Value,
     @"simple-vector": Value,
+    @"structure-object": Value,
     // 高速経路にする関数（§7.4）
     car: Value,
     cdr: Value,
@@ -252,6 +253,8 @@ pub const Runtime = struct {
     sys_restart_clusters: Value = Value.nil,
     sys_signal_hook: Value = Value.nil,
     sys_print_record: Value = Value.nil,
+    /// #S(…) を構造体にする関数 zl-sys::%read-structure（boot.lisp。Phase 26）
+    sys_read_structure: Value = Value.nil,
     sys_class_key: Value = Value.nil,
     /// *debugger-hook*（Zig で見つけたエラーでも呼ぶ。Phase 25）
     debugger_hook: Value = Value.nil,

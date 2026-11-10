@@ -116,6 +116,16 @@ fn hashEqualp(th: *Thread, v: Value, depth: u32) ?u64 {
     if (isHashTable(v)) return mix(tablePtr(v).count +% 0xa54ff53a);
     // パス名は equalp でも equal で比べるので、equal のハッシュ値
     if (v.isOther() and Runtime.kindOf(v) == .pathname) return hashEqual(v, 4);
+    // 構造体は、クラスの名前とスロット（equalp で等しい構造体は同じ値。Phase 26）
+    if (v.isOther() and Runtime.kindOf(v) == .structure) {
+        const s: *object.Structure = @ptrCast(@alignCast(v.pointer()));
+        var h: u64 = mix(Runtime.vectorPtr(s.class).items()[object.record_class_name].raw() +% s.header.len);
+        if (depth == 0) return h;
+        for (s.slots()[0..@min(s.header.len, 16)]) |x| {
+            h = mix(h *% 31 +% (hashEqualp(th, x, depth - 1) orelse return null));
+        }
+        return h;
+    }
     return mix(v.raw());
 }
 

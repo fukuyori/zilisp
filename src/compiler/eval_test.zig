@@ -2110,3 +2110,37 @@ test "handlers run inside a VM instruction keep the frame's values (Phase 25)" {
     // Zig のプリミティブのエラーで handler が GC を起こしても、外側の値は残る
     try expectValue(&e, "(let ((a (list 1 2 3))) (list a (handler-case (parse-integer \"x\") (parse-error (c) (princ-to-string c))) a))", "((1 2 3) \"整数として読めません: \\\"x\\\"\" (1 2 3))");
 }
+
+test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    // (:type …)・:named・:initial-offset は未実装（黙って別の意味にしない）
+    try expectError(&e, "(defstruct (p26-l (:type list)) a)", .unimplemented);
+    try expectError(&e, "(defstruct (p26-v (:type vector) :named) a)", .unimplemented);
+    try expectError(&e, "(defstruct (p26-o (:initial-offset 2)) a)", .unimplemented);
+    // 形の誤り
+    try expectError(&e, "(defstruct (p26-e (:include no-such-structure-p26)) a)", .program_error);
+    try expectError(&e, "(defstruct p26-e a a)", .program_error);
+    // #S は実行時に読む（標準の構築子を呼ぶ）。読んだものは定数として使える
+    try expectValue(&e, "(progn (defstruct p26-point (x 0) (y 0)) (prin1-to-string (read-from-string \"#S(p26-point :y 2)\")))", "\"#S(P26-POINT :X 0 :Y 2)\"");
+    try expectValue(&e, "(p26-point-y (eval (read-from-string \"'#S(p26-point :y 7)\")))", "7");
+    try expectError(&e, "(read-from-string \"#S(no-such-structure-p26 :a 1)\")", .reader_error);
+    // 初期値のない &aux のスロットは NIL（SBCL 2.6.7 は未束縛の印。処理系依存）
+    try expectValue(&e, "(progn (defstruct (p26-aux (:constructor make-p26-aux (a &aux b))) a b) (p26-aux-b (make-p26-aux 1)))", "NIL");
+    // スロットの数を変えて定義し直した後の、古いインスタンスへのアクセスは type-error（範囲の外を読まない）
+    try expectValue(&e, "(progn (defstruct p26-re a b) (defvar *p26-old* (make-p26-re :a 1 :b 2)) (defstruct p26-re a) (p26-re-a *p26-old*))", "1");
+    try expectValue(&e, "(progn (defstruct p26-re a b c) (p26-re-b *p26-old*))", "2");
+    try expectError(&e, "(p26-re-c *p26-old*)", .type_error);
+    // まだ定義していない型のスロットは、定義するまで検査しない
+    try expectValue(&e, "(progn (defstruct p26-fwd (x nil :type p26-later)) (p26-fwd-x (make-p26-fwd :x 5)))", "5");
+    try expectError(&e, "(progn (defstruct p26-later) (make-p26-fwd :x 5))", .type_error);
+    // GC stress：構築・複製・equalp のハッシュ表
+    e.rt.heap.stress = true;
+    defer e.rt.heap.stress = false;
+    try expectValue(&e,
+        \\(let ((h (make-hash-table :test 'equalp)) (p (make-p26-point :x (list 1 2) :y "a")))
+        \\  (setf (gethash p h) :found)
+        \\  (list (gethash (make-p26-point :x (list 1 2) :y "A") h) (equalp p (copy-structure p)) (p26-point-x (copy-p26-point p))))
+    , "(:FOUND T (1 2))");
+}

@@ -220,15 +220,15 @@ seq	id	outcome	detail
 00228	chapters/10-Level 7.md#L326	both-error	
 00229	chapters/10-Level 7.md#L337	both-error	
 00230	chapters/10-Level 7.md#L344	match	
-00231	chapters/10-Level 7.md#L374	zilisp-error	未実装：DEFSTRUCT
+00231	chapters/10-Level 7.md#L374	match	
 00232	chapters/10-Level 7.md#L391	both-error	
 00233	chapters/10-Level 7.md#L404	both-error	
 00234	chapters/10-Level 7.md#L417	both-error	
 00235	chapters/10-Level 7.md#L427	both-error	
-00236	chapters/10-Level 7.md#L437	zilisp-error	未実装：DEFSTRUCT
-00237	chapters/10-Level 7.md#L451	zilisp-error	未実装：DEFSTRUCT
-00238	chapters/10-Level 7.md#L483	zilisp-error	未実装：DEFSTRUCT
-00239	chapters/10-Level 7.md#L503	zilisp-error	未実装：DEFSTRUCT
+00236	chapters/10-Level 7.md#L437	match	
+00237	chapters/10-Level 7.md#L451	match	
+00238	chapters/10-Level 7.md#L483	match	
+00239	chapters/10-Level 7.md#L503	match	
 00240	chapters/10-Level 7.md#L513	match	
 00241	chapters/10-Level 7.md#L540	both-error	
 00242	chapters/10-Level 7.md#L561	both-error	
@@ -238,8 +238,8 @@ seq	id	outcome	detail
 00246	chapters/10-Level 7.md#L624	match	
 00247	chapters/10-Level 7.md#L641	both-error	
 00248	chapters/10-Level 7.md#L653	both-error	
-00249	chapters/10-Level 7.md#L683	zilisp-error	未実装：DEFSTRUCT
-00250	chapters/10-Level 7.md#L717	zilisp-error	未実装：DEFSTRUCT
+00249	chapters/10-Level 7.md#L683	match	
+00250	chapters/10-Level 7.md#L717	match	
 00251	chapters/11-Level 8.md#L31	match	
 00252	chapters/11-Level 8.md#L77	match	
 00253	chapters/11-Level 8.md#L91	both-error	
@@ -469,7 +469,7 @@ seq	id	outcome	detail
 00481	chapters/18-Level 13.md#L640	match	
 00482	chapters/18-Level 13.md#L666	both-error	
 00483	chapters/18-Level 13.md#L672	match	
-00484	chapters/18-Level 13.md#L704	zilisp-error	未実装の関数：GET-UNIVERSAL-TIME
+00484	chapters/18-Level 13.md#L704	match	
 00485	chapters/18-Level 13.md#L732	both-error	
 00486	chapters/19-Level 14.md#L19	both-error	
 00488	chapters/19-Level 14.md#L64	zilisp-error	未定義の関数：QUIT
@@ -695,18 +695,18 @@ seq	id	outcome	detail
 00769	chapters/26-Level 18-C.md#L1157	match	
 00770	chapters/26-Level 18-C.md#L1205	both-error	
 00779	chapters/26-Level 18-C.md#L1438	both-error	
-00780	chapters/27-Level 19.md#L69	zilisp-error	未実装：DEFSTRUCT
+00780	chapters/27-Level 19.md#L69	match	
 00781	chapters/27-Level 19.md#L98	both-error	
 00782	chapters/27-Level 19.md#L129	both-error	
-00783	chapters/27-Level 19.md#L165	zilisp-error	未実装：DEFSTRUCT
-00784	chapters/27-Level 19.md#L180	zilisp-error	未実装：DEFSTRUCT
+00783	chapters/27-Level 19.md#L165	match	
+00784	chapters/27-Level 19.md#L180	match	
 00785	chapters/27-Level 19.md#L202	both-error	
-00786	chapters/27-Level 19.md#L249	zilisp-error	未実装：DEFSTRUCT
-00787	chapters/27-Level 19.md#L262	zilisp-error	未実装：DEFSTRUCT
-00788	chapters/27-Level 19.md#L284	zilisp-error	未実装：DEFSTRUCT
-00789	chapters/27-Level 19.md#L295	zilisp-error	未実装：DEFSTRUCT
-00790	chapters/27-Level 19.md#L355	zilisp-error	未実装：DEFSTRUCT
-00791	chapters/27-Level 19.md#L369	zilisp-error	未実装：DEFSTRUCT
+00786	chapters/27-Level 19.md#L249	match	
+00787	chapters/27-Level 19.md#L262	match	
+00788	chapters/27-Level 19.md#L284	match	
+00789	chapters/27-Level 19.md#L295	match	
+00790	chapters/27-Level 19.md#L355	match	
+00791	chapters/27-Level 19.md#L369	match	
 00792	chapters/27-Level 19.md#L388	match	
 00793	chapters/27-Level 19.md#L407	match	
 00794	chapters/27-Level 19.md#L432	match	
@@ -723,7 +723,7 @@ seq	id	outcome	detail
 00806	chapters/27-Level 19.md#L854	both-error	
 00807	chapters/27-Level 19.md#L896	match	
 00808	chapters/27-Level 19.md#L941	both-error	
-00809	chapters/27-Level 19.md#L966	zilisp-error	未実装：DEFSTRUCT
+00809	chapters/27-Level 19.md#L966	match	
 00810	chapters/27-Level 19.md#L1202	both-error	
 00811	chapters/27-Level 19.md#L1219	both-error	
 00812	chapters/27-Level 19.md#L1236	both-error	
@@ -830,9 +830,9 @@ seq	id	outcome	detail
 00959	chapters/35-Level 22.md#L1016	both-error	
 00969	chapters/36-Level 23-A.md#L224	match	
 00970	chapters/36-Level 23-A.md#L257	both-error	
-00971	chapters/36-Level 23-A.md#L299	zilisp-error	未実装：DEFSTRUCT
+00971	chapters/36-Level 23-A.md#L299	match	
 00972	chapters/36-Level 23-A.md#L320	both-error	
-00973	chapters/36-Level 23-A.md#L358	zilisp-error	未実装：DEFSTRUCT
+00973	chapters/36-Level 23-A.md#L358	match	
 00974	chapters/36-Level 23-A.md#L387	match	
 00975	chapters/36-Level 23-A.md#L412	both-error	
 00976	chapters/36-Level 23-A.md#L439	match	
@@ -847,7 +847,7 @@ seq	id	outcome	detail
 00985	chapters/36-Level 23-A.md#L693	match	
 00986	chapters/36-Level 23-A.md#L715	match	
 00987	chapters/36-Level 23-A.md#L735	match	
-00988	chapters/36-Level 23-A.md#L822	zilisp-error	未実装：DEFSTRUCT
+00988	chapters/36-Level 23-A.md#L822	match	
 00989	chapters/36-Level 23-A.md#L837	match	
 00990	chapters/36-Level 23-A.md#L889	match	
 00991	chapters/36-Level 23-A.md#L916	both-error	
@@ -855,7 +855,7 @@ seq	id	outcome	detail
 00993	chapters/36-Level 23-A.md#L1010	both-error	
 00994	chapters/36-Level 23-A.md#L1016	match	
 00995	chapters/36-Level 23-A.md#L1038	match	
-00996	chapters/36-Level 23-A.md#L1092	zilisp-error	未実装：DEFSTRUCT
+00996	chapters/36-Level 23-A.md#L1092	match	
 00997	chapters/36-Level 23-A.md#L1124	both-error	
 00998	chapters/36-Level 23-A.md#L1138	match	
 00999	chapters/36-Level 23-A.md#L1176	match	
@@ -865,7 +865,7 @@ seq	id	outcome	detail
 01003	chapters/36-Level 23-A.md#L1364	match	
 01004	chapters/36-Level 23-A.md#L1379	match	
 01005	chapters/36-Level 23-A.md#L1446	match	
-01007	chapters/36-Level 23-A.md#L1502	zilisp-error	未実装：DEFSTRUCT
+01007	chapters/36-Level 23-A.md#L1502	match	
 01008	chapters/37-Level 23-B.md#L110	match	
 01009	chapters/37-Level 23-B.md#L144	both-error	
 01010	chapters/37-Level 23-B.md#L176	both-error	
@@ -881,10 +881,10 @@ seq	id	outcome	detail
 01020	chapters/37-Level 23-B.md#L411	both-error	
 01021	chapters/37-Level 23-B.md#L424	both-error	
 01022	chapters/37-Level 23-B.md#L440	match	
-01023	chapters/37-Level 23-B.md#L499	zilisp-error	未実装：DEFSTRUCT
+01023	chapters/37-Level 23-B.md#L499	match	
 01024	chapters/37-Level 23-B.md#L510	match	
-01025	chapters/37-Level 23-B.md#L541	zilisp-error	未実装：DEFSTRUCT
-01026	chapters/37-Level 23-B.md#L553	zilisp-error	未実装：DEFSTRUCT
+01025	chapters/37-Level 23-B.md#L541	match	
+01026	chapters/37-Level 23-B.md#L553	match	
 01027	chapters/37-Level 23-B.md#L574	match	
 01028	chapters/37-Level 23-B.md#L593	both-error	
 01029	chapters/37-Level 23-B.md#L620	both-error	
@@ -901,10 +901,10 @@ seq	id	outcome	detail
 01040	chapters/37-Level 23-B.md#L1059	match	
 01041	chapters/37-Level 23-B.md#L1078	both-error	
 01042	chapters/37-Level 23-B.md#L1101	match	
-01043	chapters/37-Level 23-B.md#L1172	zilisp-error	未実装：DEFSTRUCT
+01043	chapters/37-Level 23-B.md#L1172	match	
 01047	chapters/38-Level 24-A.md#L179	both-error	
 01048	chapters/38-Level 24-A.md#L203	both-error	
-01049	chapters/38-Level 24-A.md#L238	zilisp-error	未実装：DEFSTRUCT
+01049	chapters/38-Level 24-A.md#L238	match	
 01050	chapters/38-Level 24-A.md#L260	match	
 01052	chapters/38-Level 24-A.md#L326	match	
 01053	chapters/38-Level 24-A.md#L392	both-error	
@@ -915,7 +915,7 @@ seq	id	outcome	detail
 01058	chapters/38-Level 24-A.md#L544	both-error	
 01059	chapters/38-Level 24-A.md#L560	both-error	
 01061	chapters/38-Level 24-A.md#L980	match	
-01063	chapters/39-Level 24-B.md#L138	zilisp-error	未実装：DEFSTRUCT
+01063	chapters/39-Level 24-B.md#L138	match	
 01064	chapters/39-Level 24-B.md#L170	match	
 01066	chapters/39-Level 24-B.md#L232	both-error	
 01067	chapters/39-Level 24-B.md#L254	match	
@@ -934,11 +934,11 @@ seq	id	outcome	detail
 01084	chapters/42-Level 26.md#L132	both-error	
 01085	chapters/42-Level 26.md#L140	both-error	
 01086	chapters/42-Level 26.md#L202	both-error	
-01087	chapters/42-Level 26.md#L224	zilisp-error	未実装：DEFSTRUCT
-01088	chapters/42-Level 26.md#L239	zilisp-error	未実装：DEFSTRUCT
+01087	chapters/42-Level 26.md#L224	match	
+01088	chapters/42-Level 26.md#L239	match	
 01089	chapters/42-Level 26.md#L255	match	
 01090	chapters/42-Level 26.md#L287	match	
-01091	chapters/42-Level 26.md#L324	zilisp-error	未実装：DEFSTRUCT
+01091	chapters/42-Level 26.md#L324	match	
 01093	chapters/42-Level 26.md#L413	match	
 01094	chapters/42-Level 26.md#L451	match	
 01095	chapters/42-Level 26.md#L481	match	

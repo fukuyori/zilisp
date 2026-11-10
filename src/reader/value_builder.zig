@@ -173,6 +173,28 @@ pub const ValueBuilder = struct {
         return v;
     }
 
+    /// #S(名前 スロット 値 …)：構造体の標準の構築子（キーワードの引数のもの）を呼んで作る（CLHS 2.4.8.13。Phase 26）。
+    /// 形の検査と構築子の呼び出しは Lisp の zl-sys::%read-structure（boot.lisp）。値が構造体でなく数なら誤りの種類
+    pub fn structure(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, form: Value) Error!Value {
+        const rt = b.rt;
+        const th = b.th orelse return fail(diag, loc, "ここでは #S を使えません（構造体のリテラルは、実行時に読むときだけ使えます）");
+        const f = if (rt.sys_read_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_read_structure).function;
+        if (!f.isFunctionPointer()) return fail(diag, loc, "ここでは #S を使えません");
+        var argv: [1]Value = .{form};
+        th.mv_count = 1;
+        const r = th.call(f, &argv);
+        if (r == Value.unwind) return error.LispError;
+        th.mv_count = 1;
+        if (!r.isFixnum()) return r;
+        return fail(diag, loc, switch (r.asFixnum()) {
+            1 => "#S の後には (構造体の名前 スロット 値 …) の形のリストが必要です",
+            2 => "#S の構造体が定義されていません",
+            3 => "#S の構造体には、標準の構築子（キーワードの引数の構築子）がありません",
+            5 => "#S の構造体の構築子が、まだ定義されていません（構造体のリテラルは、定義を実行した後にだけ読めます）",
+            else => "#S のスロットと値の並びが正しくありません",
+        });
+    }
+
     /// #nA と #A(次元 要素の型 . 中身)：配列を作る（SBCL 2.6.7 の sharp-A。Phase 24）。
     /// ネイティブの定数の読み込みはスレッドなしで読むので、make-array を呼ばずにここで作る。
     /// 中身の誤りは SBCL の make-array と同じ種類のエラー（スレッドがなければ reader-error）

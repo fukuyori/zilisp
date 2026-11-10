@@ -4,6 +4,7 @@
 //!   - 配列は次元が同じで、要素がすべて equalp（ベクタは fill-pointer までの有効な部分を比べる。文字列も同じ規則）
 //!   - ハッシュ表は、比較の種類と項目の数が同じで、一方の各キーがもう一方にあり、値が equalp
 //!   - パス名は equal と同じ（欄ごとに equal。SBCL 2.6.7 と同じ：Phase 23）
+//!   - 構造体は、同じクラスで、スロットがすべて equalp（Phase 26）
 //!   - それ以外は eq
 //! 大文字・小文字の区別は char-equal と同じ方法でなくす（char-downcase の値で比べる。Unicode 15.0.0：Phase 21.5）。
 
@@ -15,6 +16,7 @@ const numbers = @import("numbers.zig");
 const arrays = @import("arrays.zig");
 const hashtables = @import("hashtables.zig");
 const pathnames = @import("pathnames.zig");
+const structures = @import("structures.zig");
 
 /// 大文字・小文字を区別しないための文字（char-downcase の値。char-equal の文字は同じ値になる）
 pub fn foldChar(c: u21) u21 {
@@ -49,6 +51,17 @@ pub fn equalp2(th: *Thread, a: Value, b: Value) ?bool {
         }
         // パス名は equal と同じに比べる（SBCL 2.6.7 と同じ。Codex のレビュー P23 #14）
         if (pathnames.isPathname(x)) return pathnames.isPathname(y) and pathnames.equalPathnames(x, y);
+        // 構造体：クラスが同じ（同じ defstruct で作った）で、スロットがすべて equalp（SBCL 2.6.7 と同じ）
+        if (structures.isStructure(x)) {
+            if (!structures.isStructure(y)) return false;
+            const sx = structures.structPtr(x);
+            const sy = structures.structPtr(y);
+            if (sx.class != sy.class or sx.header.len != sy.header.len) return false;
+            for (sx.slots(), sy.slots()) |a2, b2| {
+                if (!(equalp2(th, a2, b2) orelse return null)) return false;
+            }
+            return true;
+        }
         return false;
     }
 }

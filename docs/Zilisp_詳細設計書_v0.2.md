@@ -18,6 +18,7 @@
 | 0.1 | 2026-11-01 | 初版ドラフト |
 | 0.2 | 2026-11-01 | 速度最優先に変更。D-0〜D-10 を決定し反映（Value 8バイト化、ページ単位のヒープ、保守的スタック走査、ネイティブバックエンドを主経路化、§7A 新設） |
 | 0.2（追記） | 2026-11-01 | SBCL のソースと Web 情報による確認結果を反映（§2.2、§2.5、§3.1、§3.4、§7A.6、§15.1）。単一実行ファイルの条件を §16.3 に追加。参考資料を §20 に追加 |
+| 0.2（追記33） | 2026-11-10 | Phase 26：`defstruct`（§9.1・§10.5・§11.2。構造体の専用のオブジェクト、クラスの記述、`defstruct` マクロの展開、スロットの `:type` の検査、`#S(…)` の印字と読み取り、`equalp`、リストの中の condition・構造体の印字の経路）と、時刻の関数（§11.2。`get-universal-time`・`decode-universal-time`・`encode-universal-time`・`get-decoded-time`） |
 | 0.2（追記32） | 2026-11-05 | Phase 25：condition・handler・restart（§6.6・§7 の命令の表・§9・§11.2。condition と restart の `record`、特殊変数で表す handler と restart のスタック、Zig で見つけたエラーの handler への通知、SBCL と同じ report の文面、`typep`、型の分岐と `check-type`・`assert`、`eval` の関数） |
 | 0.2（追記31） | 2026-11-04 | Phase 24（P24d）：pretty printer（§11.2。pretty stream、`pprint-logical-block` などの pretty printing の関数、`*print-pprint-dispatch*` の表と標準の印字、`format` の `~<…~:>`・`~_`・`~I`・`~:T`、`*print-pretty*` の初期値 T、`#nA` の読み取りと往復の受入） |
 | 0.2（追記30） | 2026-11-03 | Phase 24（P24c）：Reader の拡張（§11.2。readtable のオブジェクト、ユーザー定義の reader macro、`#.`、`#n=`／`#n#`、読み取りと印字の `readtable-case`、`*read-base*` などの読み取りの変数、`with-standard-io-syntax`） |
@@ -1101,7 +1102,7 @@ pub const Package = struct {
 - 標準の condition 型の階層は、`src/lisp/boot.lisp` の `define-condition` で作る（ブートストラップ時に Zig の表から作る予定を変えた）。Zig で見つけたエラーのうち説明の文を持つものには、Zilisp の型を使う（`zl-sys::simple-program-error`・`simple-control-error`・`simple-parse-error`・`simple-reader-error`・`simple-package-error`・`simple-stream-error`・`simple-end-of-file`・`simple-file-error`・`simple-storage-condition`。SBCL の `SB-INT:SIMPLE-PROGRAM-ERROR` などに当たる）。未実装の機能は `zilisp:unimplemented`（`simple-condition` と `serious-condition` の下位。**`error` の下位にしない**：`ignore-errors`・`(handler-case … (error …))` が未実装を黙って受け止めないように。基本設計 §3.1。2026-11-05 の決定）。COMMON-LISP パッケージの未実装の関数（未実装の印のあるシンボル）と、値のない CL の特殊変数も、handler には `zilisp:unimplemented` として通知する（トップレベルの報告は今までどおり undefined-function・unbound-variable の文面）。
 - `define-condition` は、スロットの `:initarg`・`:initform`・`:reader`・`:writer`・`:accessor`（`:type`・`:documentation`・`:allocation` は受け付けて使わない）、オプションの `:report`（文字列・関数の名前・lambda 式）・`:default-initargs`・`:documentation` を扱う。`make-condition` は、initarg、既定の initarg、initform の順に値を決める。値のないスロットを読むと `unbound-slot`。
 - **report の文面は SBCL 2.6.7 と同じ**（2026-11-05 決定）：`type-error` は `~@<The value ~@:_~2@T~S ~@:_is not of type ~@:_~2@T~S~:@>`、`arithmetic-error` は `arithmetic error ~S signalled` と、演算があれば `Operation was (…).`、`undefined-function` はパッケージ付きの名前（`*package*` を KEYWORD に束縛して印字。SBCL の `print-symbol-with-prefix`）、report のない型は `Condition ~S was signalled.`（`*package*` は COMMON-LISP）など。印字（`*print-escape*` が真）も SBCL と同じ形：`#<SIMPLE-ERROR "制御文字列" {アドレス}>`、`#<TYPE-ERROR expected-type: 型 datum: 値>`、`#<UNBOUND-VARIABLE 名前 {アドレス}>`、`#<型 {アドレス}>`。`*print-readably*` なら `print-not-readable`。
-- 印字は Lisp の `zl-sys::%print-record` が行う。Zig の印字の入口（pprint の `outputUgly`。pretty でないときも、condition・restart は pretty printer の経路に回す：`streams.emitPrinted`・`printTo`・`format` の `printed`）がそれを呼ぶ。`*print-pretty*` が NIL のときのリストの要素の condition は、Zig の既定の形 `#<型 {アドレス}>` で書く（Phase 25 の制限）。
+- 印字は Lisp の `zl-sys::%print-record` が行う。Zig の印字の入口（pprint の `outputUgly`。pretty でないときも、condition・restart は pretty printer の経路に回す：`streams.emitPrinted`・`printTo`・`format` の `printed`）がそれを呼ぶ。Phase 26 から、condition・restart を中に含むリスト・ベクタも、`*print-pretty*` が NIL のときに pretty printer の経路に回す（`streams.hasLispPrinted`。§10.5）ので、リストの中の condition も SBCL と同じ形で印字する（Phase 25 では Zig の既定の形 `#<型 {アドレス}>` だった）。
 - **Zig で見つけたエラーの condition**：エラーの種類（`ErrorKind`）から型を決める（`zl-sys::%zig-condition`）。type-error（説明がなく期待する型があるとき）・unbound-variable・undefined-function・division-by-zero（`:operation` と `:operands`。0 除算の箇所が `expected` に `(演算 被演算子…)` を渡す。SBCL と同じく `floor`・`mod` なども演算は `/`）・floating-point-overflow などは、値を持つ標準の型で、report は SBCL の文面。そのほかは上の Zilisp の型で、report は今までの説明の文（日本語）と値。
 
 ### 9.2 handler
@@ -1224,6 +1225,30 @@ instance                      rack
 - `structure-class` として定義する。スロットは固定配列、アクセサは通常の関数でインライン化の対象とする。
 - `:include`（単一継承）、`:constructor`（BOA を含む）、`:copier`、`:predicate`、`:conc-name`、`:print-object` / `:print-function` をサポートする。
 - スロットに `:type` が指定された場合は、ネイティブバックエンドの型推論に使う。
+
+**Phase 26 の実装**（2026-11-10 決定：表し方は専用のオブジェクト、範囲は上の項目と周辺の標準機能、スロットの `:type` は検査する）
+
+- **表し方**：`ObjKind.structure`（`object.Structure`。`src/values/object.zig`）。ヘッダ・クラスの記述・スロットの値を 1 つのオブジェクトに並べる（`header.len` がスロットの数。condition の `record` のように、値のベクタを別に持たない）。構造体は互換でない再定義をしないので、Phase 27 の rack と直接配置の比較（§10.2）を待たずに直接配置にした。CLOS の `structure-class` にまとめるのは Phase 27。
+- **クラスの記述**は Lisp で作る simple-vector：`#(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数)`。condition と同じく、名前のシンボルの属性 `zl-sys::%class` に置く（Zig が読むのは位置 0・1 と、エラーの報告の印字のための位置 3）。CPL は自身を含む上位の構造体の名前のリストで、最後は `structure-object`。スロットは `(名前 initform 型 read-only アクセサの名前)` のリスト（`:include` した構造体のスロットを先頭に含む。値の順）。
+- **`defstruct` マクロ**（`src/lisp/boot.lisp` の `zl-sys::%expand-defstruct`）の展開：
+  - `(eval-when (:compile-toplevel :load-toplevel :execute) (zl-sys::%define-structure …))`：クラスの記述を置く。コンパイル時にも実行するのは、後ろの `defstruct` の `:include` が展開のときに元の構造体のスロットを読むため。**`:include` する構造体は、ファイルをコンパイルする場合（ネイティブ）はトップレベルで定義しておく**（CLHS 3.2.3.1。フォームを 1 つずつ評価する `--script`・REPL では、どこで定義してもよい）。
+  - アクセサ：`(defun 名前 (object) (zl-sys::%structure-ref object '構造体 位置))` と、read-only でなければ `(defun (setf 名前) (value object) (zl-sys::%structure-set object '構造体 位置 value))`。`:include` した構造体のアクセサと同じ名前になるものは定義し直さない。
+  - 構築子：キーワードの引数のもの（引数の変数は gensym。initform はスロットの名前の変数を見ない）と、引数の並びを指定したもの（BOA。CLHS 3.4.6：既定値のない `&optional`・`&key` の変数はスロットの initform を既定値にし、並びにないスロットは initform の値）。どちらも `(zl-sys::%make-structure '構造体 値…)` を呼ぶ。
+  - 複製（`copy-structure` を呼び、その構造体でなければ type-error）、述語（`zl-sys::%structure-p`）。
+  - オプション：`:conc-name`・`:constructor`（複数可、`nil` でなし）・`:copier`・`:predicate`・`:include`（スロットの既定値・型・read-only の書き換え）・`:print-function`・`:print-object`（引数なしは `#S(…)` の形に戻す）。文書の文字列は読み飛ばす。
+  - **`(:type list)`・`(:type vector)`・`:named`・`:initial-offset` は `zilisp:unimplemented`**（教材で使われていない。別のタスク）。`print-object` のメソッドは Phase 28。
+- **Zig の側**（`src/primitives/structures.zig`）：`zl-sys::%make-structure`・`%structure-ref`・`%structure-set`（名前の構造体か、それを `:include` した構造体でなければ type-error。同じ名前で定義し直した構造体の古いインスタンスは、スロットの数の範囲の外なら type-error）・`%structure-p`・`%structure-class-of`・`%check-slot-type`・`%print-depth`・`%print-descend`、CL の `copy-structure`。GC は class とスロットを走査する。
+- **スロットの `:type`**：構築子と `setf` で `typep` により検査し、合わなければ type-error（SBCL 2.6.7 と同じ動作）。`typep` がどの値にもエラーなしで判定できる型だけを検査する（`types.slotCheckable`）：まだ定義していない型（後で定義する構造体など）、特殊化した配列の要素の型、`(complex 型)`、`satisfies` を含む型は検査しない（定義した後は検査する）。type-error の expected-type は書いた型指定子そのまま（SBCL は `(integer 0 10)` を `(MOD 11)` のように正規化する）。ネイティブバックエンドの型推論には、まだ使っていない。
+- **型**：`typep` は、構造体の名前（`:include` した構造体の名前も真）と `structure-object` を判定する（クラスの CPL。condition と同じ `types.recordTypep`）。
+- **`equalp`**：クラスが同じで、スロットがすべて `equalp` なら真（`equal` は `eq`）。`equalp` のハッシュ表のハッシュ値は、クラスの名前とスロット（先頭の 16 個、深さ 4 まで）から求める。
+- **印字**：SBCL 2.6.7 の `default-structure-print` と同じ形 `#S(名前 :スロット 値 …)`（`zl-sys::%print-structure`・`%default-structure-print`。pretty のときは `pprint-logical-block` で、`:linear`・`:miser` の改行の位置も同じ。`*print-level*`・`*print-length*`・`*print-circle*`・`*print-readably*` に従う。スロットのない構造体は `#S(名前)` で、深さに数えない）。`:print-function` の 3 つ目の引数は今の印字の深さ。
+  - Zig の印字の入口は、構造体を condition と同じ `zl-sys::%print-record` に渡す。**`*print-pretty*` が NIL のときも、リスト・ベクタの中に構造体か condition・restart があれば、pretty printer の経路（要素ごとに `outputObject` を通る）で書く**（`streams.hasLispPrinted` が先に走査する）。
+  - Lisp の印字の関数を通らない場合（トップレベルのエラーの報告の中の値）は、Zig の印字が `#S(…)` の形で書く（`:print-function` などは使わない）。
+- **`#S(名前 スロット 値 …)` の読み取り**（CLHS 2.4.8.13。`reader.zig` の `.sharp_s` → `ValueBuilder.structure` → `zl-sys::%read-structure`）：スロットの名前をキーワードにして、標準の構築子（キーワードの引数の構築子。名前を変えていてもよい）を呼ぶ。構造体がない・構築子がない・形の誤りは reader-error。
+  - **構造体のリテラルは、定義を実行した後に読むときだけ使える**（`--script`・REPL・`read`）。ネイティブの定数は起動時にテキストから読み直すので、構造体の定数は書き出せず、コンパイル時にエラーにする（§14 の `make-load-form` の扱いと同じ）。
+- **`fboundp`** は `(setf 名前)` も受け取る（CLHS の関数の名前。構造体のアクセサの確認に使う）。
+- **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：初期値のない `&aux` のスロットは NIL（SBCL は未束縛の印 `#<unbound>`）、type-error の expected-type の正規化、`(:type …)` などの未実装、構造体のリテラルをコンパイルできないこと。
+- **試験**：言語試験 `defstruct.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）、単体テスト（未実装のオプション、`#S`、定義し直し、後から定義する型、GC stress）。
 
 ---
 
@@ -1382,7 +1407,7 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **0 除算の演算と被演算子**：`/`・`floor` などの 0 除算は `(/ 被除数 除数)`（浮動小数は浮動小数にした値。SBCL と同じ）、`expt` は `(EXPT 底 指数)` を condition に渡す。`log` の 0 は演算なし（SBCL と同じ）。
 - **`eval`** を関数として加えた（教材 Level 13 の `safe-eval`。コンパイラの `eval` を呼ぶ）。
 - **VM の値スタック**：handler を呼ぶ間 `vm.sp` を一番上のフレームが使いうる深さまで上げる（§9.2）。上げないと、呼び出し側の handler が同じフレームの `catch` に戻る場合に、書き戻していない `list` の引数が handler を呼ぶ処理の値で上書きされることを確かめた（単体テストと言語試験 `conditions.lisp` の `p25-mid`）。
-- **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：SBCL の内部の型（`SB-INT:SIMPLE-PROGRAM-ERROR` などは `zl-sys::simple-program-error` など）、SBCL のコンパイラの定数の畳み込みによる文面（`Value of "a" in (+ "a" 1) is "a", not a NUMBER.` は、Zilisp では値の型を報告する type-error の文面）、トップレベルの restart（SBCL の `--script` の RETRY・CONTINUE・ABORT）、ファイルのエラーの文面（SBCL は絶対パスと OS のメッセージ）、Zig で見つけたエラーの説明の文（日本語）、`*print-pretty*` が NIL のときのリストの中の condition の印字。
+- **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：SBCL の内部の型（`SB-INT:SIMPLE-PROGRAM-ERROR` などは `zl-sys::simple-program-error` など）、SBCL のコンパイラの定数の畳み込みによる文面（`Value of "a" in (+ "a" 1) is "a", not a NUMBER.` は、Zilisp では値の型を報告する type-error の文面）、トップレベルの restart（SBCL の `--script` の RETRY・CONTINUE・ABORT）、ファイルのエラーの文面（SBCL は絶対パスと OS のメッセージ）、Zig で見つけたエラーの説明の文（日本語）、`*print-pretty*` が NIL のときのリストの中の condition の印字（この 1 つは Phase 26 でなくなった）。
 - **試験**：言語試験 `conditions.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）、単体テスト（受け止められなかった condition の報告と restart の一覧、VM の命令の途中のエラーと GC）。
 - **Codex のレビューの修正（Phase 25）**、6 件（どれも SBCL 2.6.7 と照合した）：`restart-case` の中の `cerror` は引数を書いた順に評価する。`restart-case` のフォームはマクロを展開してから通知の形かを調べる（大域のマクロだけ）。`abort`・`muffle-warning` の restart が戻ってきたら control-error。`typep` の `(vector t n)`・`(string n)` などの大きさは、fill-pointer でなく次元と照合する。Reader が reader-error・end-of-file を通知する前に、読んだところまでストリームの位置を進める（handler がその場でストリームを読むため。`#A` の中身の誤りなど ValueBuilder の中から通知するエラーは、まだ位置を進めない）。reader-error の condition にストリームを入れる。
 - **Codex のレビューの修正（Phase 25、2回目）**、4 件（どれも SBCL 2.6.7 と照合した）：ValueBuilder の中から通知するエラー（`#A` の中身の誤り）も、通知の前にストリームの位置を進める（readOp が `ValueBuilder.sync_position` を渡す）。`read-from-string` の reader-error・end-of-file にも、同じ中身と位置の文字列の入力ストリームを入れる（エラーのときだけ作る）。`ccase`・`ctypecase` は場所の部分式を setf の展開で1回だけ評価する（`check-type` は SBCL と同じく、確かめるたびに場所を1回読む）。`*debugger-hook*` があれば、handler・restart がなくても Zig で見つけたエラーで呼ぶ（§9.4 の制限をなくした）。
@@ -1400,6 +1425,17 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 25、14回目）**、同じ種類の 3 件（SBCL 2.6.7 と照合した）と、確かめる途中で見つけた 1 件：`typep` の `(satisfies …)` の述語（`types.zig`）が値の個数を残していた（`(values nil 2 3)` を返す述語を `set-pprint-dispatch` に登録すると `write-to-string` が `("5" 2 3)`）。`eval` に渡した空の `progn`、`:execute` がないか本体のない `eval-when`（`eval.zig`）は、前のフォームやマクロの展開関数の値を残したまま NIL を返していた。`(values)` を返すリーダーマクロの直後に入力が終わると、`read` が終わりの値を返さず値なしになっていた（`streams.zig` の `eofResult`）。`:initial-value` なしで要素のない列の `reduce`（`boot.lisp`）は、関数の値をすべて返していた。どれも値 1 つにした。Zig から Lisp を呼ぶ 24 か所（`th.call`）をすべて確かめ、関数を受け取る関数の 45 例（列・リスト・集合・木・ハッシュ表・reader・マクロの展開・signal）を SBCL 2.6.7 と比べた。これら以外の違いは `union` の順（処理系依存）だけ。
 - `*break-on-signals*` は、デバッガのフェーズ（tque #351。どのようなデバッガにするかの検討から行う）で扱う。
 - 結果（受入：Level 13 の主要コード）：Level 13 の 33 ブロックのうち、両方ともエラーで終わるもの（エラーを見せる例・断片）を除き、ファイルのエラーの文面の 1 つ（L455。処理系依存）と、未実装の `get-universal-time` を呼ぶ 1 つ（L704。`zilisp:unimplemented` は `error` でないので `ignore-errors` が受け止めない）以外は SBCL 2.6.7 と同じ出力。教材のブロックの一致は 478 から 513 に（出力の違いは L455 の 1 つ）。condition のために Zilisp だけがエラーになるブロックはなくなった。起動時間は 13.55 ms（boot.lisp の空でない行は 1192 から 1934 に）。
+
+**Phase 26 の実装（defstruct・時刻）**
+2026-11-10 の決定：構造体は専用のオブジェクト（スロットを直接並べる）で表す。範囲は §10.5 の項目と周辺の標準機能（`#S`・`copy-structure`・`equalp`・`typep`）。スロットの `:type` は検査する。時刻の関数（tque #378）を先に入れる。構造は §10.5。
+- **defstruct**：Zig の側は `src/primitives/structures.zig`、Lisp の側は `src/lisp/boot.lisp` の末尾（`zl-sys::%expand-defstruct`、印字の `zl-sys::%print-structure`、`#S` の `zl-sys::%read-structure`）。内容は §10.5。
+- **時刻**（CLHS 25.1.4）：`get-universal-time` は Zig（`src/primitives/time.zig`。`std.Io.Timestamp.now(io, .real)`）。`decode-universal-time`・`encode-universal-time`・`get-decoded-time` は boot.lisp に書く。
+  - その土地の時刻との差（`zl-sys::%timezone`。Unix の時刻を受け取り、UTC からの西向きの秒数（夏時間を含む）と、夏時間かどうかを返す。SBCL の `sb-unix::get-timezone` と同じ値）：Windows は `SystemTimeToTzSpecificLocalTime` と `GetTimeZoneInformation`（1970 年より前は 1970 年として扱う。SBCL 2.6.7 の Windows 版と同じ）、ほかの OS は `/etc/localtime`（TZif）の切り替わりの表（`std.tz`。読めなければ UTC。**環境変数 `TZ` は見ない**）。
+  - 引数の型は SBCL 2.6.7 と同じ（universal-time は `unsigned-byte`、time-zone は `(or null (rational -24 24))`、年は `(or (mod 100) (integer 1899))` など。合わなければ type-error。結果が負なら type-error）。2 桁の年は今の年の前後 50 年。`time-zone` を指定したら夏時間は考えない。
+  - 32 ビットの `time_t` の範囲の外の時刻は、その年の 3 月 1 日からの秒数を 2035 年（後ろ）・1903 年（前）の 3 月 1 日に足した時刻の規則を使う（SBCL の方式）。
+  - `get-internal-real-time`・`get-internal-run-time`・`internal-time-units-per-second`・`sleep` は未実装のまま。
+- **試験**：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ。Linux（WSL）でも同じ）。`time.lisp` は、その土地の時刻と今の年によって変わるものは値の形だけを確かめる。
+- 結果（受入：Level 19 の主要コード）：Level 19 で `defstruct` のために Zilisp だけがエラーだった 10 ブロックは、すべて SBCL 2.6.7 と同じ出力（Level 19 に Zilisp だけがエラーのブロックはなくなった）。ほかの Level の `defstruct` のブロック（Level 7 の 7、Level 23 の 9、Level 24 の 2、Level 26 の 3）と、`get-universal-time` を呼ぶ Level 13 の 1 つも同じ出力になった。教材のブロックの一致は 513 から 545 に、Zilisp だけがエラーは 79 から 47 に（出力の違いは L455 の 1 つのまま）。boot.lisp の空でない行は 1934 から 2282 に。起動時間は 14.06 ms（変更の前の `4833203` と交互に 41 回ずつ測った中央値。変更の前は 13.40 ms）。pretty でない印字で先にリストを走査する費用は、4 万回の `prin1-to-string` で約 1 ms（起動時間の差を除く）。
 
 ### 11.3 標準ライブラリのビルド
 

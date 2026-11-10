@@ -330,6 +330,22 @@ clhs = "3.2.4.4 Additional Constraints on Externalizable Objects、make-load-for
 since = "Phase 26"
 
 [[items]]
+id = "sharp-s-nested-labels"
+description = "入れ子の #n= のラベルで互いを指す、型のあるスロットの #S（#1=#S(n :next (#2=#S(n :next (#1#))))、#1=(#2=#S(n :next (#1#)) #2#)）"
+sbcl = "type-error（ラベルが解決する前の値で型を検査すると推測される。※推測です）"
+zilisp = "すべてのラベルが解決した後の値が型に合えば読める（合わなければ、解決した時点で type-error。Phase 26）"
+clhs = "2.4.8.15 Sharpsign Equal-Sign・2.4.8.13 Sharpsign S（型を検査する時期は規定されていない。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
+id = "defstruct-include-bare-slot-name"
+description = ":include のスロットの書き換えに、裸のシンボルを書いた形（(:include base x)）"
+sbcl = "エラー（リストを求める）"
+zilisp = "受け付ける（(x) と同じ：元の初期値・型のまま。Phase 26）"
+clhs = "defstruct（:include の slot-description は本体と同じ構文。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
 id = "local-time-zone-source"
 description = "decode-universal-time・encode-universal-time が time-zone なしで使う、その土地の時刻との差の求め方"
 sbcl = "C ライブラリの localtime（Windows は負の時刻を 0 として扱う。Unix は環境変数 TZ に従う）"

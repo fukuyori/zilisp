@@ -258,7 +258,7 @@ const Ctx = struct {
     /// 今の印字の変数に従って印字した UTF-8（arena）。base があれば *print-base* をそれに、*print-radix* を NIL にする
     fn printed(c: *Ctx, v: Value, escape: ?bool, base: ?u8) Fail![]const u8 {
         // condition・restart・構造体は Lisp の印字の関数で書く（Phase 25・26）
-        if (prettyOn(c.th) or streams.hasLispPrinted(v)) {
+        if (prettyOn(c.th) or streams.inLispPrinter(c.th) or streams.hasLispPrinted(v)) {
             // pretty printer：新しい文字列のストリームに書く（SBCL の princ-to-string と同じ）
             const th = c.th;
             const depth = th.binding_depth;

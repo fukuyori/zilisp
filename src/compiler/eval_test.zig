@@ -2135,6 +2135,22 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     // まだ定義していない型のスロットは、定義するまで検査しない
     try expectValue(&e, "(progn (defstruct p26-fwd (x nil :type p26-later)) (p26-fwd-x (make-p26-fwd :x 5)))", "5");
     try expectError(&e, "(progn (defstruct p26-later) (make-p26-fwd :x 5))", .type_error);
+    // 入れ子のラベルで互いを指す構造体：すべてのラベルが解決した後の値は型に合うので、読める
+    // （SBCL 2.6.7 はこの 2 つを type-error にする。言語試験には入れない。Codex のレビュー P26 2回目 #1 の確認で見つけた違い）
+    try expectValue(&e,
+        \\(progn (defstruct p26-n1 (next nil :type (cons p26-n1 null)))
+        \\  (let ((v (read-from-string "#1=#S(p26-n1 :next (#2=#S(p26-n1 :next (#1#))))")))
+        \\    (eq v (car (p26-n1-next (car (p26-n1-next v)))))))
+    , "T");
+    try expectValue(&e,
+        \\(progn (defstruct p26-n2 (next nil :type (cons cons null)))
+        \\  (let ((v (read-from-string "#1=(#2=#S(p26-n2 :next (#1#)) #2#)")))
+        \\    (list (eq (car v) (cadr v)) (eq v (car (p26-n2-next (car v)))))))
+    , "(T T)");
+    // 型に合わない値は、ラベルが解決した時点で type-error。その後の読み取りは、前の読み取りの状態を引き継がない
+    try expectError(&e, "(read-from-string \"#1=(#2=#S(p26-n1 :next (#1#)) #2#)\")", .type_error);
+    try expectValue(&e, "(p26-n2-p (read-from-string \"#S(p26-n2 :next ((a)))\"))", "T");
+    try expectError(&e, "(make-p26-n2 :next 5)", .type_error);
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

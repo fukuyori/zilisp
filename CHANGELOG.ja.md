@@ -22,6 +22,11 @@
   自分を指す構造体を読める（スロットに仮の値が残っていた。型のあるスロットは置き換えた後で確かめる）、BOA の構築子の
   supplied-p の変数と同じ名前のスロット、`:include` でスロットの型を書き換えても元の型を検査する、`decode-universal-time` の
   time-zone が秒にして整数にならなければ type-error、`defstruct` のオプションの余分な引数と重なりをエラーにする
+- Codex の 2 回目のレビュー（P26）の 6 件を直した（どれも SBCL 2.6.7 と照合した）：`#S` のスロットの値のリスト・ベクタの中に
+  `#n#` があるとき、置き換えた後の値で型を確かめる（正しい値を拒み、誤った値を通していた）、`:include` の `(x)` は元の初期値の
+  まま、pretty でない印字で構造体・condition の中のリストに `*print-level*` と `*print-circle*` が伝わる、`(:conc-name "")` は
+  今のパッケージのシンボル、`(:print-function nil)`・`(:print-object nil)` は `#S(…)` の形、`:include` で同じスロットを 2 回
+  書き換えるとエラー
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

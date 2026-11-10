@@ -539,7 +539,7 @@ pub fn atLineStart(th: *Thread, stream: Value) bool {
 
 fn emitPrinted(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
     // condition・restart・構造体は Lisp の印字の関数で書く（pprint の outputUgly が zl-sys::%print-record を呼ぶ。Phase 25・26）
-    if (prettyOn(th) or hasLispPrinted(v)) return printPretty(th, stream, v, escape);
+    if (prettyOn(th) or inLispPrinter(th) or hasLispPrinted(v)) return printPretty(th, stream, v, escape);
     var buf: Io.Writer.Allocating = .init(th.rt.gpa);
     defer buf.deinit();
     if (!printTo(th, &buf.writer, v, escape)) return false;
@@ -553,6 +553,13 @@ fn prettyOn(th: *Thread) bool {
 /// Lisp の印字の関数で書くもの（condition・restart：Phase 25、構造体：Phase 26）か、それをリスト・ベクタの中に含むか。
 /// 含むなら、*print-pretty* が偽でも pretty printer の経路（要素ごとに outputObject を通る）で書く。
 /// 調べきれない（とても大きい・深い・循環している）ときは真を返す（どちらの経路でも印字の結果は同じ）
+/// Lisp の印字の関数（構造体・condition の印字、:print-function など）の中からの印字か：外側の印字の深さ（*print-level*）か
+/// 共有の表（*print-circle*）がある。その間は、リストだけの値も pretty printer の経路で書いて、深さと共有の表を引き継ぐ
+/// （Zig の印字は深さ 0・表なしで始めるので、#S(FOO :X # …) や #1= が出なくなる。Codex のレビュー P26 2回目 #3）
+pub fn inLispPrinter(th: *Thread) bool {
+    return th.pp_level > 0 or th.pp_circle != null;
+}
+
 pub fn hasLispPrinted(v: Value) bool {
     var budget: usize = 1 << 20;
     return scanLispPrinted(v, &budget, 0);
@@ -605,7 +612,7 @@ pub fn printPretty(th: *Thread, stream: Value, v: Value, escape: ?bool) bool {
 /// 今の印字の変数に従って w に書く（escape が null なら *print-escape*）。
 /// *print-readably* で読み戻せないものは print-not-readable のエラー（Phase 24）
 pub fn printTo(th: *Thread, w: *Io.Writer, v: Value, escape: ?bool) bool {
-    if (hasLispPrinted(v)) {
+    if (inLispPrinter(th) or hasLispPrinted(v)) {
         // condition・restart・構造体：Lisp の印字の関数で文字列のストリームに書いて写す（Phase 25・26）
         const ss = makeStringOutput(th) orelse return false;
         if (!printPretty(th, ss, v, escape)) return false;

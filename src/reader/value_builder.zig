@@ -180,12 +180,28 @@ pub const ValueBuilder = struct {
         const th = b.th orelse return fail(diag, loc, "ここでは #S を使えません（構造体のリテラルは、実行時に読むときだけ使えます）");
         const f = if (rt.sys_read_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_read_structure).function;
         if (!f.isFunctionPointer()) return fail(diag, loc, "ここでは #S を使えません");
+        // スロットの値の中（リスト・ベクタ・構造体の中も）に #n= の仮の値があれば、スロットの型を検査せずに作り、
+        // 仮の値がすべて置き換わってから確かめる（labelFinish）：#1=#S(node :next (#1#))。置き換える前の値で検査すると、
+        // 正しい値を拒み、誤った値を通す（Codex のレビュー P26 1回目 #1・2回目 #1）
+        const pending = try containsPlaceholder(rt, form);
         var argv: [1]Value = .{form};
         th.mv_count = 1;
+        const saved_skip = th.skip_slot_type_check;
+        th.skip_slot_type_check = pending;
         const r = th.call(f, &argv);
+        th.skip_slot_type_check = saved_skip;
         if (r == Value.unwind) return error.LispError;
         th.mv_count = 1;
-        if (!r.isFixnum()) return r;
+        if (!r.isFixnum()) {
+            if (pending and r.isOther() and Runtime.kindOf(r) == .structure) {
+                // 後で確かめる構造体は、ラベルの表に (unbound . 構造体) として置く（recursive の read も同じ表を使う。
+                // ラベルの番号の項目とは car で区別できる）
+                const e = try rt.cons(Value.unbound, r);
+                const cell = b.labelsCell();
+                cell.* = try rt.cons(e, cell.*);
+            }
+            return r;
+        }
         return fail(diag, loc, switch (r.asFixnum()) {
             1 => "#S の後には (構造体の名前 スロット 値 …) の形のリストが必要です",
             2 => "#S の構造体が定義されていません",
@@ -320,8 +336,8 @@ pub const ValueBuilder = struct {
         if (n > std.math.maxInt(i32)) return fail(diag, loc, "#n= の数が大きすぎます");
         if (b.labelEntry(n) != null) return fail(diag, loc, "同じ #n= のラベルが2回あります");
         const rt = b.rt;
-        // 仮の値は car が unbound の cons（利用者のデータには現れないので、ほかの cons と区別できる。構造体のスロットの型の
-        // 検査 zl-sys::%check-slot-type は、仮の値を検査しない。Codex のレビュー P26 1回目 #1）
+        // 仮の値は car が unbound の cons（利用者のデータには現れないので、ほかの cons と区別できる。#S の値の中に
+        // 仮の値があるかを containsPlaceholder が調べる。Codex のレビュー P26 1回目 #1）
         const ph = try rt.cons(Value.unbound, Value.nil);
         const e = try rt.cons(Value.fromFixnum(@intCast(n)), ph);
         const cell = b.labelsCell();
@@ -334,19 +350,23 @@ pub const ValueBuilder = struct {
         if (obj == ph) return fail(diag, loc, "#n= の直後に同じ #n# は置けません");
         const e = b.labelEntry(n).?;
         Runtime.consPtr(e).cdr = obj;
-        // 仮の値を置き換えた構造体は、置き換えた後でスロットの型を確かめる（構築子は仮の値を検査しなかった。
-        // Codex のレビュー P26 1回目 #1）。構造体は obj からたどれるので、検査の間も GC に回収されない
-        var patched: std.ArrayList(Value) = .empty;
-        defer patched.deinit(b.rt.gpa);
-        try patch(b.rt, obj, ph, obj, &patched);
-        if (patched.items.len != 0) if (b.th) |th| {
-            const f = if (b.rt.sys_check_structure == Value.nil) Value.nil else b.rt.symbolPtr(b.rt.sys_check_structure).function;
-            if (f.isFunctionPointer()) for (patched.items) |s| {
-                var argv: [1]Value = .{s};
-                if (th.call(f, &argv) == Value.unwind) return error.LispError;
-                th.mv_count = 1;
-            };
-        };
+        try patch(b.rt, obj, ph, obj);
+        // 型を検査せずに作った構造体（structure）のうち、中に仮の値がなくなったものの、スロットの型を確かめる。
+        // 確かめる前に表から外す（エラーになっても、同じ構造体を確かめ直さない）
+        const th = b.th orelse return obj;
+        const f = if (b.rt.sys_check_structure == Value.nil) Value.nil else b.rt.symbolPtr(b.rt.sys_check_structure).function;
+        var x = b.labelsCell().*;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const entry = Runtime.consPtr(Runtime.consPtr(x).car);
+            if (entry.car != Value.unbound or entry.cdr == Value.nil) continue;
+            const s = entry.cdr;
+            if (try containsPlaceholder(b.rt, s)) continue;
+            entry.cdr = Value.nil;
+            if (!f.isFunctionPointer()) continue;
+            var argv: [1]Value = .{s};
+            if (th.call(f, &argv) == Value.unwind) return error.LispError;
+            th.mv_count = 1;
+        }
         return obj;
     }
 
@@ -527,8 +547,8 @@ fn isCharType(rt: *Runtime, t: Value) bool {
 }
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）の ph を val に置き換える。循環していてもよい
-/// （一度通ったものは見ない）。スロットを置き換えた構造体は patched に足す
-fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, patched: *std.ArrayList(Value)) Error!void {
+/// （一度通ったものは見ない）
+fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);
@@ -551,20 +571,52 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, patched: *std.ArrayLis
             // 構造体（Phase 26）：#1=#S(node :next #1#) のように、スロットに仮の値が入っている
             const object = @import("../values/object.zig");
             const s: *object.Structure = @ptrCast(@alignCast(x.pointer()));
-            var changed = false;
             for (s.slots()) |*it| {
-                if (it.* == ph) {
-                    it.* = val;
-                    changed = true;
-                } else try stack.append(gpa, it.*);
+                if (it.* == ph) it.* = val else try stack.append(gpa, it.*);
             }
-            if (changed) try patched.append(gpa, x);
         } else {
             const object = @import("../values/object.zig");
             const a: *object.Array = @ptrCast(@alignCast(x.pointer()));
             if (Runtime.kindOf(a.data) == .simple_vector) try stack.append(gpa, a.data);
         }
     }
+}
+
+/// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）に、#n= の仮の値（car が unbound の cons。labelDefine）が
+/// あるか。循環していてもよい
+fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
+    const gpa = rt.gpa;
+    var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
+    defer seen.deinit(gpa);
+    var stack: std.ArrayList(Value) = .empty;
+    defer stack.deinit(gpa);
+    try stack.append(gpa, obj);
+    while (stack.pop()) |x| {
+        if (x.isCons()) {
+            const c = Runtime.consPtr(x);
+            if (c.car == Value.unbound) return true;
+            const g = try seen.getOrPut(gpa, x.raw());
+            if (g.found_existing) continue;
+            try stack.append(gpa, c.car);
+            try stack.append(gpa, c.cdr);
+            continue;
+        }
+        if (!x.isOther() or x == Value.nil) continue;
+        const kind = Runtime.kindOf(x) orelse continue;
+        if (kind != .simple_vector and kind != .array and kind != .structure) continue;
+        const g = try seen.getOrPut(gpa, x.raw());
+        if (g.found_existing) continue;
+        const object = @import("../values/object.zig");
+        switch (kind) {
+            .simple_vector => try stack.appendSlice(gpa, Runtime.vectorPtr(x).items()),
+            .structure => try stack.appendSlice(gpa, @as(*object.Structure, @ptrCast(@alignCast(x.pointer()))).slots()),
+            else => {
+                const a: *object.Array = @ptrCast(@alignCast(x.pointer()));
+                if (Runtime.kindOf(a.data) == .simple_vector) try stack.append(gpa, a.data);
+            },
+        }
+    }
+    return false;
 }
 
 /// テキストから全てのデータを読み、読んだ順のリスト（Lisp の値）で返す（試験用）。

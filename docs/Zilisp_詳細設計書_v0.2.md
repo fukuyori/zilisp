@@ -1436,11 +1436,19 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
   - `get-internal-real-time`・`get-internal-run-time`・`internal-time-units-per-second`・`sleep` は未実装のまま。
 - **試験**：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ。Linux（WSL）でも同じ）。`time.lisp` は、その土地の時刻と今の年によって変わるものは値の形だけを確かめる。
 - **Codex のレビューの修正（Phase 26、1回目）**、5 件（どれも SBCL 2.6.7 と照合した）：
-  - `#1=#S(node :next #1#)` のように `#n#` で自分（や外側のオブジェクト）を指す構造体：reader の `#n#` の置き換え（`value_builder.zig` の `patch`）が構造体のスロットをたどっていなかったので、仮の値がスロットに残っていた。`patch` が構造体のスロットも置き換える。`#n=` の仮の値は car が unbound の cons にして、ほかの cons と区別できるようにした。`zl-sys::%check-slot-type` は仮の値を検査せず、置き換えた後で reader が `zl-sys::%check-structure-slots` でその構造体のスロットの型を確かめる（型に合わなければ、そこで type-error）。
+  - `#1=#S(node :next #1#)` のように `#n#` で自分（や外側のオブジェクト）を指す構造体：reader の `#n#` の置き換え（`value_builder.zig` の `patch`）が構造体のスロットをたどっていなかったので、仮の値がスロットに残っていた。`patch` が構造体のスロットも置き換える。`#n=` の仮の値は car が unbound の cons にして、ほかの cons と区別できるようにした。型の検査は、仮の値が置き換わった後で行う（方法は 2 回目の修正で変えた。下）。
   - BOA の構築子の supplied-p の変数（`(&optional (a 10 present))` の `present`）も、同じ名前のスロットの値にする（initform が入っていた）。
   - `:include` でスロットの型を書き換えたとき、元の型も満たさなければならない（元の構造体のアクセサからも読むため）。型は `(and 元の型 新しい型)` として持つ（片方が `t` か、同じならそのまま）。
   - `decode-universal-time` は、time-zone を秒にした値が整数でなければ type-error（`1/7`・`1/7200`。秒が比になっていた）。
   - `defstruct` のオプションの余分な引数（`(:copier nil extra)` など）、シンボルでない `:copier`・`:predicate` の名前、`:conc-name`・`:copier`・`:predicate` の重なりをエラーにする（`:constructor` は重ねてよい）。
+- **Codex のレビューの修正（Phase 26、2回目）**、6 件（どれも SBCL 2.6.7 と照合した）：
+  - `#S` のスロットの値の中（リスト・ベクタ・構造体の中も）に `#n=` の仮の値があるとき：1 回目の修正は、スロットの値そのものが仮の値の場合しか扱っていなかった（`#1=#S(n :next (#1#))` で、型 `(cons n null)` の正しい値を拒み、`(cons cons null)` の誤った値を通した）。`ValueBuilder.structure` が `containsPlaceholder` で値の中を調べ、仮の値があれば `th.skip_slot_type_check` を立てて構築子を呼び（`zl-sys::%check-slot-type` は検査しない）、できた構造体をラベルの表に `(unbound . 構造体)` として置く（recursive の read も同じ表を使う）。`labelFinish` は置き換えの後、表の構造体のうち中に仮の値がなくなったものを表から外して、`zl-sys::%check-structure-slots` でスロットの型を確かめる。
+    - 入れ子のラベルで互いを指す形（`#1=#S(n :next (#2=#S(n :next (#1#))))`・`#1=(#2=#S(n :next (#1#)) #2#)`）は、すべてのラベルが解決した後の値が型に合えば読める。SBCL 2.6.7 はこの 2 つを type-error にする（`impl-dependent.toml`）。
+  - `:include` のスロットの書き換えは、初期値が書いてあるときだけ初期値を書き換える：`(x)` と `x` は元の初期値のまま、`(x nil)` は NIL（いつも書き換えていた）。
+  - pretty でない印字で、Lisp の印字の関数の中からの印字（構造体・condition のスロットの値、`:print-function` の中の印字）が Zig の印字に戻ると、深さ（`*print-level*`）と共有の表（`*print-circle*`）が伝わらなかった。`th.pp_level` が 1 以上か `th.pp_circle` があるとき（`streams.inLispPrinter`）は、リストだけの値も pretty printer の経路で書く（`emitPrinted`・`printTo`・`format` の `printed`）。
+  - `(:conc-name "")` は、アクセサの名前を今のパッケージに intern する。スロットのシンボルそのものを使うのは `(:conc-name nil)`（と引数なし）だけ。
+  - `(:print-function nil)`・`(:print-object nil)` は、引数なしと同じく `#S(…)` の形に戻す（`(function nil)` に展開してエラーになっていた）。
+  - `:include` で同じスロットを 2 回書き換えるとエラー。`:include` の書き換えに裸のシンボル（`(:include base x)`）を書くのは受け付ける（SBCL 2.6.7 はエラーにする。CLHS の構文では slot-description はシンボルでもよいと読める。※原文は未確認）。
 - 結果（受入：Level 19 の主要コード）：Level 19 で `defstruct` のために Zilisp だけがエラーだった 10 ブロックは、すべて SBCL 2.6.7 と同じ出力（Level 19 に Zilisp だけがエラーのブロックはなくなった）。ほかの Level の `defstruct` のブロック（Level 7 の 7、Level 23 の 9、Level 24 の 2、Level 26 の 3）と、`get-universal-time` を呼ぶ Level 13 の 1 つも同じ出力になった。教材のブロックの一致は 513 から 545 に、Zilisp だけがエラーは 79 から 47 に（出力の違いは L455 の 1 つのまま）。boot.lisp の空でない行は 1934 から 2282 に。起動時間は 14.06 ms（変更の前の `4833203` と交互に 41 回ずつ測った中央値。変更の前は 13.40 ms）。pretty でない印字で先にリストを走査する費用は、4 万回の `prin1-to-string` で約 1 ms（起動時間の差を除く）。
 
 ### 11.3 標準ライブラリのビルド

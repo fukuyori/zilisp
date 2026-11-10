@@ -2364,7 +2364,7 @@
          (constructors nil) (constructor-p nil)
          (copier nil) (copier-p nil)
          (predicate nil) (predicate-p nil)
-         (include nil) (overrides nil)
+         (include nil) (overrides nil) (overridden nil)
          (printer nil) (printer-p nil)
          (slots nil) (forms nil))
     (unless (and name (symbolp name))
@@ -2386,7 +2386,9 @@
           (error 'type-error :datum (car args) :expected-type 'symbol))
         (cond ((eq key :conc-name)
                (setq conc-name-p t
-                     conc-name (if (and args (car args)) (string (car args)) "")))
+                     ;; NIL（引数なしも）は接頭辞なしで、アクセサはスロットのシンボルそのもの。空の文字列は、名前を今の
+                     ;; パッケージに intern する（SBCL 2.6.7 と同じ。Codex のレビュー P26 2回目 #4）
+                     conc-name (if (and args (car args)) (string (car args)) nil)))
               ((eq key :constructor)
                (setq constructor-p t)
                (cond ((null args) (push (list (intern (concatenate 'string "MAKE-" (symbol-name name)))) constructors))
@@ -2406,7 +2408,8 @@
                (when printer-p
                  (zl-sys::%macro-form-error "DEFSTRUCT の印字の関数の指定は 1 つだけです" option))
                (setq printer-p t)
-               (when args
+               ;; 引数なしと NIL は #S(…) の形に戻す（:include で引き継いだ印字の関数も外す。Codex のレビュー P26 2回目 #5）
+               (when (and args (car args))
                  ;; 関数は呼ぶときに探す（後から defun した関数でもよい。define-condition の :report と同じ）
                  (let ((f (car args)) (o (gensym "OBJECT")) (s (gensym "STREAM")))
                    (setq printer
@@ -2432,7 +2435,13 @@
                  (s (zl-sys::%find-structure-slot (car o) slots)))
             (unless s
               (zl-sys::%macro-form-error "DEFSTRUCT の :include のスロットが、元の構造体にありません" spec))
-            (setf (cadr s) (cadr o))
+            ;; 同じスロットを 2 回は書き換えられない（Codex のレビュー P26 2回目 #6）
+            (when (member s overridden)
+              (zl-sys::%macro-form-error "DEFSTRUCT の :include で、同じスロットを 2 回書き換えています" spec))
+            (push s overridden)
+            ;; 初期値は、書いてあるときだけ書き換える：(x) と x は元の初期値のまま、(x nil) は NIL
+            ;; （SBCL 2.6.7 と同じ。Codex のレビュー P26 2回目 #2）
+            (if (and (consp spec) (consp (cdr spec))) (setf (cadr s) (cadr o)))
             ;; 型を書き換えても、元の構造体の型は満たさなければならない（元のアクセサからも読むので）：両方の型にする
             ;; （SBCL 2.6.7 も両方で検査する。Codex のレビュー P26 1回目 #3）
             (if (nth 4 o)
@@ -2454,7 +2463,7 @@
       (setq slots (append slots (reverse own)))
       ;; アクセサ。:include した構造体のアクセサと同じ名前になるものは、定義し直さない（元のアクセサがそのまま使える）
       (dolist (s slots)
-        (let ((accessor (if (string= conc-name "")
+        (let ((accessor (if (null conc-name)
                             (car s)
                             (intern (concatenate 'string conc-name (symbol-name (car s)))))))
           (unless (and (< index inherited) (eq accessor (nth 4 s)))

@@ -25,6 +25,12 @@
   after the replacement), a slot named like the supplied-p variable of a BOA constructor, the original type of a slot is
   still checked when `:include` overrides its type, `decode-universal-time` signals a type-error when the time-zone is not a
   whole number of seconds, and extra arguments and repeated options of `defstruct` are errors
+- Fixed 6 issues from the second Codex review of Phase 26 (all checked against SBCL 2.6.7): when `#n#` is inside a list or
+  vector in a `#S` slot value, the type is checked with the value after the replacement (correct values were rejected and
+  wrong ones let through), `(x)` in `:include` keeps the original default, `*print-level*` and `*print-circle*` reach lists
+  inside structures and conditions when printing without the pretty printer, `(:conc-name "")` makes symbols in the current
+  package, `(:print-function nil)` and `(:print-object nil)` give the `#S(...)` form, and overriding the same slot twice in
+  `:include` is an error
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

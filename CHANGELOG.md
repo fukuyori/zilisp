@@ -59,6 +59,10 @@
   initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
   checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
   read a comma inside the enclosing backquote
+- The issue from the fifteenth Codex review of Phase 26 is left as a limitation: a comma is represented by an ordinary
+  list (`(zl-sys:unquote-splicing x)` and so on), so a list that writes this internal symbol directly, placed right after
+  a dot inside a backquote, is a reader-error just like `,@x` (SBCL represents a comma by a dedicated object). It is
+  recorded in the list of implementation-dependent behaviour.
 - Fixed 2 issues from the fourteenth Codex review of Phase 26: the check of `,@` / `,.` right after a dot inside a
   backquote looks at the object that was read (`#-no-such-feature ,@b`, `#1=,@b` and a `,@b` read and returned by a
   reader macro are reader-errors too). The error is signaled after reading up to the close parenthesis (the position for

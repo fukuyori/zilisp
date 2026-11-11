@@ -392,3 +392,11 @@ sbcl = "C ライブラリの localtime（Windows は負の時刻を 0 として�
 zilisp = "Windows は SystemTimeToTzSpecificLocalTime（その年の夏時間の規則）、それ以外は /etc/localtime の切り替わりの表（環境変数 TZ は見ない。読めなければ UTC）。32 ビットの time_t の範囲の外の年は、SBCL と同じく 2035 年・1903 年の規則を使う"
 clhs = "25.1.4.1 Decoded Time（その土地の時刻との差と夏時間は処理系依存。※原文は未確認）"
 since = "Phase 26"
+
+[[items]]
+id = "comma-as-list"
+description = "backquote の中のコンマの表し方と、内部のシンボル zl-sys:unquote・zl-sys:unquote-splicing・zl-sys:unquote-nsplicing を直接書いたリストの扱い"
+sbcl = "コンマは専用のオブジェクト（ふつうのリストとは別のもの）"
+zilisp = "コンマはふつうのリスト (zl-sys:unquote x)・(zl-sys:unquote-splicing x)・(zl-sys:unquote-nsplicing x)。これらのシンボルを直接書いたリストは、コンマを書いたのと同じに扱う：backquote の中では展開され（`(a (zl-sys:unquote b)) は `(a ,b) と同じ）、ドットのすぐ後の (zl-sys:unquote-splicing x)・(zl-sys:unquote-nsplicing x) は `(a . ,@x) と同じく reader-error（Phase 26。Codex のレビュー 15 回目。直さないと決めた）"
+clhs = "2.4.6 Backquote（backquote の読み取りの結果の表し方は処理系依存。※原文は未確認）"
+since = "Phase 26"

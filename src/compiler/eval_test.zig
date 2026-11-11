@@ -2283,4 +2283,9 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
         \\  (list (handler-case (read s) (reader-error () :reader-error)) (file-position s) (read s)))
     , "(:READER-ERROR 10 42)");
     try expectError(&e, "(read-from-string \"`(a . ,@b\")", .end_of_file);
+    // コンマはふつうのリストで表すので、内部のシンボルを直接書いたリストはコンマを書いたのと同じ（SBCL と違えた動作。
+    // impl-dependent.toml の comma-as-list。Codex のレビュー P26 15回目、直さないと決めた）
+    try expectError(&e, "(read-from-string \"`(a . (zl-sys::unquote-splicing b))\")", .reader_error);
+    try expectValue(&e, "(let ((b '(1 2))) (declare (special b)) (eval (read-from-string \"`(a (zl-sys::unquote b))\")))", "(A (1 2))");
+    try expectValue(&e, "(consp (read-from-string \"(a . (zl-sys::unquote-splicing b))\"))", "T");
 }

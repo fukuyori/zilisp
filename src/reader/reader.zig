@@ -563,14 +563,23 @@ pub fn Reader(comptime Builder: type) type {
                     // 本体は backquote の外として読む：`#S(s :x ,y) のコンマは reader-error（SBCL 2.6.7 と同じ。構造体は
                     // backquote の鋳型にならない）。本体の中で新しく始めた backquote は読める。構築子には外側の深さを渡す
                     // （initform の recursive な read が、#S の後ろのコンマを読める。Codex のレビュー P26 9回目 #2・10回目 #5）
+                    if (self.suppress) {
+                        _ = try self.readRequired(loc, "#S の後");
+                        return try self.builder.nil(loc);
+                    }
+                    // #S のすぐ後は ( でなければならない。本体は、( のマクロ文字の関数を通さずに、標準のリストとして読む
+                    // （SBCL の sharp-S と同じ：#S#.(…)・#S (…)・#S foo は reader-error、( に reader macro を設定した
+                    // readtable でも #S(…) は読める。Codex のレビュー P26 11回目 #1）
+                    const open = (try self.peek()) orelse return self.eof(loc, "データの途中でテキストが終わりました");
+                    if (open.cp != '(') return self.fail(loc, "#S の後にはリストを書きます（#S(名前 スロット 値 …)）");
+                    self.src.advance(open);
                     const outer_bq = self.bq_depth;
                     self.bq_depth = 0;
-                    const form = self.readRequired(loc, "#S の後") catch |err| {
+                    const form = self.readList(loc) catch |err| {
                         self.bq_depth = outer_bq;
                         return err;
                     };
                     self.bq_depth = outer_bq;
-                    if (self.suppress) return try self.builder.nil(loc);
                     if (comptime !@hasDecl(Builder, "structure")) return self.fail(loc, "#S はここでは使えません");
                     return try self.builder.structure(&self.diagnostic, loc, self.src, form, outer_bq);
                 },

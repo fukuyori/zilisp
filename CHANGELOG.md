@@ -59,6 +59,9 @@
   initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
   checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
   read a comma inside the enclosing backquote
+- Fixed the issue from the eleventh Codex review of Phase 26: `#S` must be followed directly by `(` (`#S#.(…)`, `#S (…)`
+  and `#S name` are reader-errors, and the `#.` is not evaluated). The body is read without going through the macro
+  function of `(`, so `#S(…)` can be read even in a readtable that sets a reader macro on `(`. The same as SBCL 2.6.7.
 - Fixed 2 issues from the tenth Codex review of Phase 26: an alias made inside an unresolved label (`#2` in `#1=(#2=#1#)`)
   gives the resolved value when referred to later (a placeholder was left in the result), and a comma inside the body of a
   `#S` is a reader-error even inside a backquote (the same as SBCL 2.6.7). Limitations left as decided: the types when a

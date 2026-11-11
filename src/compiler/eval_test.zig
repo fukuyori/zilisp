@@ -2216,6 +2216,20 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     // 別名を #S の型のあるスロットに入れたら、解決した値で型を確かめる（仮の値を残さない）
     try expectError(&e, "(read-from-string \"(#1=(#2=#1#) #S(p26-rr :x #2#))\")", .type_error);
     try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1#) #S(p26-any :x #2#))\"))) (eq (car v) (p26-any-x (cadr v))))", "T");
+    // 別名の別名、ベクタの中の別名
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1# #3=#2#) #2# #3#)\"))) (list (eq (car v) (caar v)) (eq (car v) (cadar v)) (eq (car v) (cadr v)) (eq (car v) (caddr v))))", "(T T T T)");
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=#(#2=#1#) #2#)\"))) (list (eq (car v) (aref (car v) 0)) (eq (car v) (cadr v))))", "(T T)");
+    // #S のすぐ後は ( でなければならない。本体は ( のマクロ文字の関数を通さずに読む（Codex のレビュー P26 11回目 #1）
+    try expectError(&e, "(read-from-string \"#S#.'(p26-any :x 1)\")", .reader_error);
+    try expectError(&e, "(read-from-string \"#S (p26-any :x 1)\")", .reader_error);
+    try expectError(&e, "(read-from-string \"#S p26-any\")", .reader_error);
+    try expectError(&e, "(read-from-string \"#S\")", .end_of_file);
+    try expectValue(&e,
+        \\(let ((*readtable* (copy-readtable nil)))
+        \\  (set-macro-character #\( (lambda (s c) (declare (ignore s c)) (error "custom open")))
+        \\  (p26-any-x (read-from-string "#S(p26-any :x 42)")))
+    , "42");
+    try expectValue(&e, "(let ((*read-suppress* t)) (read-from-string \"(#S nosuch 2)\"))", "NIL");
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

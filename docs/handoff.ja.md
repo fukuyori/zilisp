@@ -7,62 +7,82 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。Phase 26（defstruct）と時刻の関数（#378）のコミットは `7cb07fe`、Codex のレビューの修正は 1 回目 `14c8a75`・2 回目 `6c6110e`、native-test を並列にする実行器の変更は `ffea1fb`、3 回目の修正は `8473f4d`、4 回目の修正と `defstruct.lisp` を 3 つに分ける変更は `54ac755`、5 回目の修正は `f29570a`、6 回目の修正は `d7f1866`、7 回目の修正は `6f1ab7e`、8 回目の修正（案 A）は `14a9210`、9 回目の修正は `cdf4946`、lang-test と eval-check を並列にする変更は `996b98d`（ここまで push 済み）。**10 回目の修正は、この文書と同じコミットに入れる**（2026-11-11 の時点では作業ツリーにあり、コミットしていない。`git status -sb` と `git log --oneline -3` で確かめること）。
-- tque：#317（P25）は完了。#318（P26）・#378（時刻）・#380（リストの中の condition の印字）も完了にした（2026-11-11、レモンの指示）。今は 0.4（#316）の途中で、次は #319（P27 CLOS）。
-- 全体の検証（`verify_p215.ps1`）が最後に通ったのは `6d2cde7`（2026-11-11。Codex の 15 回目の対応まで入ったコミット。その前は `996b98d` と、それまでの各コミット）：test 3 モード、lang-test 73/73、native-test 40/40（Debug・ReleaseFast、通常と GC stress）、クロス 5 種、WSL の試験 126 passed・1 skipped・0 failed、reader-check・fmt、eval-check 一致 545・both-error 362・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 47、起動時間の中央値 13.91 ms（ReleaseFast。最小 13.09 ms）。所要時間は 1,119 秒（約 19 分。ほかのビルドや試験と並行しないとき。native-test を並列にする前は 65〜74 分、lang-test・eval-check を並列にする前は 22〜28 分）。
-  - Codex の 10 回目の修正は `7610a8b`、11 回目は `b46ea09`、12 回目は `28af74f`、13 回目は `5ef5884`、14 回目は `b13505d`、15 回目の対応（文書と単体試験だけ）は `6d2cde7`（ここまで push 済み）。15 回目の後は、処理系のコードを変えていないので Codex の 16 回目は依頼していない（2026-11-11、レモンと確認）。11 回目からの指摘は reader の一般の動作で、Phase 26 の本体（構築子・アクセサ・印字・型・時刻）には 10 回目から指摘が出ていない。
-  - `defstruct.lisp` は 3 つに分けた（2026-11-11。`defstruct.lisp` 基本・`defstruct-read.lisp` `#S` の読み取りと `#n#`・`defstruct-review.lisp` レビューで足した例）。Debug の GC stress で 1 ファイル約 2 分 18 秒かかっていたのが、65 秒・34 秒・31 秒になった。言語試験は 73 個、native-test の対象は 40 個。
-  - Linux 版を WSL（Asia/Tokyo）で実行して `time.lisp`・`defstruct.lisp` が期待値と一致することは、`7cb07fe` と同じソースで確かめた。**未確認**：macOS での時刻の関数の動作（クロスビルドが通ることだけ）、夏時間のある地域の動作、WSL の 1 skipped が前から同じ試験か。
-  - 起動時間（ReleaseFast。`4833203`（Phase 26 の前）と交互に 41 回ずつ測った中央値）：2026-11-10 は 13.40 ms → 14.06 ms（`7cb07fe` と同じソース）、2026-11-11 は 14.06 ms → 15.04 ms（3 回目の修正の後）、15.00 ms → 15.68 ms（4 回目の修正の後）。差は 0.7〜1.0 ms で、絶対の値は機械の状態で揺れる。検証のスクリプトの中の値（`ffea1fb` で 16.84 ms、`8473f4d` で 21.64 ms）は、ほかのコンパイルが同時に走っていたときのもの。
+- ブランチ：`main`。2026-11-11 の更新時は `## main...origin/main` で、最後のコミットは `38dbfee`（README の見出しを分けた変更）。この文書の書き直しは、その次のコミットに入れる（コミットしたかは `git status -sb` と `git log --oneline -3` で確かめること）。
+- **Phase 26（defstruct）と時刻の関数は終わった**。tque の #318（P26）・#378（時刻）・#380（リストの中の condition の印字）は完了（2026-11-11、レモンの指示）。#317（P25）も完了。今は 0.4（#316。進み具合は 35%）の途中で、次のタスクは #319（P27 CLOS の class・instance・slot）。
+- 全体の検証（`verify_p215.ps1`）が最後に通ったのは `6d2cde7`（2026-11-11）。その後の `38dbfee` は文書だけの変更で、処理系のコードと試験は `6d2cde7` と同じ。
+  - 結果：test 3 モード、lang-test 73/73、native-test 40/40（Debug・ReleaseFast、通常と GC stress）、クロス 5 種、WSL の試験 126 passed・1 skipped・0 failed、reader-check・fmt、eval-check 一致 545・both-error 362・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 47、起動時間の中央値 13.91 ms（ReleaseFast。最小 13.09 ms）。
+  - 所要時間は 1,119 秒（約 19 分。ほかのビルドや試験と並行しないとき）。
+  - reader-check の数（`zig build reader-check -- .work/samples`）：both-ok 1079、both-error 23、zilisp-only-error 5、sbcl-only-error 0。
+- **未確認**：macOS での時刻の関数の動作（クロスビルドが通ることだけ）、夏時間のある地域の動作、WSL の 1 skipped が前から同じ試験か（2026-11-06 から）。起動時間の中央値が `996b98d` の 13.44 ms から 13.91 ms になったのが、測定のばらつきか変更の影響か。
 
 ## 2. P26（defstruct）と時刻の関数のまとめ
 
+### 決めたこと
+
 - 2026-11-10 のレモンの決定（「推奨で進めて」）：構造体は専用のオブジェクト（`ObjKind.structure`。スロットを直接並べる）／範囲は設計書 §10.5 の項目と周辺の標準機能（`#S`・`copy-structure`・`equalp`・`typep`）で、`(:type list)`・`(:type vector)`・`:named`・`:initial-offset` は `zilisp:unimplemented`／スロットの `:type` は構築子と `setf` で検査する／#378（時刻）を P26 の前に入れる。
-- 内容：設計書（英日）の §10.5 と「Phase 26 の実装」の節、CHANGELOG（英日）の Unreleased。
-- 実装の場所：`src/primitives/structures.zig`・`src/primitives/time.zig`（新規）、`src/lisp/boot.lisp` の末尾（時刻、defstruct の順）、`object.zig`・`gc.zig`・`types.zig`（`recordTypep`・`slotCheckable`）・`equalp.zig`・`hashtables.zig`・`streams.zig`（`hasLispPrinted`）・`pprint.zig`・`printer.zig`・`reader.zig`・`value_builder.zig`（`structure`）・`functions.zig`（`fboundp` の `(setf 名前)`）。
+- 2026-11-11 のレモンの決定（案 A。Codex 8 回目）：reader が型を確かめるのは、reader が `#S` で作った構造体だけ。reader macro が作った・書き換えた構造体の型は reader macro の責任。
+- 2026-11-11 のレモンの決定（Codex 10 回目・15 回目）：次は直さず、処理系依存の一覧に書く。
+  - reader macro が、reader の作った構造体に後から `#n#` を `setf` する形（案 A の範囲）。
+  - ラベルの中の大きな `#S`（4,096 個より多くのオブジェクト）の型のエラーの通知が、ラベルの終わりまで遅れること。
+  - コンマをふつうのリストで表すので、内部のシンボルを直接書いたリスト（`` `(a . (zl-sys::unquote-splicing b)) ``）がコンマと同じに扱われること（`comma-as-list`。SBCL と同じにする作業は tque #533）。
+- Codex のレビューは 15 回目で区切った（2026-11-11、レモンと確認）。15 回目の後は処理系のコードを変えていないので、16 回目は依頼していない。11 回目からの指摘は reader の一般の動作（`#S` の後の文字、リストの閉じ括弧、ドット、コンマ）で、Phase 26 の本体（構築子・アクセサ・印字・型・時刻）には 10 回目から指摘が出ていない。
+
+### 内容と場所
+
+- 内容：設計書（英日）の §10.5 と「Phase 26 の実装」の節（Codex の各回の指摘と修正もここにある）、CHANGELOG（英日）の Unreleased。
+- 実装の場所：`src/primitives/structures.zig`・`src/primitives/time.zig`（新規）、`src/lisp/boot.lisp` の末尾（時刻、defstruct の順）、`object.zig`・`gc.zig`・`types.zig`（`recordTypep`・`slotCheckable`）・`equalp.zig`・`hashtables.zig`・`streams.zig`（`hasLispPrinted`・`inLispPrinter`）・`pprint.zig`・`printer.zig`・`reader.zig`・`value_builder.zig`（`structure`・`labelFinish`・`isSplicing`）・`functions.zig`（`fboundp` の `(setf 名前)`）。
 - 受入（Level 19）：`defstruct` で止まっていた 10 ブロックはすべて SBCL 2.6.7 と同じ出力。教材の `defstruct` の 31 ブロックと `get-universal-time` の 1 ブロックが一致になった。
-- 意図した SBCL との違い（`tests/differential/impl-dependent.toml` に 4 項目を足した。CLHS の節は原文で確かめていない）：初期値のない `&aux` のスロットは NIL、type-error の expected-type は書いた型のまま、構造体のリテラルはコンパイルできない、その土地の時刻の求め方（Windows 以外は `/etc/localtime`。環境変数 `TZ` は見ない）。
-- 実装の要点：
-  - `:include` は、展開のときに元の構造体のクラスの記述（シンボルの属性 `zl-sys::%class`）を読む。そのため `defstruct` は `eval-when` でコンパイル時にもクラスを登録する。ネイティブでコンパイルするファイルでは、`:include` する構造体をトップレベルで定義する（言語試験 `defstruct.lisp` の `animal`・`dog`・`pf` は、そのためにトップレベルに置いた）。
-  - 構造体・condition を中に含むリスト・ベクタは、`*print-pretty*` が NIL でも pretty printer の経路で書く（`streams.hasLispPrinted`）。これで #380 の `prin1` の形は SBCL と同じになった（`condition-print-in-list` の項目を処理系依存の一覧から外した）。
-  - `tests/language/gc-stress/` に試験を足すときは、`名前.args`（`--gc-stress --script`）も置く（ないと別の引数で実行されて失敗する）。
-- README（英日）の「0.3.0 で実装したもの」の一覧に、構造体と時刻の行を足した（condition の行と同じ場所）。その後、見出しを分けた（2026-11-11、レモンの指示）：タグ `v0.3.0` より後のコミットで作った condition・構造体・時刻の 3 行を、「0.3.0 の後に実装したもの（0.4 に入る予定）」の見出しの下に移した（CHANGELOG の「Unreleased」と同じ分け方）。
-- Codex のレビュー（P26）：1 回目（`7cb07fe` に対して）は 5 件。どれも Zilisp と SBCL 2.6.7 で再現し、直した（`#n#` で自分を指す `#S`、BOA の supplied-p の変数と同じ名前のスロット、`:include` で型を書き換えたときの元の型、`decode-universal-time` の time-zone が秒にして整数にならない場合、オプションの余分な引数と重なり。内容は設計書の「Codex のレビューの修正（Phase 26、1回目）」）。依頼と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\d4a5fc96-8737-44b4-9d02-2040df687ef5\scratchpad\codex\`（`request1.md`・`result1.md`、再現の `r1.lisp`・`r2.lisp`）。
-  - 2 回目（`14c8a75` に対して）は 6 件。どれも再現し、直した（スロットの値のリストの中の `#n#` の型の検査、`:include` の `(x)` の初期値、pretty でない印字の深さと共有の状態、`(:conc-name "")`、`(:print-function nil)`、`:include` の同じスロットの重なり。内容は設計書の「Codex のレビューの修正（Phase 26、2回目）」。`request2.md`・`result2.md`、再現の `r3.lisp`・`r4.lisp`）。
-  - `#n=` の仮の値は car が unbound の cons（`value_builder.zig` の `labelDefine`）。解決していない `#n=` のラベルがあれば（9 回目の修正から。その前は「`#S` の値の中に仮の値があれば」）、読み取り用の構築子を呼び（4 回目の修正から）、できた構造体の中に仮の値があれば、構造体をラベルの表に `(unbound . 構造体)` として置く。`labelFinish` が、中に仮の値がなくなった構造体を `zl-sys::%check-structure-slots` で確かめる。
-  - pretty でない印字で、Lisp の印字の関数の中からの印字（`th.pp_level` が 1 以上か `th.pp_circle` がある：`streams.inLispPrinter`）は、pretty printer の経路で書く。
-  - 3 回目（`6c6110e` に対して）は 2 件。どれも再現し、直した（循環する `#S` を読んでいる間に initform が作る別の構造体・`setf`・入れ子の読み取りの型の検査が省略される、pretty でない印字で構造体の中の多次元の文字の配列を 1 段深く書く。内容は設計書の「Codex のレビューの修正（Phase 26、3回目）」。`request3.md`・`result3.md`、再現の `r5.lisp`）。このときの方法（値の中に仮の値がある検査だけを省略する）は、4 回目で読み取り用の構築子に置き換えた。
-  - 4 回目（`8473f4d` に対して）は 1 件。再現し、直した（reader macro が持ち出した `#n#` の仮の値を initform が別の構築子・`setf` に渡すと、型の検査が漏れる。内容は設計書の「Codex のレビューの修正（Phase 26、4回目）」。`request4.md`・`result4.md`、再現の `r7.lisp`）。スレッドの印 `th.skip_slot_type_check` はやめ、`defstruct` が作る**型を検査しない読み取り用の構築子**（クラスの記述の位置 6）を、reader が仮の値を含む `#S` を読むときだけ呼ぶ形にした。
-  - 5 回目（`54ac755` に対して）は 1 件。再現し、直した（reader macro が、読んだ `#S` の構造体の代わりに複製や別の値を返すと、元の構造体に仮の値が残り、型の検査が行われない。`labelFinish` が、検査待ちの構造体の中の仮の値も置き換える。内容は設計書の「Codex のレビューの修正（Phase 26、5回目）」。`request5.md`・`result5.md`、再現の `r8.lisp`・`r9.lisp`）。
-  - 6 回目（`f29570a` に対して）は 2 件。どれも再現し、直した（reader macro が複製を返して元だけを書き換えると複製の型の検査が漏れる → `labelFinish` は、仮の値を置き換えたら、返ったオブジェクトの中の構造体すべての型を確かめる。`#S` の型のエラーの後にストリームの位置が進まない → 構築子と後回しの検査の前に `syncPosition` を呼ぶ。内容は設計書の「Codex のレビューの修正（Phase 26、6回目）」。`request6.md`・`result6.md`、再現の `r10.lisp`・`r11.lisp`）。
-  - 7 回目（`d7f1866` に対して）は 3 件。どれも 6 回目の修正が原因で、再現し、直した（`#S` の initform が同じストリームを読むと外側の reader がもう一度読む → `#.` と同じく構築子の前後でストリームと Source の位置を合わせる。`#n#` と関係のない既存の構造体を確かめ直して拒む・外側のラベルが残ると走査が二乗になる → 確かめるのは、スロットの値そのものか、そこから cons だけをたどって届く cons が置き換わった構造体だけにし、届く範囲は `collectConses` で 1 回集めて求める。内容は設計書の「Codex のレビューの修正（Phase 26、7回目）」。`request7.md`・`result7.md`、再現の `r12.lisp`・`r13.lisp`・`r14.lisp`）。
-  - 8 回目（`6f1ab7e` に対して）は 3 件。再現し、直した（initform からの recursive な `read` が外側のラベルを参照できない → 構築子を呼ぶ間 `th.read_builder` を設定する。残りの 2 件は、6 回目で入れた「reader が作ったもの以外の構造体も確かめる」仕組みが、関係のない構造体のスロットを拒む・遅くなる、という指摘）。
-  - **2026-11-11 のレモンの決定（案 A）**：reader が型を確かめるのは、reader が `#S` で作った構造体だけにする。6 回目・7 回目で入れた仕組み（`PatchInfo`・`collectConses`・`slotsReachPlaceholder`）は取り除いた。reader macro が作った・書き換えた構造体の型は reader macro の責任（6 回目の指摘の形は Zilisp は受理、SBCL は type-error。`impl-dependent.toml` の `sharp-s-copied-by-reader-macro`）。理由：その 1 つの形のための仕組みが、7 回目・8 回目に「正しい入力を拒む」「遅くなる」指摘を 4 件生んだ。
-  - 案 A の確認の途中で見つけて直した費用の問題：多くの `#S` が同じラベルを指す入力（6,400 個）の読み取りが ReleaseFast で 5.1 秒かかっていた（24 ms に）。検査待ちの構造体はラベルの表の 1 つの項目 `(unbound . 構造体のリスト)` に置き、`labelFinish` は置き換えで通ったものの集合（`seen`）と、仮の値がないと分かったものの集合（`clean`）を使い回す。再現は `r15.lisp`〜`r17.lisp`、依頼と結果は `request8.md`・`result8.md`。
-  - 9 回目（`14a9210` に対して）は 2 件。どれも 8 回目の「initform の recursive な `read` が外側のラベルを読める」の続きで、再現し、直した（initform が `#n#` を取り込むと、標準の構築子が仮の値のままで型を検査する → 読み取り用の構築子を使う条件を「解決していない `#n=` のラベルがある」（`hasPendingLabel`）に変え、戻った後に、仮の値がなければその場で確かめ、あれば検査待ちに置く。initform の recursive な `read` に backquote の深さが伝わらない → 構築子を呼ぶ間 `b.bq_depth` を設定する。内容は設計書の「Codex のレビューの修正（Phase 26、9回目）」。`request9.md`・`result9.md`、再現の `r18.lisp`）。
-  - 10 回目（`cdf4946` に対して）は 5 件。どれも再現した。直したのは 2 件（未解決のラベルの中の別名 `#1=(#2=#1#)` を後ろで参照すると仮の値が残る → `labelFinish` が別名の項目も解決した値にする。backquote の中の `#S` の本体にコンマを書ける → 本体は backquote の深さ 0 で読む）。**直さないと決めたのは 2 件（2026-11-11 のレモンの決定）**：reader macro が、reader の作った構造体に後から `#n#` を `setf` する形（案 A の範囲）と、ラベルの中の大きな `#S`（4,096 個より多くのオブジェクト）の型のエラーの通知がラベルの終わりまで遅れること。残りの 1 件（型のエラーの handler の中の recursive な `read` が外側のラベルを参照できない）は、調べると 9 回目の修正の前（`14a9210`）でも、`#.` の中のエラーでも起きる、Phase 25 からの制限だった（handler には読み取りの途中の状態を引き継がない：`thread.zig` の `callSignalHook`）。Phase 26 では直さず、処理系依存の一覧に書いた。**tque には未登録**（登録するかはレモンの判断）。内容は設計書の「Codex のレビューの修正（Phase 26、10回目）」。`request10.md`・`result10.md`、再現の `r19.lisp`・`r20.lisp`。
-  - 11 回目（`7610a8b` に対して）は 1 件。再現した。10 回目の修正には指摘なし。`#S` の後を一般のフォームとして読んでいた（`(` の reader macro を呼ぶ、`#S#.(…)`・`#S (…)` を受理する）→ `#S` のすぐ後が `(` であることを確かめ、`readList` で本体を読む。試験の不足の意見のうち、別名の試験を言語試験に足す案は採らず（別名の結果は SBCL と違い、期待値は SBCL の出力）、Zig の単体試験に足した。`request11.md`・`result11.md`、再現の `r21.lisp`。
-  - 12 回目（`b46ea09` に対して）は 2 件。どちらも再現した。リストの終わりを `)` のマクロ文字の関数の結果で判定していた（`)` に reader macro を設定すると閉じない、`)` の構文を写した `]` で閉じる。`#S` に限らず、Phase 24 のリスト・ベクタの読み取りからの動作）→ `readItem(close)` で文字そのものを判定する。`#S` の後の `(` でない文字を読まずにエラーにしていた → 読んでから判定する。`request12.md`・`result12.md`、再現の `r22.lisp`。
-  - 13 回目（`28af74f` に対して）は 2 件。どちらも再現した。12 回目の修正には指摘なし。どちらも `defstruct` ではなく、Phase 26 より前からのリストのドットの読み取り：読み飛ばしの中でもドット対の検査が働く（`#+no-such-feature (a . b c)` を拒む）→ 読み飛ばしの中の単独のドットはふつうのトークン。backquote の中のドットのすぐ後の `,@`・`,.` を受理する → reader-error。修正の際に、機能式が合った `#+` / `#-` の後のドット（`(1 #-no-such-feature . 2)`）も SBCL に合わせた。**11 回目から、指摘は `defstruct` そのものではなく reader の一般の動作に移っている**（Phase 26 のレビューをどこで区切るかはレモンの判断）。`request13.md`・`result13.md`、再現の `r23.lisp`。
-  - 14 回目（`5ef5884` に対して）は 2 件。どちらも再現した。どちらも 13 回目に入れた「ドットのすぐ後の `,@`・`,.`」の検査の不足：別のマクロ（`#-`・`#n=`・利用者の reader macro）を通して返った `,@`・`,.` を通す → 読んだオブジェクトそのものを見る（Builder の `isSplicing`）。エラーの通知が早く閉じ括弧が残る → 閉じ括弧まで読んでから検査する。`request14.md`・`result14.md`、再現の `r24.lisp`。
-  - 15 回目（`b13505d` に対して）は 1 件。再現した。**直さないと決めた（2026-11-11 のレモンの決定）**：コンマをふつうのリストで表すので、backquote の中のドットのすぐ後に内部のシンボルを直接書いたリスト（`` `(a . (zl-sys::unquote-splicing b)) ``）を置くと reader-error になる（14 回目の修正から。SBCL は受理）。処理系依存の一覧の `comma-as-list` に書いた。SBCL と同じにするにはコンマを専用のオブジェクトにする必要がある（tque #533 に登録した。2026-11-11、レモンの指示。親のないタスク）。`request15.md`・`result15.md`、再現の `r25.lisp`。
-  - 6 回目の依頼から、「reader macro が持ち出した仮の値そのものを、利用者のコードが構造体以外の場所に入れた場合に、置き換わらずに残ること」を、直さないものとして依頼の文に書いた（読んだ結果の外はたどれない。SBCL も内部の印が残る。2026-11-11 にレモンへ報告済みで、異議は出ていない）。
-  - SBCL 2.6.7 と意図して違えた 4 点（`impl-dependent.toml`）：入れ子のラベルで互いを指す型のある `#S` は、解決した後の値が型に合えば読める（SBCL は type-error）。`:include` の裸のシンボルの書き換えは受け付ける（SBCL はエラー）。reader macro が別の場所に保存した構造体の中の `#n#` も置き換えて型を確かめる（SBCL は置き換えず、内部の印が残る）。reader macro が複製して元だけを書き換えた構造体の型は確かめない（SBCL は type-error）。
+- 試験：言語試験は `defstruct.lisp`（基本）・`defstruct-read.lisp`（`#S` の読み取り、`#n#`、Codex 10〜14 回目で足した reader の例）・`defstruct-review.lisp`（レビューで足した例）・`time.lisp`。SBCL と違えた動作（別名、`comma-as-list` など）は、期待値が SBCL の出力である言語試験には置かず、`src/compiler/eval_test.zig` の最後の test に置いた。
+- README（英日）：タグ `v0.3.0` より後のコミットで作った condition・構造体・時刻の 3 行を、「0.3.0 の後に実装したもの（0.4 に入る予定）」の見出しの下に置いた（2026-11-11、レモンの指示。CHANGELOG の「Unreleased」と同じ分け方）。
+- コミット：P26 と時刻は `7cb07fe`。Codex の修正は 1 回目から順に `14c8a75`・`6c6110e`・`8473f4d`・`54ac755`（`defstruct.lisp` を 3 つに分ける変更も）・`f29570a`・`d7f1866`・`6f1ab7e`・`14a9210`（案 A）・`cdf4946`・`7610a8b`・`b46ea09`・`28af74f`・`5ef5884`・`b13505d`、15 回目の対応（文書と単体試験だけ）は `6d2cde7`。試験の実行器の並列化は `ffea1fb`（native-test）と `996b98d`（lang-test・eval-check）。
+- Codex の依頼と結果：`C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\d4a5fc96-8737-44b4-9d02-2040df687ef5\scratchpad\codex\` の `request1.md`〜`request15.md`・`result1.md`〜`result15.md`。再現のスクリプトは、その 1 つ上のフォルダの `r1.lisp`〜`r25.lisp`。
+
+### 実装の要点（次に触るときに要ること）
+
+- クラスの記述は、シンボルの属性 `zl-sys::%class` の simple-vector `#(名前 CPL include スロット 標準の構築子 printer 読み取り用の構築子)`。スロットは `(名前 initform 型 read-only アクセサ)`。
+- `:include` は、展開のときに元の構造体のクラスの記述を読む。そのため `defstruct` は `eval-when` でコンパイル時にもクラスを登録する。ネイティブでコンパイルするファイルでは、`:include` する構造体をトップレベルで定義する。構造体のリテラル `#S(…)` は、ネイティブでコンパイルするファイルには書けない。
+- 構造体・condition を中に含むリスト・ベクタは、`*print-pretty*` が NIL でも pretty printer の経路で書く（`streams.hasLispPrinted`）。Lisp の印字の関数の中からの印字（`streams.inLispPrinter`）も同じ。
+- `#n=` と `#S`（`value_builder.zig`）：
+  - `#n=` の仮の値は car が unbound の cons（`labelDefine`）。
+  - 解決していない `#n=` のラベルがあれば（`hasPendingLabel`）、型を検査しない読み取り用の構築子で作る。できた構造体の中に仮の値がなければ（`containsPlaceholderLimited`。4,096 個より多くのオブジェクトを通ったら「分からない」）その場で `zl-sys::%check-structure-slots` で確かめ、あるか分からなければ、ラベルの表の 1 つの項目 `(unbound . 構造体のリスト)` に検査待ちとして置く。ラベルがなければ標準の構築子（型を検査する）。
+  - 構築子を呼ぶ間は、ストリームの位置・`th.read_builder`・`b.bq_depth` を設定する（initform の recursive な `read` のため）。
+  - `labelFinish`：返ったオブジェクトと検査待ちの構造体の中の仮の値を置き換え、別名（`#1=(#2=#1#)` の `#2`）の項目を解決した値にし、仮の値がなくなった検査待ちの構造体を確かめる。
+- reader（`reader.zig`。Codex 11〜14 回目で変えた、リスト全体が通る場所）：
+  - `readItem(close)`：空白の後の文字が `close` そのものなら、マクロ文字の関数を呼ばずに「終わり」を返す。`readList`（ドットの後も）・`readVector`・`readDelimitedList` が使う。`readObj` は `readItem(null)`。
+  - `#S` のすぐ後は `(` でなければならない。本体は backquote の深さ 0 で `readList` で読む。
+  - 読み飛ばしの中（`*read-suppress*`・`#+` / `#-`）では、単独のドットをふつうのトークンとして読む。機能式が合った `#+` / `#-` は、続くオブジェクトをその場で 1 つ読んで返す。
+  - backquote の中のドットのすぐ後の `,@`・`,.` は、閉じ括弧まで読んでから、読んだオブジェクトを Builder の `isSplicing` で見て reader-error にする（`tools/reader_check` の NullBuilder は `isSplicing` を持たないので検査しない）。
+- `tests/language/gc-stress/` に試験を足すときは、`名前.args`（`--gc-stress --script`）も置く（ないと別の引数で実行されて失敗する）。
+
+### 意図した SBCL との違い
+
+`tests/differential/impl-dependent.toml` にある（2026-11-11 の時点で、全体は 50 項目、`since = "Phase 26"` は 11 項目。CLHS の節は原文で確かめていない）。Phase 26 で足した主なもの：
+
+- 初期値のない `&aux` のスロットは NIL。type-error の expected-type は書いた型のまま。構造体のリテラルはコンパイルできない。`:include` の裸のシンボルの書き換えは受け付ける。
+- その土地の時刻の求め方（Windows 以外は `/etc/localtime`。環境変数 `TZ` は見ない）。
+- 入れ子のラベルで互いを指す型のある `#S` は、解決した後の値が型に合えば読める。reader macro が別の場所に保存した構造体の中の `#n#` も置き換えて型を確かめる。reader macro が複製して元だけを書き換えた構造体の型は確かめない（`sharp-s-copied-by-reader-macro`）。
+- 未解決のラベルの中の別名は解決した値になる（`sharp-equal-alias-of-pending-label`）。大きな `#S` の型のエラーの通知の遅れ（`sharp-s-large-in-pending-label`）。コンマの表し方（`comma-as-list`）。
+- エラーの handler の中の recursive な `read` が外側のラベルを参照できない（`recursive-read-in-handler`。Phase 25 からの制限で、`#.` の中のエラーでも同じ。handler には読み取りの途中の状態を引き継がない：`thread.zig` の `callSignalHook`。tque には未登録）。
+- reader macro が持ち出した仮の値そのものを、利用者のコードが構造体以外の場所に入れた場合は、置き換わらずに残る（読んだ結果の外はたどれない。SBCL も内部の印が残る）。
 
 ## 3. 次の作業（tque）
 
-- **P26 の仕上げ**：レモンの指示を受けて、Codex のレビューは 15 回目で区切り、全体の検証は `6d2cde7` で通った。#318・#378・#380 は完了にした。Phase 26 の作業は終わり。
-- **見つけた違い（tque には未登録）**：`*print-pretty*` が NIL のとき、type-error を `princ` すると `The value   1 is not of type   STRING` と空白が余分に入る（SBCL 2.6.7 は空白 1 つ。report の `~2@T` の扱いと推測される。※推測です。Phase 26 の変更の前から同じ）。condition を `*print-level*` の限界の深さで印字すると形が違う（`*print-level*` 2 の `((condition))`：SBCL は pretty で `((#))`、pretty でないと `((#<TYPE-ERROR #>))`。Zilisp はどちらも `((#<TYPE-ERROR expected-type: STRING datum: #>))`。Phase 25 の範囲。再現は `r6.lisp`）。
-- **デバッガ（#351）**：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。v1.1、`b615282`）。外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。0.4 に入れるのは段階 1（#356：中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
-  - 次にするのは要件の文書の v1.2（英日）。段階 1 に `assert` の場所の問い合わせを加える：`y-or-n-p`・`yes-or-no-p`（いまは未定義）を足し、`continue` の restart の `:interactive` で場所ごとに SBCL と同じ「The old value of X is 1.」「Do you want to supply a new value?  (y or n)」を出す（CLHS は `continue` の前に場所を変える機会を求める）。`*break-on-signals*`（Codex P25 1 回目 #7）も段階 1。
+- **次のタスクは #319（P27 CLOS の class・instance・slot、rack 方式と直接配置の比較計測。受入：最小 CLOS サンプル）**。condition の `record` と構造体を CLOS のクラスにまとめるのもここ。新しい大きな機能なので、設計の検討から始める（§5 の「新しい Phase の始め方」）。その後は #320（P28）・#321（P29）。
 - 0.4（#316）の下のほかの項目：
-  - #319 P27 CLOS の class・instance・slot（#318 の後）。condition の `record` と構造体を CLOS のクラスにまとめるのもここ。
   - #344 P23 の受入の残り（Level 17 の text-tools を SBCL と比べる）。着手できる。
   - #349 印字の速さの改善（印字は SBCL の約 1.8 倍の時間）。
   - #350 exit・quit（`*exit-hooks*` を入れるかは未決定）。
-  - #377 印字の中の再帰でスタックが溢れるとプロセスが落ちる（重大度は高）。report の中で自分の condition を `~A` で印字する・`~/名前/` の中で同じ `~/名前/` を使う・`pprint-logical-block` の再帰・pprint-dispatch の関数の中で同じ型を印字すると、終了コード -1073741819 と `Stack overflow (no address available)` で落ちる（ふつうの関数の再帰は storage-condition になる）。構造体の `:print-function` の中で自分を印字する場合と、自分を指す構造体の `equalp` も同じ種類と推測される（※推測です。試していない）。Zig の関数を挟んだ入れ子の上限（`max_native_depth = 1000`。`src/runtime/thread.zig`）に届く前に Zig のスタックが溢れると推測される（※推測です。zilisp.exe のスタックの大きさは未確認）。直し方の案：生成した実行ファイルと同じ残りのスタックの検査（`src/native/rt.zig` の `stack_limit`）を `th.call` にも入れる。直す前にスタックの大きさと 1 段の使用量を測る。
+  - #351 デバッガ：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。v1.1、`b615282`）。外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。0.4 に入れるのは段階 1（#356：中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
+    - 次にするのは要件の文書の v1.2（英日）。段階 1 に `assert` の場所の問い合わせを加える：`y-or-n-p`・`yes-or-no-p`（いまは未定義）を足し、`continue` の restart の `:interactive` で場所ごとに SBCL と同じ「The old value of X is 1.」「Do you want to supply a new value?  (y or n)」を出す（CLHS は `continue` の前に場所を変える機会を求める）。`*break-on-signals*`（Codex P25 1 回目 #7）も段階 1。
+- 親のないタスク：
+  - #377 印字の中の再帰でスタックが溢れるとプロセスが落ちる（重大度は高）。report の中で自分の condition を `~A` で印字する・`~/名前/` の中で同じ `~/名前/` を使う・`pprint-logical-block` の再帰・pprint-dispatch の関数の中で同じ型を印字すると、終了コード -1073741819 と `Stack overflow (no address available)` で落ちる（ふつうの関数の再帰は storage-condition になる）。`*print-circle*` なしで循環リストを印字しても落ちる（2026-11-11 に `(print (read-from-string "#1=(#2=#1# #2#)"))` で起きた）。構造体の `:print-function` の中で自分を印字する場合と、自分を指す構造体の `equalp` も同じ種類と推測される（※推測です。試していない）。Zig の関数を挟んだ入れ子の上限（`max_native_depth = 1000`。`src/runtime/thread.zig`）に届く前に Zig のスタックが溢れると推測される（※推測です。zilisp.exe のスタックの大きさは未確認）。直し方の案：生成した実行ファイルと同じ残りのスタックの検査（`src/native/rt.zig` の `stack_limit`）を `th.call` にも入れる。直す前にスタックの大きさと 1 段の使用量を測る。
   - #379 `type-of`・`subtypep`・`deftype`（`deftype` は呼ぶと `zilisp:unimplemented`）。
-  - `(:type list)`・`(:type vector)`・`:named`・`:initial-offset` の `defstruct`、`get-internal-real-time`・`get-internal-run-time`・`internal-time-units-per-second`・`sleep`（どれも未実装。tque には未登録）。
+  - #533 backquote のコンマを専用のオブジェクトで表す（Codex P26 15 回目。backquote の展開・印字・ネイティブの定数の読み込みに及ぶ見込みで、範囲は未調査。設計の検討から始める）。
+- **見つけた違い（tque には未登録。登録するかはレモンの判断）**：
+  - `*print-pretty*` が NIL のとき、type-error を `princ` すると `The value   1 is not of type   STRING` と空白が余分に入る（SBCL 2.6.7 は空白 1 つ。report の `~2@T` の扱いと推測される。※推測です。Phase 26 の変更の前から同じ）。
+  - condition を `*print-level*` の限界の深さで印字すると形が違う（`*print-level*` 2 の `((condition))`：SBCL は pretty で `((#))`、pretty でないと `((#<TYPE-ERROR #>))`。Zilisp はどちらも `((#<TYPE-ERROR expected-type: STRING datum: #>))`。Phase 25 の範囲。再現は `r6.lisp`）。
+  - エラーの handler の中の recursive な `read` が外側のラベルを参照できない（§2 の `recursive-read-in-handler`）。
+  - `(:type list)`・`(:type vector)`・`:named`・`:initial-offset` の `defstruct`、`get-internal-real-time`・`get-internal-run-time`・`internal-time-units-per-second`・`sleep`（どれも未実装）。
 
 ## 4. リリースの手順（0.3 で決めたこと）
 
@@ -72,9 +92,12 @@
 
 ## 5. 作業の進め方・道具
 
-- 作業の流れ（P25 で続けたもの）：Codex のレビュー（読み取り専用）→ 指摘ごとに Zilisp と SBCL 2.6.7 で再現 → 直し方の案と報告 →「直して」で修正 →「コミット、プッシュして」でコミット →「全体の検証とcodexのレビューを進めて」で次の回。
+- 作業の流れ（P25・P26 で続けたもの）：Codex のレビュー（読み取り専用）→ 指摘ごとに Zilisp と SBCL 2.6.7 で再現 → 直し方の案と報告 →「直して」で修正 →「コミット、プッシュして」でコミット →「全体の検証とcodexのレビューを進めて」で次の回。
+  - レビューの区切り方（P26 で分かったこと）：指摘が Phase の本体から離れて周りの一般の動作に移り、直さないと決めた指摘だけが残ったら、区切りをレモンに確かめる。処理系のコードを変えていないコミットには、次のレビューを依頼しない。
+  - 指摘を直すときは、直す前に「拒んではいけない形」も SBCL で確かめて試験に入れる（P26 の 13〜15 回目は、足した検査が別の正しい入力を通す・拒む、という指摘が続いた）。
+  - 修正のたびの確認は、fmt・`zig build test`・lang-test・native-test（Debug）・reader-check・eval-check（合わせて 10 分ほど）。全体の検証（ReleaseSafe・ReleaseFast・クロス・WSL を含む）は、レビューの区切りで実行する。
 - 新しい Phase の始め方（P26）：教材の使い方・設計書・既存のコードを調べ、決めること（表し方・範囲など）を案と推奨つきで短く示してから、決定を受けて実装する。
-- 全体の検証のスクリプト：`C:\Users\n_fuk\AppData\Local\Temp\claude\D--home-source-zig-zilisp\e5761a66-3281-40a8-9ff1-762483b07fc1\scratchpad\verify_p215.ps1`（PowerShell でバックグラウンドで実行。約 22 分（native-test を並列にする前は約 70 分）。出力は最後にまとめて出る。要約は `Select-String '^== |passed|failed|eval-check:|startup|error:'`）。走っている間は作業ツリーのソースと試験を変えない（`zig-out` も作り直される）。変えるときは git worktree（例 `D:/tmp/zl_fixNN`）で作業し、検証が終わってから写す。
+- 全体の検証のスクリプト：`C:\Users\n_fuk\AppData\Local\Temp\claude\D--home-source-zig-zilisp\e5761a66-3281-40a8-9ff1-762483b07fc1\scratchpad\verify_p215.ps1`（PowerShell でバックグラウンドで実行。約 19 分（native-test を並列にする前は約 70 分、lang-test・eval-check を並列にする前は 22〜28 分）。出力は最後にまとめて出る。要約は `Select-String '^== |passed|failed|eval-check:|startup|error:'`）。走っている間は作業ツリーのソースと試験を変えない（`zig-out` も作り直される）。変えるときは git worktree（例 `D:/tmp/zl_fixNN`）で作業し、検証が終わってから写す。
   - worktree で PowerShell の `Set-Location` を使っても、`[IO.File]::WriteAllText` などの .NET の関数の相対パスは元のディレクトリを指す（2026-11-06 に、メインのリポジトリのファイルに書いてしまい、すぐ戻した）。.NET の関数には絶対パスを渡す。
   - lang-test と eval-check も並列に実行する（2026-11-11 から。`tools/lang_test/main.zig`・`tools/eval_check/main.zig`。環境変数 `ZILISP_LANG_TEST_JOBS`（既定は論理プロセッサの数で 1〜16）・`ZILISP_EVAL_CHECK_JOBS`（既定は半分で 1〜8））。lang-test は、同じ名前の試験（eval と gc-stress は同じ `.zig-cache/lang-tmp/<名前>/` にファイルを書く）を 1 つの組にして順に実行し、組どうしを並列にする。lang-test は約 280 秒から 49 秒（順次なら 244 秒）、eval-check は約 160 秒から 28 秒。eval-check の結果（545・362・1・47）と `compatibility/` のファイルは変わらない。
   - 言語試験の時間のほとんどは gc-stress（確保のたびに GC。Debug で通常の実行は全部で 6 秒、gc-stress は長いもので 1 ファイル 40 秒）。生きているデータが多い例を足すと、後ろの例がすべて遅くなる（`defstruct-read.lisp` の 200×200 の例で 156 秒になっていた。30×30 にして 40 秒）。
@@ -83,11 +106,13 @@
 - Codex レビュー：`Get-Content <依頼.md> -Raw | codex exec -C 'D:\home\source\zig\zilisp' --skip-git-repo-check -s read-only --ephemeral --color never -o <結果.md> - *> <ログ>`。Codex には `zig-out` ではなく、コピーした実行ファイル（`...\scratchpad\codex\bin\zilisp.exe`）を使わせる（検証が `zig-out` を作り直すため。コミットの前のソースなら `zig build -p <scratchpad の別の場所>` で作ってコピーする）。依頼には「書けなければ `zilisp.exe --eval` で試す」と、直さないと決めたものの一覧を書く。Codex の指摘は、必ず Zilisp と SBCL で再現を確かめてから報告する。P25 の依頼と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`。
 - 期待値の作り方：`sbcl --script <ファイル> 2>$null` の標準出力だけを、改行を LF にして BOM なしの UTF-8 で書く。`tests/language/eval/` の `.lisp` と `.expected` は `tests/language/gc-stress/` にも写す（`.args` も置く）。比べるときは、SBCL・Zilisp・`--gc-stress` の 3 つを比べる。
 - SBCL のソースは `D:\home\source\lisp\sbcl` にある（2026-11-10 にレモンが教えた。`git describe` は `sbcl-2.6.10-151-g5974545c3` で、比較に使う実行ファイルの 2.6.7 より新しい。読むだけ）。印字の形（`src/code/target-defstruct.lisp`）や時刻（`src/code/time.lisp`・`src/runtime/time.c`）の確認に使った。
+- 文書の追記：設計書・CHANGELOG・この文書への追記は、scratchpad に Python のスクリプトを Write のツールで書いて実行した（置き換える文字列が 1 回だけ現れることを `assert` で確かめ、改行コードを元のファイルに合わせる。例：`...\scratchpad\doc14.py`）。言語試験への追記は `append.py 追加分のファイル 目印`。
+- tque：題名は 200 文字まで（超えると `InvalidInput`）。`tque add <題名> [--parent ID] [--dep ID]`、`tque done <ID>`、`tque ls --root 316`。
 - コミットのメッセージは scratchpad のファイル（BOM なしの UTF-8、改行は LF）に書いて `git commit -F <ファイル>` で渡す（PowerShell の here-string を `-F -` に流すと失敗した）。
 - agy（Antigravity CLI）：
   - auto モードはこのアカウントでは使えない。`-p` の一度だけの実行は、許可していないコマンドを自動で拒否し、そこで止まる。
   - 使えた設定：`--sandbox --settings <settings.json>`。`permissions.allow` に `command(regex:^…zilisp\.exe … --script D:/tmp/agy_review/<名前>.lisp$)` のような正規表現、`read_file(…)`・`write_file(D:/tmp/agy_review)`、`trustedWorkspaces`。`command(git log)` のような先頭一致は効かない（`command(git)` は git のすべてを許すので使わない）。
-  - 設定と依頼の文：`C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\e5761a66-3281-40a8-9ff1-762483b07fc1\scratchpad\agy\`。作業用の写しは `D:\tmp\agy_wt`（git worktree。2026-11-10 にも `git worktree list` にある。不要なら `git worktree remove D:/tmp/agy_wt`）。
+  - 設定と依頼の文：`C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\e5761a66-3281-40a8-9ff1-762483b07fc1\scratchpad\agy\`。作業用の写しは `D:\tmp\agy_wt`（git worktree。2026-11-11 にも `git worktree list` にある。不要なら `git worktree remove D:/tmp/agy_wt`）。
   - 2026-11-04 15:32 の時点で利用の上限に達していた（今使えるかは未確認）。
   - `C:\Users\n_fuk\.gemini` は事前の許可の範囲外。
 - タグの作成と push：`.claude/settings.local.json`（レモンが作成。git には入らない）で `Bash(git tag -a v*)` と `Bash(git push origin v*)` を許可した。auto モードの判定は、自分で設定ファイルを作ることを `[Self-Modification]` として拒否する。
@@ -102,8 +127,8 @@
 
 ## 6. 気づいたこと・未確認のこと
 
-- リポジトリの直下に、空のディレクトリ `pathnames/pathnames/` と `x/sub/x/sub/` がある（2026-11-06 に存在を確認。2026-11-10 にも `pathnames`・`x` があることを確認。git は空のディレクトリを追跡しないので `git status` には出ない）。Phase 23 のパス名の試験で作られたもの（※推測です）。消すかどうかはレモンが判断する。
+- リポジトリの直下に、空のディレクトリ `pathnames/pathnames/` と `x/sub/x/sub/` がある（2026-11-06 に存在を確認。2026-11-11 にも `pathnames`・`x` があることを確認。git は空のディレクトリを追跡しないので `git status` には出ない）。Phase 23 のパス名の試験で作られたもの（※推測です）。消すかどうかはレモンが判断する。
 - `#.` の中で標準入力を読み足す件の単体テストは、修正前のコードで失敗することを確かめていない。
-- 処理系依存の一覧（`tests/differential/impl-dependent.toml`）に、Phase 24 で 3 項目、Phase 25 で 5 項目、Phase 26 で 12 項目を足し（うち 1 項目は Phase 25 からの制限）、Phase 25 の「リストの中の condition の印字」を外した。
+- 処理系依存の一覧（`tests/differential/impl-dependent.toml`）に、Phase 24 で 3 項目、Phase 25 で 5 項目、Phase 26 で 12 項目を足し（うち 1 項目は Phase 25 からの制限）、Phase 25 の「リストの中の condition の印字」を外した。2026-11-11 の時点で全体は 50 項目。
 - WSL の単体テストの 1 skipped が前から同じ試験かは未確認（2026-11-06 から）。
 - CI の警告：Node.js 20 の非推奨（`actions/checkout@v4`・`actions/download-artifact@v4`）と、`ubuntu-latest` の Ubuntu 26 への移行（2026-11 時点。今の状態は未確認）。

@@ -121,6 +121,9 @@
 - トップレベルのエラーの報告は、構造体の値を `#S(…)` の形で書く
 - `zig build native-test` は試験を並列に実行する（並列の数は環境変数 `ZILISP_NATIVE_TEST_JOBS`、既定は論理プロセッサの数の半分で
   1〜8。結果は名前の順に表示する。38 ファイルの Debug が約 37 分から約 7 分に）
+- `zig build lang-test` と `zig build eval-check` も並列に実行する（環境変数 `ZILISP_LANG_TEST_JOBS`・`ZILISP_EVAL_CHECK_JOBS`。
+  lang-test は、同じ名前の試験（eval と gc-stress）を 1 つの組にして順に実行し、組どうしを並列にする）。言語試験
+  `defstruct-read.lisp` の大きなデータの例を小さくした。lang-test は約 280 秒から 49 秒に、eval-check は約 160 秒から 28 秒に
 
 ## 0.3.0 - 2026-11-04
 

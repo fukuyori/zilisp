@@ -11,6 +11,10 @@
 //!   timeout      どちらかが時間内に終わらなかった
 //! 結果の一覧（TSV）と、集計（Markdown）を書く。
 //!
+//! ブロックは並列に実行する（ブロックごとに別の作業用のディレクトリを使うので、互いに影響しない）。並列の数は、
+//! 環境変数 ZILISP_EVAL_CHECK_JOBS（1 以上の数）か、なければ論理プロセッサの数の半分（1〜8）。結果は、すべて終わってから
+//! 教材の順にまとめる（並列の数によらず同じ出力）。
+//!
 //! 使い方：eval-check <zilisp-exe> <sbcl-exe> <samples-dir> <work-dir> <report.md>
 
 const std = @import("std");
@@ -96,6 +100,68 @@ fn normalize(gpa: std.mem.Allocator, s: []const u8) ![]u8 {
 
 const Count = struct { key: []const u8, n: usize };
 
+/// ブロック 1 つと、その結果（detail は zilisp-error のときの集計の鍵）
+const Block = struct {
+    seq: []const u8,
+    id: []const u8,
+    outcome: Outcome = .timeout,
+    detail: []const u8 = "",
+    /// 実行器のエラー（プロセスを起動できないなど）。あれば全体を失敗にする
+    failed: ?anyerror = null,
+};
+
+/// 並列に実行するブロックが共有するもの。next が次に実行する番号
+const Shared = struct {
+    io: Io,
+    /// スレッドから使えるアロケータ（detail はプロセスが終わるまで持つ）
+    gpa: std.mem.Allocator,
+    zilisp: []const u8,
+    sbcl: []const u8,
+    samples_abs: []const u8,
+    work_abs: []const u8,
+    blocks: []Block,
+    next: std.atomic.Value(usize) = .init(0),
+};
+
+/// 残っているブロックを 1 つずつ取って実行する
+fn worker(s: *Shared) void {
+    while (true) {
+        const i = s.next.fetchAdd(1, .monotonic);
+        if (i >= s.blocks.len) return;
+        runBlock(s, &s.blocks[i]) catch |err| {
+            s.blocks[i].failed = err;
+        };
+    }
+}
+
+/// ブロック 1 つを Zilisp と SBCL で実行して比べる
+fn runBlock(s: *Shared, b: *Block) !void {
+    var arena_state: std.heap.ArenaAllocator = .init(s.gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const io = s.io;
+    const file = try std.fs.path.join(arena, &.{ s.samples_abs, "blocks", try std.fmt.allocPrint(arena, "{s}.lisp", .{b.seq}) });
+    // ブロックごとに空の作業用ディレクトリで実行する（ブロックが書くファイルを閉じ込める）
+    const dir = try std.fs.path.join(arena, &.{ s.work_abs, b.seq });
+    try Io.Dir.cwd().createDirPath(io, dir);
+    const z = try runOne(arena, io, dir, &.{ s.zilisp, "--script", file });
+    const sb = try runOne(arena, io, dir, &.{ s.sbcl, "--script", file });
+    b.outcome = blk: {
+        if (z.timed_out or sb.timed_out) break :blk .timeout;
+        if (z.ok and sb.ok) {
+            const x = try normalize(arena, z.stdout);
+            const y = try normalize(arena, sb.stdout);
+            break :blk if (std.mem.eql(u8, x, y)) .match else .@"output-diff";
+        }
+        if (!z.ok and !sb.ok) break :blk .@"both-error";
+        if (!z.ok) {
+            b.detail = try s.gpa.dupe(u8, try errorKey(arena, z.stderr));
+            break :blk .@"zilisp-error";
+        }
+        break :blk .@"sbcl-error";
+    };
+}
+
 pub fn main(init: std.process.Init) !u8 {
     const arena = init.arena.allocator();
     const io = init.io;
@@ -123,12 +189,7 @@ pub fn main(init: std.process.Init) !u8 {
     var rows = std.mem.splitScalar(u8, classify, '\n');
     _ = rows.next(); // 見出し
 
-    var counts: [outcome_names.len]usize = @splat(0);
-    var keys: std.StringHashMapUnmanaged(usize) = .empty;
-    var tsv: Io.Writer.Allocating = .init(arena);
-    try tsv.writer.writeAll("seq\tid\toutcome\tdetail\n");
-    var total: usize = 0;
-
+    var blocks: std.ArrayList(Block) = .empty;
     while (rows.next()) |row_raw| {
         const row = std.mem.trimEnd(u8, row_raw, "\r");
         if (row.len == 0) continue;
@@ -138,35 +199,55 @@ pub fn main(init: std.process.Init) !u8 {
         _ = cols.next(); // status
         const candidate = cols.next() orelse continue;
         if (!std.mem.eql(u8, candidate, "A")) continue;
-        total += 1;
+        try blocks.append(arena, .{ .seq = seq, .id = id });
+    }
+    const total = blocks.items.len;
 
-        const file = try std.fs.path.join(arena, &.{ samples_abs, "blocks", try std.fmt.allocPrint(arena, "{s}.lisp", .{seq}) });
-        // ブロックごとに空の作業用ディレクトリで実行する（ブロックが書くファイルを閉じ込める）
-        const dir = try std.fs.path.join(arena, &.{ work_abs, seq });
-        try cwd.createDirPath(io, dir);
-        const z = try runOne(arena, io, dir, &.{ zilisp, "--script", file });
-        const s = try runOne(arena, io, dir, &.{ sbcl, "--script", file });
+    var shared: Shared = .{
+        .io = io,
+        .gpa = std.heap.smp_allocator,
+        .zilisp = zilisp,
+        .sbcl = sbcl,
+        .samples_abs = samples_abs,
+        .work_abs = work_abs,
+        .blocks = blocks.items,
+    };
+    // 並列の数：環境変数か、論理プロセッサの数の半分。ブロックの数より多くはしない
+    var jobs: usize = @min(8, @max(1, (std.Thread.getCpuCount() catch 2) / 2));
+    if (init.environ_map.get("ZILISP_EVAL_CHECK_JOBS")) |text| {
+        jobs = std.fmt.parseInt(usize, std.mem.trim(u8, text, " \t\r\n"), 10) catch 0;
+        if (jobs == 0) {
+            try out.writeAll("eval-check: ZILISP_EVAL_CHECK_JOBS は 1 以上の数にしてください\n");
+            return 2;
+        }
+    }
+    jobs = @max(1, @min(jobs, @max(total, 1)));
+    // 自分のスレッドも 1 つ分として働く。スレッドを作れなければ、作れた分だけで続ける
+    const threads = try arena.alloc(std.Thread, jobs - 1);
+    var started: usize = 0;
+    for (threads) |*t| {
+        t.* = std.Thread.spawn(.{}, worker, .{&shared}) catch break;
+        started += 1;
+    }
+    worker(&shared);
+    for (threads[0..started]) |t| t.join();
 
-        var detail: []const u8 = "";
-        const outcome: Outcome = blk: {
-            if (z.timed_out or s.timed_out) break :blk .timeout;
-            if (z.ok and s.ok) {
-                const a = try normalize(arena, z.stdout);
-                const b = try normalize(arena, s.stdout);
-                break :blk if (std.mem.eql(u8, a, b)) .match else .@"output-diff";
-            }
-            if (!z.ok and !s.ok) break :blk .@"both-error";
-            if (!z.ok) {
-                detail = try errorKey(arena, z.stderr);
-                const gop = try keys.getOrPut(arena, detail);
-                if (!gop.found_existing) gop.value_ptr.* = 0;
-                gop.value_ptr.* += 1;
-                break :blk .@"zilisp-error";
-            }
-            break :blk .@"sbcl-error";
-        };
-        counts[@backingInt(outcome)] += 1;
-        try tsv.writer.print("{s}\t{s}\t{s}\t{s}\n", .{ seq, id, @tagName(outcome), detail });
+    var counts: [outcome_names.len]usize = @splat(0);
+    var keys: std.StringHashMapUnmanaged(usize) = .empty;
+    var tsv: Io.Writer.Allocating = .init(arena);
+    try tsv.writer.writeAll("seq\tid\toutcome\tdetail\n");
+    for (blocks.items) |b| {
+        if (b.failed) |err| {
+            try out.print("eval-check: ブロック {s} を実行できません（{t}）\n", .{ b.seq, err });
+            return 1;
+        }
+        if (b.outcome == .@"zilisp-error") {
+            const gop = try keys.getOrPut(arena, b.detail);
+            if (!gop.found_existing) gop.value_ptr.* = 0;
+            gop.value_ptr.* += 1;
+        }
+        counts[@backingInt(b.outcome)] += 1;
+        try tsv.writer.print("{s}\t{s}\t{s}\t{s}\n", .{ b.seq, b.id, @tagName(b.outcome), b.detail });
     }
 
     // 集計

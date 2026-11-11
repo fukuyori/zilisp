@@ -143,6 +143,10 @@
 - `zig build native-test` runs the tests in parallel (the number of jobs comes from the environment variable
   `ZILISP_NATIVE_TEST_JOBS`, by default half the logical processors, 1 to 8; results are printed in name order; Debug for
   38 files went from about 37 minutes to about 7)
+- `zig build lang-test` and `zig build eval-check` run in parallel too (environment variables `ZILISP_LANG_TEST_JOBS` and
+  `ZILISP_EVAL_CHECK_JOBS`; lang-test runs tests of the same name (eval and gc-stress) in turn as one group and the groups
+  in parallel). The large-data cases of the language test `defstruct-read.lisp` are smaller. lang-test went from about
+  280 seconds to 49, and eval-check from about 160 seconds to 28
 
 ## 0.3.0 - 2026-11-04
 

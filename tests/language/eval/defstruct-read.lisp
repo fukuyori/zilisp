@@ -143,7 +143,9 @@
 (with-input-from-string (*in-stream* (format nil "(#S(rd2)ab c~%11 22)")) (try (read *in-stream*)))
 (with-input-from-string (*in-stream* "#1=(#S(rd) 11 #1# 22)") (try (let ((v (read *in-stream*))) (list (rd-x (car v)) (eq v (cadr v)) (caddr v)))))
 ;; 7回目 #2・#3：#n# と関係のない構造体は確かめ直さない。外側のラベルが残っていても、多くの構造体を読める
-(defvar *boxes* (loop repeat 200 collect (make-point :x (make-list 200))))
+;; （データは小さくしてある：GC stress は確保のたびに GC を行うので、生きているデータが多いと、後ろの例がすべて遅くなる。
+;; 6,400 個での時間の計測は、詳細設計の「Phase 26 の実装」にある）
+(defvar *boxes* (loop repeat 30 collect (make-point :x (make-list 30))))
 (try (let ((v (read-from-string "#1=(#2=(#1# #2# #.*boxes*))"))) (list (eq v (car (car v))) (eq (car v) (cadr (car v))) (length (caddr (car v))))))
 ;; 8回目 #1：#S の initform からの recursive な read は、外側の #n= のラベルを参照できる
 (defstruct rdr (x (read *in-stream* t nil t)))
@@ -154,7 +156,7 @@
 (defstruct nl (x nil :type list))
 (try (let* ((text (with-output-to-string (o)
                     (write-string "#1=(" o)
-                    (dotimes (i 300) (write-string "#S(nl :x #1#) " o))
+                    (dotimes (i 50) (write-string "#S(nl :x #1#) " o))
                     (write-string ")" o)))
             (v (read-from-string text)))
        (list (length v) (eq v (nl-x (car v))) (eq v (nl-x (car (last v)))))))

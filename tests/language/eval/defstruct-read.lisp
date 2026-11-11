@@ -102,19 +102,16 @@
 (try (te (let* ((*readtable* *rt2*) (v (read-from-string "#1=!#S(rr :x #1#)"))) (list :accepted (eq v (rr-x v))))))
 (try (te (let* ((*readtable* *rt2*) (v (read-from-string "#1=!#S(ok :x #1#)"))) (list :accepted (eq v (ok-x v))))))
 (try (te (let* ((*readtable* *rt2*) (v (read-from-string "!#S(rr :x 5)"))) (rr-x v))))
-;; 6回目 #1：reader macro が、読んだ構造体を複製し、元の構造体だけを書き換えてから複製を返しても、複製の型を確かめる
+;; reader macro が、読んだ構造体を複製し、元の構造体だけを書き換えてから複製を返す：型に合う形は読める
+;; （型に合わない形は、SBCL 2.6.7 は type-error、Zilisp は受理する。reader macro が作った構造体の型は reader macro の
+;; 責任。単体テストと tests/differential/impl-dependent.toml。Codex のレビュー P26 6〜8回目）
 (defvar *rt3* (copy-readtable nil))
-(defun slot-0 (x) (if (rr-p x) (rr-x x) (ok-x x)))
-(defun (setf slot-0) (v x) (if (rr-p x) (setf (rr-x x) v) (setf (ok-x x) v)))
 (set-macro-character #\! (lambda (s c) (declare (ignore c))
                            (let* ((original (read s t nil t)) (copy (copy-structure original)))
-                             (setf (slot-0 original) nil)
+                             (setf (ok-x original) nil)
                              copy))
                      nil *rt3*)
-(try (te (let* ((*readtable* *rt3*) (v (read-from-string "#1=!#S(rr :x #1#)"))) (list :accepted (eq v (rr-x v))))))
 (try (te (let* ((*readtable* *rt3*) (v (read-from-string "#1=!#S(ok :x #1#)"))) (list :accepted (eq v (ok-x v))))))
-(try (te (let* ((*readtable* *rt3*) (v (read-from-string "#1=(a !#S(rr :x (#1#)))"))) :accepted)))
-(try (te (let* ((*readtable* *rt3*) (v (read-from-string "#1=(a !#S(ok :x #1#))"))) :accepted)))
 ;; 循環のない共有だけのラベルは、今までどおり
 (try (let ((v (read-from-string "(#1=#S(point :x 1) #1# #2=(a) #2#)"))) (list (eq (car v) (cadr v)) (eq (caddr v) (cadddr v)))))
 ;; 6回目 #2：#S の型のエラーの後、同じストリームの続きを読める（位置が #S の直後まで進む）
@@ -148,3 +145,16 @@
 ;; 7回目 #2・#3：#n# と関係のない構造体は確かめ直さない。外側のラベルが残っていても、多くの構造体を読める
 (defvar *boxes* (loop repeat 200 collect (make-point :x (make-list 200))))
 (try (let ((v (read-from-string "#1=(#2=(#1# #2# #.*boxes*))"))) (list (eq v (car (car v))) (eq (car v) (cadr (car v))) (length (caddr (car v))))))
+;; 8回目 #1：#S の initform からの recursive な read は、外側の #n= のラベルを参照できる
+(defstruct rdr (x (read *in-stream* t nil t)))
+(with-input-from-string (*in-stream* "#1=(#S(rdr) #1#)") (try (let ((v (read *in-stream*))) (eq v (rdr-x (car v))))))
+(with-input-from-string (*in-stream* "(#S(rdr) 7 8)") (try (read *in-stream*)))
+(with-input-from-string (*in-stream* "(#1=(a) #S(rdr) #1# 9)") (try (let ((v (read *in-stream*))) (list (eq (car v) (rdr-x (cadr v))) (cddr v)))))
+;; 多くの #S が同じラベルを指しても読める（検査待ちの構造体ごとに全体をたどり直さない）
+(defstruct nl (x nil :type list))
+(try (let* ((text (with-output-to-string (o)
+                    (write-string "#1=(" o)
+                    (dotimes (i 300) (write-string "#S(nl :x #1#) " o))
+                    (write-string ")" o)))
+            (v (read-from-string text)))
+       (list (length v) (eq v (nl-x (car v))) (eq v (nl-x (car (last v)))))))

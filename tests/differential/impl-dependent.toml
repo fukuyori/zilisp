@@ -346,6 +346,14 @@ clhs = "2.4.8.15 Sharpsign Equal-Sign・2.4.8.16 Sharpsign Sharpsign（読んだ
 since = "Phase 26"
 
 [[items]]
+id = "sharp-s-copied-by-reader-macro"
+description = "reader macro が、読んだ #S の構造体を複製し、元の構造体だけを正しい値に書き換えて、複製を返したときの、複製のスロットの型（#1=!#S(s :x #1#)。x の型に構造体は合わない）"
+sbcl = "type-error"
+zilisp = "受理する（reader が型を確かめるのは、reader が #S で作った構造体だけ。reader macro が作った・書き換えた構造体の型は reader macro の責任。複製を返すだけで元を書き換えない形は、元の構造体の検査で type-error になる。Phase 26。2026-11-11 の決定）"
+clhs = "2.4.8.13 Sharpsign S・2.4.8.15 Sharpsign Equal-Sign（reader macro が返す値の型の検査は規定されていない。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
 id = "defstruct-include-bare-slot-name"
 description = ":include のスロットの書き換えに、裸のシンボルを書いた形（(:include base x)）"
 sbcl = "エラー（リストを求める）"

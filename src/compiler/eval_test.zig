@@ -2170,13 +2170,26 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     , "(A NIL T)");
     try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-ok :x #1#))\"))", .type_error);
     try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-rr :x #1#))\"))", .type_error);
-    // reader macro が、読んだ構造体を複製して元だけを書き換えても、返った複製の型を確かめる（Codex のレビュー P26 6回目 #1）
-    try expectError(&e,
+    // reader macro が、読んだ構造体を複製して元だけを書き換え、複製を返す：確かめるのは reader が #S で作った元の構造体
+    // だけなので、複製に型に合わない値（自分自身）が入っても受理する。reader macro が作った構造体の型は reader macro の
+    // 責任（SBCL 2.6.7 は type-error。そこまで確かめる仕組みは、関係のない構造体を拒む・遅くなる問題を生んだのでやめた。
+    // Codex のレビュー P26 6〜8回目）
+    try expectValue(&e,
         \\(let ((*readtable* (copy-readtable nil)))
         \\  (set-macro-character #\! (lambda (s c) (declare (ignore c))
         \\                             (let* ((o (read s t nil t)) (c2 (copy-structure o))) (setf (p26-rr-x o) 0) c2)))
-        \\  (read-from-string "#1=!#S(p26-rr :x #1#)"))
-    , .type_error);
+        \\  (let ((v (read-from-string "#1=!#S(p26-rr :x #1#)"))) (eq v (p26-rr-x v))))
+    , "T");
+    // reader macro が、既存の構造体の型のないスロットに #n# を入れて返す：その構造体のほかのスロット（型を定義する前に
+    // 入れた値）は確かめ直さない（8回目 #2）
+    try expectValue(&e,
+        \\(progn (defstruct p26-fwd3 (x nil :type p26-later3) y)
+        \\  (defvar *p26-o3* (make-p26-fwd3 :x 5))
+        \\  (defstruct p26-later3)
+        \\  (let ((*readtable* (copy-readtable nil)))
+        \\    (set-macro-character #\! (lambda (s c) (declare (ignore c)) (setf (p26-fwd3-y *p26-o3*) (read s t nil t)) *p26-o3*))
+        \\    (let ((v (read-from-string "#1=!#1#"))) (list (eq v *p26-o3*) (eq v (p26-fwd3-y v)) (p26-fwd3-x v)))))
+    , "(T T 5)");
     // #S の型のエラーの後、同じストリームの続きを読める（6回目 #2）
     try expectValue(&e,
         \\(with-input-from-string (s "#S(p26-rr :x bad) 42")

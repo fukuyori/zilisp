@@ -41,6 +41,10 @@
 - Codex の 7 回目のレビュー（P26）の 3 件を直した（6 回目の修正が原因）：`#S` の initform が同じストリームを読んだら、
   外側の読み取りはその続きから読む（読んだ分をもう一度読んでいた）、`#n#` と関係のない既存の構造体を確かめ直して拒まない、
   外側のラベルが残っているときに多くの構造体を読む時間が二乗に増えない
+- Codex の 8 回目のレビュー（P26）の 3 件を直した：`#S` の initform からの recursive な `read` が外側の `#n=` のラベルを
+  参照できる。reader が型を確かめるのは、reader が `#S` で作った構造体だけにした（reader macro が作った・書き換えた構造体の
+  型は reader macro の責任。関係のない構造体を拒む・遅くなる問題が続いたため）。多くの `#S` が同じラベルを指す入力の
+  読み取りが二乗の時間にならない（6,400 個で、ReleaseFast の 5.1 秒が 24 ms に）
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

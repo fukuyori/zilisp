@@ -1449,6 +1449,9 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
   - `(:conc-name "")` は、アクセサの名前を今のパッケージに intern する。スロットのシンボルそのものを使うのは `(:conc-name nil)`（と引数なし）だけ。
   - `(:print-function nil)`・`(:print-object nil)` は、引数なしと同じく `#S(…)` の形に戻す（`(function nil)` に展開してエラーになっていた）。
   - `:include` で同じスロットを 2 回書き換えるとエラー。`:include` の書き換えに裸のシンボル（`(:include base x)`）を書くのは受け付ける（SBCL 2.6.7 はエラーにする。CLHS の構文では slot-description はシンボルでもよいと読める。※原文は未確認）。
+- **Codex のレビューの修正（Phase 26、3回目）**、2 件（どれも SBCL 2.6.7 と照合した）：
+  - `th.skip_slot_type_check` はスレッド全体に効くので、循環する `#S` の構築子を呼んでいる間、initform が作る別の構造体・initform の中の `setf`・initform の中の別の `#S` の読み取りの型の検査まで省略していた。省略するのは、値の中に `#n=` の仮の値がある検査だけにした（`sysCheckSlotType` が `containsPlaceholder` で値を調べる。initform が作る値には仮の値が入らないので、ふつうに検査される）。
+  - pretty printer の経路からアトムを Zig の印字に渡すとき（`pprint.zig` の `outputUgly`）、Zig の印字は深さ 0 から数えるので、`*print-level*` から今の深さ（`th.pp_level`）を引いた値を渡す。多次元の文字の配列はここで中身まで書くので、構造体やリストの中で 1 段深く書いていた（`#S(BOX :X #2A(# #))`。SBCL は `#S(BOX :X #2A#)`）。
 - 結果（受入：Level 19 の主要コード）：Level 19 で `defstruct` のために Zilisp だけがエラーだった 10 ブロックは、すべて SBCL 2.6.7 と同じ出力（Level 19 に Zilisp だけがエラーのブロックはなくなった）。ほかの Level の `defstruct` のブロック（Level 7 の 7、Level 23 の 9、Level 24 の 2、Level 26 の 3）と、`get-universal-time` を呼ぶ Level 13 の 1 つも同じ出力になった。教材のブロックの一致は 513 から 545 に、Zilisp だけがエラーは 79 から 47 に（出力の違いは L455 の 1 つのまま）。boot.lisp の空でない行は 1934 から 2282 に。起動時間は 14.06 ms（変更の前の `4833203` と交互に 41 回ずつ測った中央値。変更の前は 13.40 ms）。pretty でない印字で先にリストを走査する費用は、4 万回の `prin1-to-string` で約 1 ms（起動時間の差を除く）。
 
 ### 11.3 標準ライブラリのビルド

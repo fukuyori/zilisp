@@ -27,6 +27,9 @@
   まま、pretty でない印字で構造体・condition の中のリストに `*print-level*` と `*print-circle*` が伝わる、`(:conc-name "")` は
   今のパッケージのシンボル、`(:print-function nil)`・`(:print-object nil)` は `#S(…)` の形、`:include` で同じスロットを 2 回
   書き換えるとエラー
+- Codex の 3 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：循環する `#S` を読んでいる間も、initform が
+  作る別の構造体・`setf`・入れ子の読み取りの型を検査する（省略するのは `#n=` の仮の値を含む値だけ）、pretty でない印字で
+  構造体やリストの中の多次元の文字の配列を 1 段深く書いていた
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

@@ -584,7 +584,7 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）に、#n= の仮の値（car が unbound の cons。labelDefine）が
 /// あるか。循環していてもよい
-fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
+pub fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);

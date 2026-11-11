@@ -173,8 +173,9 @@ pub const Thread = struct {
     /// *current-level-in-print*。Phase 24）
     pp_circle: ?*@import("../printer/pprint.zig").Circle = null,
     pp_level: usize = 0,
-    /// reader が、#n= の仮の値を中に含む #S の構築子を呼んでいる間は真：構造体のスロットの型を検査しない
-    /// （仮の値が置き換わった後で確かめる。value_builder.zig の structure。Phase 26）
+    /// reader が、#n= の仮の値を中に含む #S の構築子を呼んでいる間は真：構造体のスロットの型の検査のうち、値の中に
+    /// 仮の値があるものを省略する（仮の値が置き換わった後で確かめる。value_builder.zig の structure、
+    /// structures.zig の sysCheckSlotType。Phase 26）
     skip_slot_type_check: bool = false,
     /// 動的束縛のスタック（§6.5）
     bindings: []Binding,

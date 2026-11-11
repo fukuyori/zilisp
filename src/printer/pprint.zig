@@ -232,6 +232,9 @@ fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
     defer buf.deinit();
     var s = printer.Settings.current(th.rt, null);
     s.circle = false;
+    // Zig の印字は深さ 0 から数えるので、残りの深さを渡す（多次元の文字の配列は、ここで中身まで書く。
+    // 外側の深さを引かないと、構造体やリストの中で 1 段深く書いてしまう。Codex のレビュー P26 3回目 #2）
+    if (s.level) |l| s.level = l -| th.pp_level;
     var bad: Value = Value.nil;
     printer.writeObject(th.rt, &buf.writer, v, s, &bad) catch |err| switch (err) {
         error.NotReadable => {

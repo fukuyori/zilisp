@@ -31,6 +31,10 @@
   inside structures and conditions when printing without the pretty printer, `(:conc-name "")` makes symbols in the current
   package, `(:print-function nil)` and `(:print-object nil)` give the `#S(...)` form, and overriding the same slot twice in
   `:include` is an error
+- Fixed 2 issues from the third Codex review of Phase 26 (both checked against SBCL 2.6.7): while a circular `#S` is being
+  read, the types of other structures made by initforms, of `setf` and of nested reads are still checked (only values that
+  contain a `#n=` placeholder are skipped), and a multi-dimensional character array inside a structure or list was printed
+  one level too deep without the pretty printer
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

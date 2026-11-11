@@ -17,7 +17,7 @@
   the handling of years outside the range are the same as SBCL 2.6.7; the offset of local time comes from the OS rules on
   Windows and from `/etc/localtime` elsewhere)
 - `fboundp` accepts `(setf name)`
-- Tests: the language tests `defstruct.lisp` and `time.lisp` (the same output as SBCL 2.6.7; also gc-stress versions and
+- Tests: the language tests `defstruct.lisp`, `defstruct-read.lisp`, `defstruct-review.lisp` and `time.lisp` (the same output as SBCL 2.6.7; also gc-stress versions and
   native) and unit tests. The curriculum blocks that use `defstruct` (31 blocks in Levels 7, 19, 23, 24 and 26) and one that
   uses `get-universal-time` now give the same output as SBCL; curriculum blocks matching went from 513 to 545
 - Fixed 5 issues from the Codex review of Phase 26 (all checked against SBCL 2.6.7): a structure that refers to itself
@@ -35,6 +35,10 @@
   read, the types of other structures made by initforms, of `setf` and of nested reads are still checked (only values that
   contain a `#n=` placeholder are skipped), and a multi-dimensional character array inside a structure or list was printed
   one level too deep without the pretty printer
+- Fixed 1 issue from the fourth Codex review of Phase 26 (checked against SBCL 2.6.7): while a circular `#S` was being read,
+  a `#n#` placeholder that a reader macro took out and an initform passed to another constructor or `setf` escaped the type
+  check. Only the slots of the structure the reader is making go unchecked now (through a reader constructor that does not
+  check types)
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

@@ -92,15 +92,6 @@ pub fn sysStructureClass(th: *Thread, args: []const Value) Value {
 pub fn sysCheckSlotType(th: *Thread, args: []const Value) Value {
     th.mv_count = 1;
     if (args[1] == th.rt.t or !types.slotCheckable(th, args[1])) return args[0];
-    // reader が、#n= の仮の値を中に含む #S を読んでいる間は検査しない：#1=#S(node :next (#1#))。仮の値がすべて
-    // 置き換わった後で、reader が zl-sys::%check-structure-slots で確かめる（value_builder.zig の structure・labelFinish。
-    // Codex のレビュー P26 1回目 #1・2回目 #1）
-    // 省略するのは、値の中に仮の値がある場合だけ：その間に initform が作る別の構造体や setf の値は、ふつうに検査する
-    // （仮の値は入っていない。Codex のレビュー P26 3回目 #1）。調べられなければ（メモリ不足）検査を省略する側に倒す
-    if (th.skip_slot_type_check) {
-        const pending = @import("../reader/value_builder.zig").containsPlaceholder(th.rt, args[0]) catch true;
-        if (pending) return args[0];
-    }
     const ok = types.typep(th, args[0], args[1]) catch return Value.unwind;
     th.mv_count = 1;
     return if (ok) args[0] else th.typeError(args[0], args[1]);

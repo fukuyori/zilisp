@@ -15,7 +15,7 @@
 - 時刻：`get-universal-time`・`get-decoded-time`・`decode-universal-time`・`encode-universal-time`（引数の型と、範囲の外の年の
   扱いは SBCL 2.6.7 と同じ。その土地の時刻との差は、Windows は OS の規則、ほかは `/etc/localtime` から求める）
 - `fboundp` が `(setf 名前)` を受け取る
-- 試験：言語試験 `defstruct.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
+- 試験：言語試験 `defstruct.lisp`・`defstruct-read.lisp`・`defstruct-review.lisp`・`time.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）と単体テスト。
   教材の `defstruct` を使うブロック（Level 7・19・23・24・26 の 31 個）と `get-universal-time` を使う 1 個が SBCL と同じ出力になり、
   教材のブロックの一致は 513 から 545 に
 - Codex のレビュー（P26）で見つけた 5 件を直した（どれも SBCL 2.6.7 と照合した）：`#1=#S(node :next #1#)` のように `#n#` で
@@ -30,6 +30,9 @@
 - Codex の 3 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：循環する `#S` を読んでいる間も、initform が
   作る別の構造体・`setf`・入れ子の読み取りの型を検査する（省略するのは `#n=` の仮の値を含む値だけ）、pretty でない印字で
   構造体やリストの中の多次元の文字の配列を 1 段深く書いていた
+- Codex の 4 回目のレビュー（P26）の 1 件を直した（SBCL 2.6.7 と照合した）：循環する `#S` を読んでいる間に、reader macro が
+  持ち出した `#n#` の仮の値を initform が別の構築子・`setf` に渡すと、型の検査が漏れた。検査を省略するのは、reader が作って
+  いる構造体のスロットだけにした（型を検査しない読み取り用の構築子を使う）
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

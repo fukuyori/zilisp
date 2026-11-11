@@ -2262,14 +2262,16 @@
 ;;; 構造体は、クラスの記述とスロットの値を直接並べた 1 つのオブジェクト（Zig の zl-sys::%make-structure。
 ;;; src/primitives/structures.zig）。クラスの記述は simple-vector で、名前のシンボルの属性 zl-sys::%class に置く
 ;;; （condition と同じ場所。位置 0・1 は Zig の typep と印字が読む）：
-;;;   #(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数)
+;;;   #(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数 読み取り用の構築子)
 ;;;   CPL は自身を含む上位の構造体の名前のリスト（最後は structure-object）、
 ;;;   スロットは (名前 initform 型 read-only アクセサの名前) のリスト（:include した構造体のスロットを先頭に含む。値の順）、
 ;;;   標準の構築子はキーワードの引数の構築子（#S の読み取りが呼ぶ。なければ NIL）、
-;;;   印字の関数は (lambda (構造体 ストリーム) …) か NIL（NIL なら #S(…) の形）。
+;;;   印字の関数は (lambda (構造体 ストリーム) …) か NIL（NIL なら #S(…) の形）、
+;;;   読み取り用の構築子は、標準の構築子と同じ引数でスロットの型を検査しない関数か NIL（型のあるスロットがなければ NIL。
+;;;   reader が、#n= の仮の値を含む #S を読むときだけ使う）。
 ;;; (:type …)・:named・:initial-offset は未実装（zilisp:unimplemented）。print-object のメソッドは CLOS の Phase。
 
-(setf (get 'structure-object 'zl-sys::%class) (vector 'structure-object '(structure-object) nil nil nil nil))
+(setf (get 'structure-object 'zl-sys::%class) (vector 'structure-object '(structure-object) nil nil nil nil nil))
 
 ;; 構造体のクラスの記述。構造体の名前でなければ NIL
 (defun zl-sys::%structure-class (name)
@@ -2284,11 +2286,16 @@
           (vector name
                   (cons name (if parent (svref parent 1) '(structure-object)))
                   include slots constructor
-                  (if parent (svref parent 5) nil)))
+                  (if parent (svref parent 5) nil)
+                  nil))
     name))
 
 (defun zl-sys::%set-structure-printer (name function)
   (setf (svref (zl-sys::%structure-class name) 5) function)
+  name)
+
+(defun zl-sys::%set-structure-reader (name function)
+  (setf (svref (zl-sys::%structure-class name) 6) function)
   name)
 
 ;; スロットの記述 → (名前 initform 型 read-only :type があったか :read-only があったか)
@@ -2323,6 +2330,15 @@
   (let ((vars (mapcar (lambda (s) (gensym (symbol-name (car s)))) slots)))
     `(defun ,constructor (&key ,@(mapcar (lambda (s v) `((,(zl-sys::%slot-keyword (car s)) ,v) ,(cadr s))) slots vars))
        (zl-sys::%make-structure ',name ,@(mapcar (lambda (s v) (zl-sys::%checked-slot-form v (caddr s))) slots vars)))))
+
+;; 読み取り用の構築子：標準の構築子と同じ引数と initform で、スロットの型を検査しない。reader が、スロットの値の中に
+;; #n= の仮の値がある #S を読むときに呼び、仮の値が置き換わった後で zl-sys::%check-structure-slots が型を確かめる。
+;; 検査を省略するのはこの構造体のスロットだけで、initform の中の別の構築子・setf はいつもどおり検査する
+;; （スレッド全体で検査を止めると、そこから漏れる。Codex のレビュー P26 3回目 #1・4回目）
+(defun zl-sys::%structure-reader-constructor (name slots)
+  (let ((vars (mapcar (lambda (s) (gensym (symbol-name (car s)))) slots)))
+    `(lambda (&key ,@(mapcar (lambda (s v) `((,(zl-sys::%slot-keyword (car s)) ,v) ,(cadr s))) slots vars))
+       (zl-sys::%make-structure ',name ,@vars))))
 
 ;; 引数の並びを指定した構築子（BOA。CLHS 3.4.6）：既定値のない &optional・&key の変数はスロットの initform を既定値にし、
 ;; 並びにないスロットは initform の値にする
@@ -2492,6 +2508,11 @@
          (zl-sys::%define-structure ',name ',include ',slots
                                     ',(dolist (c constructors nil) (if (null (cdr c)) (return (car c))))))
        ,@(if printer-p `((zl-sys::%set-structure-printer ',name ,printer)) nil)
+       ;; 標準の構築子があり、型のあるスロットがあれば、読み取り用の構築子も置く
+       ,@(if (and (dolist (c constructors nil) (if (null (cdr c)) (return t)))
+                  (dolist (s slots nil) (unless (eq (caddr s) t) (return t))))
+             `((zl-sys::%set-structure-reader ',name ,(zl-sys::%structure-reader-constructor name slots)))
+             nil)
        ,@(reverse forms)
        ',name)))
 
@@ -2548,8 +2569,9 @@
         (zl-sys::%default-structure-print object stream class))
     object))
 
-;; 構造体のスロットの型を確かめ直す。reader が、#n# の仮の値を置き換えた構造体に対して呼ぶ（構築子は仮の値を検査
-;; しない：#1=#S(node :next #1#)。src/reader/value_builder.zig の labelFinish。Codex のレビュー P26 1回目 #1）
+;; 構造体のスロットの型を確かめる。reader が、読み取り用の構築子（型を検査しない）で作った構造体に対して、中の #n# の
+;; 仮の値がすべて置き換わった後で呼ぶ：#1=#S(node :next #1#)（src/reader/value_builder.zig の labelFinish。
+;; Codex のレビュー P26 1回目 #1）
 (defun zl-sys::%check-structure-slots (object)
   (let ((class (zl-sys::%structure-class-of object)) (index 0))
     (dolist (s (svref class 3) object)
@@ -2557,9 +2579,10 @@
       (setq index (1+ index)))))
 
 ;;; #S(名前 スロット 値 …) の読み取り（src/reader/value_builder.zig の structure が呼ぶ）。標準の構築子を呼ぶ。
+;;; pending が真（値の中に #n= の仮の値がある）で、読み取り用の構築子があれば、そちらを呼ぶ。
 ;;; 形の誤りは数を返す（reader-error にするのは Zig の側）：1 リストでない・名前がない、2 構造体がない、3 構築子がない、
 ;;; 4 スロットと値の並びの誤り、5 構築子がまだ定義されていない
-(defun zl-sys::%read-structure (form)
+(defun zl-sys::%read-structure (form pending)
   (if (not (and (consp form) (car form) (symbolp (car form))))
       1
       (let ((class (zl-sys::%structure-class (car form))) (args nil))
@@ -2568,7 +2591,7 @@
               ;; コンパイル時には構造体の定義だけがあり、構築子はまだない（構造体のリテラルは実行時にだけ読める）
               ((not (fboundp (svref class 4))) 5)
               (t (do ((x (cdr form) (cddr x)))
-                     ((null x) (apply (svref class 4) (nreverse args)))
+                     ((null x) (apply (if (and pending (svref class 6)) (svref class 6) (svref class 4)) (nreverse args)))
                    (if (or (not (consp x)) (not (consp (cdr x)))
                            (not (or (symbolp (car x)) (stringp (car x)) (characterp (car x)))))
                        (return 4))

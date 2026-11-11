@@ -1229,7 +1229,7 @@ instance                      rack
 **Phase 26 の実装**（2026-11-10 決定：表し方は専用のオブジェクト、範囲は上の項目と周辺の標準機能、スロットの `:type` は検査する）
 
 - **表し方**：`ObjKind.structure`（`object.Structure`。`src/values/object.zig`）。ヘッダ・クラスの記述・スロットの値を 1 つのオブジェクトに並べる（`header.len` がスロットの数。condition の `record` のように、値のベクタを別に持たない）。構造体は互換でない再定義をしないので、Phase 27 の rack と直接配置の比較（§10.2）を待たずに直接配置にした。CLOS の `structure-class` にまとめるのは Phase 27。
-- **クラスの記述**は Lisp で作る simple-vector：`#(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数)`。condition と同じく、名前のシンボルの属性 `zl-sys::%class` に置く（Zig が読むのは位置 0・1 と、エラーの報告の印字のための位置 3）。CPL は自身を含む上位の構造体の名前のリストで、最後は `structure-object`。スロットは `(名前 initform 型 read-only アクセサの名前)` のリスト（`:include` した構造体のスロットを先頭に含む。値の順）。
+- **クラスの記述**は Lisp で作る simple-vector：`#(名前 CPL :include の名前 スロット 標準の構築子の名前 印字の関数 読み取り用の構築子)`。condition と同じく、名前のシンボルの属性 `zl-sys::%class` に置く（Zig が読むのは位置 0・1 と、エラーの報告の印字のための位置 3）。CPL は自身を含む上位の構造体の名前のリストで、最後は `structure-object`。スロットは `(名前 initform 型 read-only アクセサの名前)` のリスト（`:include` した構造体のスロットを先頭に含む。値の順）。
 - **`defstruct` マクロ**（`src/lisp/boot.lisp` の `zl-sys::%expand-defstruct`）の展開：
   - `(eval-when (:compile-toplevel :load-toplevel :execute) (zl-sys::%define-structure …))`：クラスの記述を置く。コンパイル時にも実行するのは、後ろの `defstruct` の `:include` が展開のときに元の構造体のスロットを読むため。**`:include` する構造体は、ファイルをコンパイルする場合（ネイティブ）はトップレベルで定義しておく**（CLHS 3.2.3.1。フォームを 1 つずつ評価する `--script`・REPL では、どこで定義してもよい）。
   - アクセサ：`(defun 名前 (object) (zl-sys::%structure-ref object '構造体 位置))` と、read-only でなければ `(defun (setf 名前) (value object) (zl-sys::%structure-set object '構造体 位置 value))`。`:include` した構造体のアクセサと同じ名前になるものは定義し直さない。
@@ -1248,7 +1248,7 @@ instance                      rack
   - **構造体のリテラルは、定義を実行した後に読むときだけ使える**（`--script`・REPL・`read`）。ネイティブの定数は起動時にテキストから読み直すので、構造体の定数は書き出せず、コンパイル時にエラーにする（§14 の `make-load-form` の扱いと同じ）。
 - **`fboundp`** は `(setf 名前)` も受け取る（CLHS の関数の名前。構造体のアクセサの確認に使う）。
 - **SBCL 2.6.7 との違い**（`tests/differential/impl-dependent.toml`）：初期値のない `&aux` のスロットは NIL（SBCL は未束縛の印 `#<unbound>`）、type-error の expected-type の正規化、`(:type …)` などの未実装、構造体のリテラルをコンパイルできないこと。
-- **試験**：言語試験 `defstruct.lisp`（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ）、単体テスト（未実装のオプション、`#S`、定義し直し、後から定義する型、GC stress）。
+- **試験**：言語試験 `defstruct.lisp`・`defstruct-read.lisp`（`#S` の読み取りと `#n#`）・`defstruct-review.lisp`（Codex のレビューで足した例）（SBCL 2.6.7 と同じ出力。GC stress の版とネイティブでも同じ。GC stress の実行に時間がかかるので 3 つに分けた）、単体テスト（未実装のオプション、`#S`、定義し直し、後から定義する型、GC stress）。
 
 ---
 
@@ -1452,6 +1452,7 @@ Phase 24 の後に、Phase 19〜24 の変更を agy（Antigravity CLI。5 回の
 - **Codex のレビューの修正（Phase 26、3回目）**、2 件（どれも SBCL 2.6.7 と照合した）：
   - `th.skip_slot_type_check` はスレッド全体に効くので、循環する `#S` の構築子を呼んでいる間、initform が作る別の構造体・initform の中の `setf`・initform の中の別の `#S` の読み取りの型の検査まで省略していた。省略するのは、値の中に `#n=` の仮の値がある検査だけにした（`sysCheckSlotType` が `containsPlaceholder` で値を調べる。initform が作る値には仮の値が入らないので、ふつうに検査される）。
   - pretty printer の経路からアトムを Zig の印字に渡すとき（`pprint.zig` の `outputUgly`）、Zig の印字は深さ 0 から数えるので、`*print-level*` から今の深さ（`th.pp_level`）を引いた値を渡す。多次元の文字の配列はここで中身まで書くので、構造体やリストの中で 1 段深く書いていた（`#S(BOX :X #2A(# #))`。SBCL は `#S(BOX :X #2A#)`）。
+- **Codex のレビューの修正（Phase 26、4回目）**、1 件（SBCL 2.6.7 と照合した）：3 回目の修正（値の中に仮の値がある検査を省略する）でも、reader macro が持ち出した `#n#` の仮の値を、`#S` の initform が別の構築子や `setf` に渡すと、その検査が省略され、後で確かめ直されなかった（確かめ直すのは reader が作った構造体だけ。`setf` の先が読んだ結果の外なら、仮の値がそのまま残った）。スレッドの印 `th.skip_slot_type_check` をやめ、**型を検査しない読み取り用の構築子**を使う形に変えた：`defstruct` は、標準の構築子と型のあるスロットがあれば、同じ引数と initform でスロットの型を検査しない関数を作り、クラスの記述の位置 6 に置く（`zl-sys::%structure-reader-constructor`・`%set-structure-reader`）。reader は、`#S` の値の中に仮の値があるときだけ、それを呼ぶ（`zl-sys::%read-structure` の 2 つ目の引数）。検査を省略するのは reader が作っている構造体のスロットだけで、initform の中の別の構築子・`setf` はいつもどおり検査する（仮の値が渡れば、その場で type-error。SBCL と同じ結果）。できた構造体は、今までどおりラベルが解決した後で確かめる。
 - 結果（受入：Level 19 の主要コード）：Level 19 で `defstruct` のために Zilisp だけがエラーだった 10 ブロックは、すべて SBCL 2.6.7 と同じ出力（Level 19 に Zilisp だけがエラーのブロックはなくなった）。ほかの Level の `defstruct` のブロック（Level 7 の 7、Level 23 の 9、Level 24 の 2、Level 26 の 3）と、`get-universal-time` を呼ぶ Level 13 の 1 つも同じ出力になった。教材のブロックの一致は 513 から 545 に、Zilisp だけがエラーは 79 から 47 に（出力の違いは L455 の 1 つのまま）。boot.lisp の空でない行は 1934 から 2282 に。起動時間は 14.06 ms（変更の前の `4833203` と交互に 41 回ずつ測った中央値。変更の前は 13.40 ms）。pretty でない印字で先にリストを走査する費用は、4 万回の `prin1-to-string` で約 1 ms（起動時間の差を除く）。
 
 ### 11.3 標準ライブラリのビルド

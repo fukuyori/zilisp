@@ -180,16 +180,15 @@ pub const ValueBuilder = struct {
         const th = b.th orelse return fail(diag, loc, "ここでは #S を使えません（構造体のリテラルは、実行時に読むときだけ使えます）");
         const f = if (rt.sys_read_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_read_structure).function;
         if (!f.isFunctionPointer()) return fail(diag, loc, "ここでは #S を使えません");
-        // スロットの値の中（リスト・ベクタ・構造体の中も）に #n= の仮の値があれば、スロットの型を検査せずに作り、
-        // 仮の値がすべて置き換わってから確かめる（labelFinish）：#1=#S(node :next (#1#))。置き換える前の値で検査すると、
-        // 正しい値を拒み、誤った値を通す（Codex のレビュー P26 1回目 #1・2回目 #1）
+        // スロットの値の中（リスト・ベクタ・構造体の中も）に #n= の仮の値があれば、スロットの型を検査しない読み取り用の
+        // 構築子で作り（zl-sys::%read-structure の 2 つ目の引数）、仮の値がすべて置き換わってから確かめる（labelFinish）：
+        // #1=#S(node :next (#1#))。置き換える前の値で検査すると、正しい値を拒み、誤った値を通す。検査を省略するのは、
+        // この構造体のスロットだけ（initform の中の別の構築子・setf は、いつもどおり検査する。
+        // Codex のレビュー P26 1回目 #1・2回目 #1・3回目 #1・4回目）
         const pending = try containsPlaceholder(rt, form);
-        var argv: [1]Value = .{form};
+        var argv: [2]Value = .{ form, rt.boolean(pending) };
         th.mv_count = 1;
-        const saved_skip = th.skip_slot_type_check;
-        th.skip_slot_type_check = pending;
         const r = th.call(f, &argv);
-        th.skip_slot_type_check = saved_skip;
         if (r == Value.unwind) return error.LispError;
         th.mv_count = 1;
         if (!r.isFixnum()) {
@@ -584,7 +583,7 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value) Error!void {
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）に、#n= の仮の値（car が unbound の cons。labelDefine）が
 /// あるか。循環していてもよい
-pub fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
+fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);

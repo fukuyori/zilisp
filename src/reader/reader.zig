@@ -214,6 +214,10 @@ pub fn Reader(comptime Builder: type) type {
         bq_depth: usize = 0,
         /// *read-suppress*（#+ / #- で読み飛ばしている間）
         suppress: bool = false,
+        /// 最後に読み終えたコンマが ,@ / ,. だったか（readComma が設定する）
+        comma_splicing: bool = false,
+        /// readItem が最後に返した要素そのものが ,@ / ,. だったか（ドットの後の検査に使う）
+        item_splicing: bool = false,
         /// 標準でない readtable で読んでいる（偽なら、文字を標準の静的な表で引く。read のたびに決める）
         custom_syntax: bool = false,
         /// 直前の read で読んだデータの始まりの位置（行コメントと空白を除く。エラーの報告に使う）
@@ -343,9 +347,17 @@ pub fn Reader(comptime Builder: type) type {
                     .whitespace => self.src.advance(ch),
                     .terminating_macro, .non_terminating_macro => {
                         self.src.advance(ch);
-                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| return .{ .obj = obj };
+                        const is_comma = info.macro == .builtin and info.macro.builtin == .comma;
+                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| {
+                            // この要素そのものが ,@ / ,. か（中に含むだけの (,@x)・',@x・`,@x は違う）
+                            self.item_splicing = is_comma and self.comma_splicing;
+                            return .{ .obj = obj };
+                        }
                     },
-                    .single_escape, .multiple_escape, .constituent => return .{ .obj = try self.readToken(.normal) },
+                    .single_escape, .multiple_escape, .constituent => {
+                        self.item_splicing = false;
+                        return .{ .obj = try self.readToken(.normal) };
+                    },
                 }
             }
         }
@@ -466,6 +478,10 @@ pub fn Reader(comptime Builder: type) type {
                                 .close => |l| return self.fail(l, "対応する開き括弧のない閉じ括弧です"),
                             },
                         };
+                        // backquote の中で、ドットのすぐ後の ,@ / ,. は reader-error（SBCL の read-list と同じ。
+                        // `(a . ,b)・`(a . (,@b))・``(a . ,,@b) は読める。Codex のレビュー P26 13回目 #2）
+                        if (self.item_splicing and self.bq_depth > 0 and !self.suppress)
+                            return self.fail(loc, "ドット（.）の後に ,@ や ,. は置けません");
                         switch (try self.readItem(')')) {
                             .eof => return self.eof(start, "( が閉じられていません"),
                             .end => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, tail),
@@ -492,6 +508,8 @@ pub fn Reader(comptime Builder: type) type {
             if (self.bq_depth > 0) self.bq_depth -= 1;
             defer self.bq_depth = saved;
             const x = try self.readRequired(loc, ", の後");
+            // 中のコンマ（,,@x の ,@）が立てた印を、このコンマの種類で上書きする
+            self.comma_splicing = name.len != "UNQUOTE".len;
             return self.wrap(loc, sys_package, name, x);
         }
 
@@ -572,8 +590,11 @@ pub fn Reader(comptime Builder: type) type {
                         self.suppress = true;
                         defer self.suppress = saved;
                         _ = try self.readRequired(loc, "#+ / #- の後");
+                        return null;
                     }
-                    return null;
+                    // 機能式が合えば、続くオブジェクトを 1 つ読んで返す（SBCL の sharp-plus-minus と同じ：ここで読むので、
+                    // (1 #+sbcl . 2) のドットや (1 #+sbcl ) の閉じ括弧は reader-error。Codex のレビュー P26 13回目の修正の際に確認）
+                    return try self.readRequired(loc, "#+ / #- の後");
                 },
                 .sharp_p => {
                     // #P"..."：続く文字列をパス名にする（Phase 23）
@@ -947,7 +968,9 @@ pub fn Reader(comptime Builder: type) type {
                 if (c.cp > 0x7F) all_ascii = false;
                 if (c.escaped or c.cp != '.') all_dots = false;
             }
-            if (all_dots and tok.len == 1 and mode == .normal) return .{ .dot = loc };
+            // 読み飛ばしの中（*read-suppress*・#+ / #-）では、単独のドットもふつうのトークン：ドット対の検査をしない
+            // （SBCL と同じく #+no (a . b c)・(a . .)・#(. ) を読み飛ばせる。Codex のレビュー P26 13回目 #1）
+            if (all_dots and tok.len == 1 and mode == .normal and !self.suppress) return .{ .dot = loc };
             if (self.suppress) return .{ .datum = try self.builder.nil(loc) };
             if (all_dots and tok.len > 1) return self.fail(loc, "ドットだけのトークンは読めません");
 

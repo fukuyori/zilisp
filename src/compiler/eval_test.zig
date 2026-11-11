@@ -2256,4 +2256,15 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
         \\(with-input-from-string (s "#S! 42")
         \\  (list (handler-case (read s) (reader-error () :reader-error)) (file-position s) (read s)))
     , "(:READER-ERROR 3 42)");
+    // 読み飛ばしの中の単独のドットはふつうのトークン（Codex のレビュー P26 13回目 #1）
+    try expectValue(&e, "(read-from-string \"#+no-such-feature (a . b c) 42\")", "42");
+    try expectValue(&e, "(read-from-string \"#+no-such-feature #S(. a b) 42\")", "42");
+    try expectValue(&e, "(let ((*read-suppress* t)) (list (read-from-string \"(a . .)\") (read-from-string \"#(. )\") (read-from-string \". 5\")))", "(NIL NIL NIL)");
+    try expectError(&e, "(read-from-string \"(a . b c)\")", .reader_error);
+    // backquote の中で、ドットのすぐ後の ,@ / ,. は reader-error（13回目 #2）
+    try expectError(&e, "(read-from-string \"`(a . ,@b)\")", .reader_error);
+    try expectError(&e, "(read-from-string \"`(a . ,.b)\")", .reader_error);
+    try expectError(&e, "(read-from-string \"#S(p26-any :x `(a . ,@b))\")", .reader_error);
+    try expectValue(&e, "(let ((b '(1 2))) (declare (special b)) (list (eval (read-from-string \"`(a . ,b)\")) (eval (read-from-string \"`(a . (,@b))\"))))", "((A 1 2) (A 1 2))");
+    try expectValue(&e, "(consp (read-from-string \"``(a . ,,@b)\"))", "T");
 }

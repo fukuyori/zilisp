@@ -189,6 +189,15 @@ pub fn Reader(comptime Builder: type) type {
             close: SourceLoc,
         };
 
+        /// リストの要素を1つ読んだ結果（readItem）
+        const Item = union(enum) {
+            /// テキストの終わり
+            eof,
+            /// リストを閉じる文字そのもの（読み終えている）
+            end,
+            obj: Obj,
+        };
+
         src: *Source,
         builder: *Builder,
         gpa: std.mem.Allocator,
@@ -278,16 +287,11 @@ pub fn Reader(comptime Builder: type) type {
             const start = self.src.loc();
             var list = try self.builder.listBegin(start);
             while (true) {
-                const ch = (try self.peek()) orelse return self.eof(start, "READ-DELIMITED-LIST の途中でテキストが終わりました");
-                if (ch.cp == close) {
-                    self.src.advance(ch);
-                    break;
-                }
-                if (self.syntaxOf(ch.cp) == .whitespace) {
-                    self.src.advance(ch);
-                    continue;
-                }
-                const obj = (try self.readObj()) orelse return self.eof(start, "READ-DELIMITED-LIST の途中でテキストが終わりました");
+                const obj = switch (try self.readItem(close)) {
+                    .eof => return self.eof(start, "READ-DELIMITED-LIST の途中でテキストが終わりました"),
+                    .end => break,
+                    .obj => |o| o,
+                };
                 switch (obj) {
                     .datum => |d| try self.builder.listPush(&list, d),
                     .dot => |loc| return self.fail(loc, "ここにドット（.）は置けません"),
@@ -312,10 +316,26 @@ pub fn Reader(comptime Builder: type) type {
 
         /// 空白・コメント・#+ / #- で読み飛ばしたものを除いて、次の要素を読む。テキストの終わりなら null。
         fn readObj(self: *Self) Error!?Obj {
+            return switch (try self.readItem(null)) {
+                .eof => null,
+                .end => unreachable,
+                .obj => |o| o,
+            };
+        }
+
+        /// リストの要素を1つ読む。空白の後の文字が close そのものなら、その文字のマクロ文字の関数を呼ばずに .end を返す
+        /// （SBCL の with-list-reader と同じ：リストを閉じるのは文字 ) そのもの。) に設定した reader macro は呼ばず、
+        /// ) の構文を写した別の文字は「対応しない閉じ括弧」。コメントや値を返さない reader macro の後でも同じ判定をする。
+        /// Codex のレビュー P26 12回目 #1）
+        fn readItem(self: *Self, close: ?u21) Error!Item {
             while (true) {
-                const ch = (try self.peek()) orelse return null;
+                const ch = (try self.peek()) orelse return .eof;
                 const loc = self.src.loc();
                 const info = self.charInfo(ch.cp);
+                if (close) |c| if (ch.cp == c and info.syntax != .whitespace) {
+                    self.src.advance(ch);
+                    return .end;
+                };
                 const is_comment = info.macro == .builtin and info.macro.builtin == .comment;
                 if (self.start_loc == null and !is_comment and info.syntax != .whitespace) self.start_loc = loc;
                 switch (info.syntax) {
@@ -323,9 +343,9 @@ pub fn Reader(comptime Builder: type) type {
                     .whitespace => self.src.advance(ch),
                     .terminating_macro, .non_terminating_macro => {
                         self.src.advance(ch);
-                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| return obj;
+                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| return .{ .obj = obj };
                     },
-                    .single_escape, .multiple_escape, .constituent => return try self.readToken(.normal),
+                    .single_escape, .multiple_escape, .constituent => return .{ .obj = try self.readToken(.normal) },
                 }
             }
         }
@@ -423,20 +443,33 @@ pub fn Reader(comptime Builder: type) type {
             var list = try self.builder.listBegin(start);
             var count: usize = 0;
             while (true) {
-                const obj = (try self.readObj()) orelse return self.eof(start, "( が閉じられていません");
+                const obj = switch (try self.readItem(')')) {
+                    .eof => return self.eof(start, "( が閉じられていません"),
+                    .end => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, null),
+                    .obj => |o| o,
+                };
                 switch (obj) {
-                    .close => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, null),
+                    // ) の構文を写した別の文字（] など）は、リストを閉じない（SBCL と同じく reader-error）
+                    .close => |loc| return self.fail(loc, "対応する開き括弧のない閉じ括弧です"),
                     .datum => |d| {
                         if (!self.suppress) try self.builder.listPush(&list, d);
                         count += 1;
                     },
                     .dot => |loc| {
-                        if (count == 0) return self.fail(loc, "ドット（.）の前に要素がありません");
-                        const tail = try self.readRequired(loc, ". の後");
-                        const after = (try self.readObj()) orelse return self.eof(start, "( が閉じられていません");
-                        switch (after) {
-                            .close => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, tail),
-                            .datum, .dot => return self.fail(loc, "ドット（.）の後には要素を1つだけ置けます"),
+                        if (count == 0 and !self.suppress) return self.fail(loc, "ドット（.）の前に要素がありません");
+                        const tail = switch (try self.readItem(')')) {
+                            .eof => return self.eof(start, "( が閉じられていません"),
+                            .end => return if (self.suppress) self.builder.nil(start) else self.fail(loc, "ドット（.）の後に要素がありません"),
+                            .obj => |o| switch (o) {
+                                .datum => |d| d,
+                                .dot => |l| return self.fail(l, "ここにドット（.）は置けません"),
+                                .close => |l| return self.fail(l, "対応する開き括弧のない閉じ括弧です"),
+                            },
+                        };
+                        switch (try self.readItem(')')) {
+                            .eof => return self.eof(start, "( が閉じられていません"),
+                            .end => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, tail),
+                            .obj => return self.fail(loc, "ドット（.）の後には要素を1つだけ置けます"),
                         }
                     },
                 }
@@ -571,8 +604,10 @@ pub fn Reader(comptime Builder: type) type {
                     // （SBCL の sharp-S と同じ：#S#.(…)・#S (…)・#S foo は reader-error、( に reader macro を設定した
                     // readtable でも #S(…) は読める。Codex のレビュー P26 11回目 #1）
                     const open = (try self.peek()) orelse return self.eof(loc, "データの途中でテキストが終わりました");
-                    if (open.cp != '(') return self.fail(loc, "#S の後にはリストを書きます（#S(名前 スロット 値 …)）");
+                    // ( でない文字も読んでからエラーにする（SBCL は read-char の後で判定する。handler でエラーを処理して
+                    // 読み続けたときの位置が同じになる。Codex のレビュー P26 12回目 #2）
                     self.src.advance(open);
+                    if (open.cp != '(') return self.fail(loc, "#S の後にはリストを書きます（#S(名前 スロット 値 …)）");
                     const outer_bq = self.bq_depth;
                     self.bq_depth = 0;
                     const form = self.readList(loc) catch |err| {
@@ -631,9 +666,13 @@ pub fn Reader(comptime Builder: type) type {
             var count: usize = 0;
             var last: ?Datum = null;
             while (true) {
-                const obj = (try self.readObj()) orelse return self.eof(start, "#( が閉じられていません");
+                const obj = switch (try self.readItem(')')) {
+                    .eof => return self.eof(start, "#( が閉じられていません"),
+                    .end => break,
+                    .obj => |o| o,
+                };
                 switch (obj) {
-                    .close => break,
+                    .close => |loc| return self.fail(loc, "対応する開き括弧のない閉じ括弧です"),
                     .dot => |loc| return self.fail(loc, "ベクタの中にドット（.）は置けません"),
                     .datum => |d| {
                         try self.builder.listPush(&list, d);

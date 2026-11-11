@@ -2238,4 +2238,22 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
         \\  (setf (gethash p h) :found)
         \\  (list (gethash (make-p26-point :x (list 1 2) :y "A") h) (equalp p (copy-structure p)) (p26-point-x (copy-p26-point p))))
     , "(:FOUND T (1 2))");
+    // GC stress でも、別名は解決した値になる（SBCL と違えた動作なので、言語試験ではなくここで確かめる。12回目の意見）
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1# #3=#2#) #2# #3#)\"))) (list (eq (car v) (caar v)) (eq (car v) (cadar v)) (eq (car v) (cadr v)) (eq (car v) (caddr v))))", "(T T T T)");
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=#(#2=#1#) #2#)\"))) (list (eq (car v) (aref (car v) 0)) (eq (car v) (cadr v))))", "(T T)");
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1#) #S(p26-any :x #2#))\"))) (eq (car v) (p26-any-x (cadr v))))", "T");
+    try expectError(&e, "(read-from-string \"(#1=(#2=#1#) #S(p26-rr :x #2#))\")", .type_error);
+    // リストを閉じるのは文字 ) そのもの（Codex のレビュー P26 12回目 #1）、#S の後の ( でない文字は読んでからエラー（#2）
+    try expectValue(&e,
+        \\(let ((*readtable* (copy-readtable nil)) (seen nil))
+        \\  (set-macro-character #\) (lambda (s c) (declare (ignore s c)) (setq seen t) (values)))
+        \\  (list (p26-any-x (read-from-string "#S(p26-any :x 42)")) (read-from-string "(1 (2 . 3) #(4))") seen))
+    , "(42 (1 (2 . 3) #(4)) NIL)");
+    try expectError(&e, "(let ((*readtable* (copy-readtable nil))) (set-syntax-from-char #\\] #\\)) (read-from-string \"#S(p26-any :x 42]\"))", .reader_error);
+    try expectError(&e, "(let ((*readtable* (copy-readtable nil))) (set-syntax-from-char #\\] #\\)) (read-from-string \"(1 2]\"))", .reader_error);
+    try expectError(&e, "(let ((*readtable* (copy-readtable nil))) (set-syntax-from-char #\\] #\\)) (read-from-string \"#(1 2]\"))", .reader_error);
+    try expectValue(&e,
+        \\(with-input-from-string (s "#S! 42")
+        \\  (list (handler-case (read s) (reader-error () :reader-error)) (file-position s) (read s)))
+    , "(:READER-ERROR 3 42)");
 }

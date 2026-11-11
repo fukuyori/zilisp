@@ -59,6 +59,11 @@
   initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
   checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
   read a comma inside the enclosing backquote
+- Fixed 2 issues from the twelfth Codex review of Phase 26: a list, a vector and the body of a `#S` are closed by the
+  character `)` itself (a reader macro set on `)` is not called; another character that copies the syntax of `)`, such as
+  `]`, does not close and is a reader-error; `read-delimited-list` checks its end character in the same way after a
+  comment). A character other than `(` after `#S` is consumed before the error (the position for reading on after the
+  error). The same as SBCL 2.6.7.
 - Fixed the issue from the eleventh Codex review of Phase 26: `#S` must be followed directly by `(` (`#S#.(…)`, `#S (…)`
   and `#S name` are reader-errors, and the `#.` is not evaluated). The body is read without going through the macro
   function of `(`, so `#S(…)` can be read even in a readtable that sets a reader macro on `(`. The same as SBCL 2.6.7.

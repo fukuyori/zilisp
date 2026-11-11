@@ -39,6 +39,9 @@
   a `#n#` placeholder that a reader macro took out and an initform passed to another constructor or `setf` escaped the type
   check. Only the slots of the structure the reader is making go unchecked now (through a reader constructor that does not
   check types)
+- Fixed 1 issue from the fifth Codex review of Phase 26 (checked against SBCL 2.6.7): when a reader macro returned a copy or
+  another value instead of the `#S` structure it read, the original structure kept the `#n#` placeholder and its types were
+  never checked. Placeholders inside the structures waiting to be checked are replaced too
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

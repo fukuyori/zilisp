@@ -47,3 +47,6 @@ ERR
 (:TYPE-ERROR) 
 (T) 
 (T) 
+(:TYPE-ERROR) 
+((:ACCEPTED T)) 
+(5) 

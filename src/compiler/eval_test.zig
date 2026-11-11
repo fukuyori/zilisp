@@ -2151,6 +2151,25 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     try expectError(&e, "(read-from-string \"#1=(#2=#S(p26-n1 :next (#1#)) #2#)\")", .type_error);
     try expectValue(&e, "(p26-n2-p (read-from-string \"#S(p26-n2 :next ((a)))\"))", "T");
     try expectError(&e, "(make-p26-n2 :next 5)", .type_error);
+    // reader macro が、読んだ構造体を別の場所に保存して別の値を返す：保存した構造体の中の #n# も、ラベルの値に
+    // 置き換えてから型を確かめる（仮の値を残さない。SBCL 2.6.7 は置き換えず、内部の印が残る。
+    // Codex のレビュー P26 5回目）
+    try expectValue(&e,
+        \\(progn (defstruct p26-rr (x nil :type (or null integer)))
+        \\  (defstruct p26-ok (x nil :type (or null p26-ok)))
+        \\  (defstruct p26-any x)
+        \\  (defvar *p26-saved* nil)
+        \\  (defvar *p26-rt* (copy-readtable nil))
+        \\  (set-macro-character #\$ (lambda (s c) (declare (ignore c)) (setq *p26-saved* (read s t nil t)) nil) nil *p26-rt*)
+        \\  (let* ((*readtable* *p26-rt*) (v (read-from-string "#1=$#S(p26-rr :x #1#)")))
+        \\    (list v (p26-rr-x *p26-saved*))))
+    , "(NIL NIL)");
+    try expectValue(&e,
+        \\(let* ((*readtable* *p26-rt*) (v (read-from-string "#1=(a $#S(p26-any :x #1#))")))
+        \\  (list (car v) (cadr v) (eq v (p26-any-x *p26-saved*))))
+    , "(A NIL T)");
+    try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-ok :x #1#))\"))", .type_error);
+    try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-rr :x #1#))\"))", .type_error);
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

@@ -359,6 +359,9 @@ pub const ValueBuilder = struct {
             const entry = Runtime.consPtr(Runtime.consPtr(x).car);
             if (entry.car != Value.unbound or entry.cdr == Value.nil) continue;
             const s = entry.cdr;
+            // 検査待ちの構造体の中の仮の値も置き換える：reader macro が、読んだ構造体の代わりに複製や別の値を返すと、
+            // 構造体は obj からたどれず、仮の値が残って確かめられないままになる（Codex のレビュー P26 5回目）
+            try patch(b.rt, s, ph, obj);
             if (try containsPlaceholder(b.rt, s)) continue;
             entry.cdr = Value.nil;
             if (!f.isFunctionPointer()) continue;

@@ -94,3 +94,11 @@
 ;; 型のないスロットに入れるのはよい
 (defstruct outer8 x (y (list *pending*)))
 (try (te (let* ((*readtable* *rt*) (v (read-from-string "#1=#S(outer8 :x !#1#)"))) (eq v (outer8-x v)))))
+;; 5回目：reader macro が、読んだ構造体の複製を返しても、元の構造体の型は確かめる
+(defvar *rt2* (copy-readtable nil))
+(set-macro-character #\! (lambda (s c) (declare (ignore c)) (copy-structure (read s t nil t))) nil *rt2*)
+(defstruct rr (x nil :type (or null integer)))
+(defstruct ok (x nil :type (or null ok)))
+(try (te (let* ((*readtable* *rt2*) (v (read-from-string "#1=!#S(rr :x #1#)"))) (list :accepted (eq v (rr-x v))))))
+(try (te (let* ((*readtable* *rt2*) (v (read-from-string "#1=!#S(ok :x #1#)"))) (list :accepted (eq v (ok-x v))))))
+(try (te (let* ((*readtable* *rt2*) (v (read-from-string "!#S(rr :x 5)"))) (rr-x v))))

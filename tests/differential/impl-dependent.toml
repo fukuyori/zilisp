@@ -338,6 +338,14 @@ clhs = "2.4.8.15 Sharpsign Equal-Sign・2.4.8.13 Sharpsign S（型を検査す�
 since = "Phase 26"
 
 [[items]]
+id = "sharp-s-escaped-from-reader-macro"
+description = "reader macro が、読んだ #S の構造体を別の場所に保存して別の値を返したときの、その構造体の中の #n#（#1=(a $#S(s :x #1#))。$ は保存して NIL を返す）"
+sbcl = "置き換えない（スロットに内部の印が残る。型のあるスロットでも受理する）"
+zilisp = "ラベルの値に置き換え、スロットの型に合わなければ type-error（仮の値を残さない。Phase 26）"
+clhs = "2.4.8.15 Sharpsign Equal-Sign・2.4.8.16 Sharpsign Sharpsign（読んだ結果の外のオブジェクトの扱いは規定されていない。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
 id = "defstruct-include-bare-slot-name"
 description = ":include のスロットの書き換えに、裸のシンボルを書いた形（(:include base x)）"
 sbcl = "エラー（リストを求める）"

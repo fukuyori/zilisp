@@ -59,6 +59,10 @@
   initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
   checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
   read a comma inside the enclosing backquote
+- Fixed 2 issues from the fourteenth Codex review of Phase 26: the check of `,@` / `,.` right after a dot inside a
+  backquote looks at the object that was read (`#-no-such-feature ,@b`, `#1=,@b` and a `,@b` read and returned by a
+  reader macro are reader-errors too). The error is signaled after reading up to the close parenthesis (the position for
+  reading on after the error; end-of-file when there is no close parenthesis). The same as SBCL 2.6.7.
 - Fixed 2 issues from the thirteenth Codex review of Phase 26: while skipping (`*read-suppress*`, `#+` / `#-`), a lone dot
   is read as an ordinary token (`#+no-such-feature (a . b c)`, `(a . .)` and `#(. )` can be skipped). Inside a backquote,
   `,@` or `,.` right after a dot is a reader-error (`` `(a . ,@b) ``). Also, a `#+` / `#-` whose feature expression holds

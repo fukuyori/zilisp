@@ -2267,4 +2267,20 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     try expectError(&e, "(read-from-string \"#S(p26-any :x `(a . ,@b))\")", .reader_error);
     try expectValue(&e, "(let ((b '(1 2))) (declare (special b)) (list (eval (read-from-string \"`(a . ,b)\")) (eval (read-from-string \"`(a . (,@b))\"))))", "((A 1 2) (A 1 2))");
     try expectValue(&e, "(consp (read-from-string \"``(a . ,,@b)\"))", "T");
+    // 別のマクロを通して返った ,@ / ,. も同じ（Codex のレビュー P26 14回目 #1）。コンマを読み捨てて別の値を返す reader macro は読める
+    try expectError(&e, "(read-from-string \"`(a . #-no-such-feature ,@b)\")", .reader_error);
+    try expectError(&e, "(read-from-string \"`(a . #1=,.b)\")", .reader_error);
+    try expectValue(&e,
+        \\(let ((*readtable* (copy-readtable nil)))
+        \\  (set-macro-character #\! (lambda (s c) (declare (ignore c)) (read s t nil t)))
+        \\  (set-macro-character #\? (lambda (s c) (declare (ignore c)) (read s t nil t) :other))
+        \\  (list (handler-case (read-from-string "`(a . !,@b)") (reader-error () :reader-error))
+        \\        (consp (read-from-string "`(a . ?,@b)")) (consp (read-from-string "`(a . ',@b)"))))
+    , "(:READER-ERROR T T)");
+    // 閉じ括弧まで読んでからエラーにする（14回目 #2）
+    try expectValue(&e,
+        \\(with-input-from-string (s "`(a . ,@b) 42")
+        \\  (list (handler-case (read s) (reader-error () :reader-error)) (file-position s) (read s)))
+    , "(:READER-ERROR 10 42)");
+    try expectError(&e, "(read-from-string \"`(a . ,@b\")", .end_of_file);
 }

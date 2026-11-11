@@ -214,10 +214,6 @@ pub fn Reader(comptime Builder: type) type {
         bq_depth: usize = 0,
         /// *read-suppress*（#+ / #- で読み飛ばしている間）
         suppress: bool = false,
-        /// 最後に読み終えたコンマが ,@ / ,. だったか（readComma が設定する）
-        comma_splicing: bool = false,
-        /// readItem が最後に返した要素そのものが ,@ / ,. だったか（ドットの後の検査に使う）
-        item_splicing: bool = false,
         /// 標準でない readtable で読んでいる（偽なら、文字を標準の静的な表で引く。read のたびに決める）
         custom_syntax: bool = false,
         /// 直前の read で読んだデータの始まりの位置（行コメントと空白を除く。エラーの報告に使う）
@@ -347,17 +343,9 @@ pub fn Reader(comptime Builder: type) type {
                     .whitespace => self.src.advance(ch),
                     .terminating_macro, .non_terminating_macro => {
                         self.src.advance(ch);
-                        const is_comma = info.macro == .builtin and info.macro.builtin == .comma;
-                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| {
-                            // この要素そのものが ,@ / ,. か（中に含むだけの (,@x)・',@x・`,@x は違う）
-                            self.item_splicing = is_comma and self.comma_splicing;
-                            return .{ .obj = obj };
-                        }
+                        if (try self.runMacro(info.macro, ch.cp, loc)) |obj| return .{ .obj = obj };
                     },
-                    .single_escape, .multiple_escape, .constituent => {
-                        self.item_splicing = false;
-                        return .{ .obj = try self.readToken(.normal) };
-                    },
+                    .single_escape, .multiple_escape, .constituent => return .{ .obj = try self.readToken(.normal) },
                 }
             }
         }
@@ -478,15 +466,21 @@ pub fn Reader(comptime Builder: type) type {
                                 .close => |l| return self.fail(l, "対応する開き括弧のない閉じ括弧です"),
                             },
                         };
-                        // backquote の中で、ドットのすぐ後の ,@ / ,. は reader-error（SBCL の read-list と同じ。
-                        // `(a . ,b)・`(a . (,@b))・``(a . ,,@b) は読める。Codex のレビュー P26 13回目 #2）
-                        if (self.item_splicing and self.bq_depth > 0 and !self.suppress)
-                            return self.fail(loc, "ドット（.）の後に ,@ や ,. は置けません");
                         switch (try self.readItem(')')) {
                             .eof => return self.eof(start, "( が閉じられていません"),
-                            .end => return if (self.suppress) self.builder.nil(start) else self.builder.listEnd(&list, tail),
+                            .end => {},
                             .obj => return self.fail(loc, "ドット（.）の後には要素を1つだけ置けます"),
                         }
+                        if (self.suppress) return self.builder.nil(start);
+                        // backquote の中で、ドットのすぐ後の ,@ / ,. は reader-error（SBCL の read-list と同じ：閉じ括弧まで
+                        // 読んでから、ドットの後に読んだオブジェクトそのものが ,@ / ,. のフォームかを見る。#-no ,@b・#1=,@b・
+                        // reader macro が読んで返した ,@b も同じ。`(a . ,b)・`(a . (,@b))・``(a . ,,@b) は読める。
+                        // Codex のレビュー P26 13回目 #2・14回目 #1・#2）
+                        if (comptime @hasDecl(Builder, "isSplicing")) {
+                            if (self.bq_depth > 0 and self.builder.isSplicing(tail))
+                                return self.fail(loc, "ドット（.）の後に ,@ や ,. は置けません");
+                        }
+                        return self.builder.listEnd(&list, tail);
                     },
                 }
             }
@@ -508,8 +502,6 @@ pub fn Reader(comptime Builder: type) type {
             if (self.bq_depth > 0) self.bq_depth -= 1;
             defer self.bq_depth = saved;
             const x = try self.readRequired(loc, ", の後");
-            // 中のコンマ（,,@x の ,@）が立てた印を、このコンマの種類で上書きする
-            self.comma_splicing = name.len != "UNQUOTE".len;
             return self.wrap(loc, sys_package, name, x);
         }
 
@@ -1106,6 +1098,9 @@ const TestBuilder = struct {
         const body = try std.mem.join(b.arena, " ", list.items.items);
         if (tail) |t| return std.fmt.allocPrint(b.arena, "({s} . {s})", .{ body, t });
         return std.fmt.allocPrint(b.arena, "({s})", .{body});
+    }
+    pub fn isSplicing(_: *TestBuilder, d: Datum) bool {
+        return std.mem.startsWith(u8, d, "(sys:UNQUOTE-SPLICING ") or std.mem.startsWith(u8, d, "(sys:UNQUOTE-NSPLICING ");
     }
     pub fn vectorEnd(b: *TestBuilder, list: *List) Error!Datum {
         const body = try std.mem.join(b.arena, " ", list.items.items);

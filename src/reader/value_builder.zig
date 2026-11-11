@@ -577,6 +577,17 @@ pub const ValueBuilder = struct {
         };
     }
 
+    /// ,@x / ,.x のフォーム（(zl-sys:unquote-splicing x)・(zl-sys:unquote-nsplicing x)）か。
+    /// reader が、backquote の中のドットのすぐ後の ,@ / ,. を reader-error にするために使う
+    pub fn isSplicing(b: *ValueBuilder, v: Value) bool {
+        if (!v.isCons()) return false;
+        const head = Runtime.consPtr(v).car;
+        inline for (.{ "UNQUOTE-SPLICING", "UNQUOTE-NSPLICING" }) |name| {
+            if (b.rt.findSymbol(b.rt.sys, name)) |f| if (head == f.symbol) return true;
+        }
+        return false;
+    }
+
     pub fn nil(b: *ValueBuilder, loc: SourceLoc) Error!Value {
         _ = .{ b, loc };
         return Value.nil;

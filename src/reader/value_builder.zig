@@ -175,7 +175,7 @@ pub const ValueBuilder = struct {
 
     /// #S(名前 スロット 値 …)：構造体の標準の構築子（キーワードの引数のもの）を呼んで作る（CLHS 2.4.8.13。Phase 26）。
     /// 形の検査と構築子の呼び出しは Lisp の zl-sys::%read-structure（boot.lisp）。値が構造体でなく数なら誤りの種類
-    pub fn structure(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, form: Value) Error!Value {
+    pub fn structure(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, form: Value) Error!Value {
         const rt = b.rt;
         const th = b.th orelse return fail(diag, loc, "ここでは #S を使えません（構造体のリテラルは、実行時に読むときだけ使えます）");
         const f = if (rt.sys_read_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_read_structure).function;
@@ -187,11 +187,20 @@ pub const ValueBuilder = struct {
         // Codex のレビュー P26 1回目 #1・2回目 #1・3回目 #1・4回目）
         const pending = try containsPlaceholder(rt, form);
         var argv: [2]Value = .{ form, rt.boolean(pending) };
-        // 構築子のエラー（スロットの型・知らないキーワード）を通知する前に、ストリームの位置を読んだところまで進める
-        // （エラーの後、同じストリームの続きを読める。Codex のレビュー P26 6回目 #2）
-        b.syncPosition();
+        // #. と同じく、構築子を呼ぶ前にストリームの位置を Source に合わせ、戻った後にバッファと位置を取り直す：
+        // 構築子のエラー（スロットの型・知らないキーワード）の後、同じストリームの続きを読める（Codex のレビュー P26
+        // 6回目 #2）。initform が同じストリームを読んだら、その続きから読む（7回目 #1）
+        const streams = @import("../primitives/streams.zig");
+        const stream = b.stream;
+        if (stream != Value.nil) streams.setReadPosition(stream, b.toStreamPos(src, src.pos)) else b.syncPosition();
         th.mv_count = 1;
         const r = th.call(f, &argv);
+        if (stream != Value.nil) {
+            if (!b.latin1) if (streams.readBuffer(stream)) |buf| {
+                src.text = buf[@min(b.stream_base, buf.len)..];
+            };
+            src.seekTo(b.fromStreamPos(src, streams.readPosition(stream)));
+        }
         if (r == Value.unwind) return error.LispError;
         th.mv_count = 1;
         if (!r.isFixnum()) {
@@ -352,11 +361,10 @@ pub const ValueBuilder = struct {
         if (obj == ph) return fail(diag, loc, "#n= の直後に同じ #n# は置けません");
         const e = b.labelEntry(n).?;
         Runtime.consPtr(e).cdr = obj;
-        // obj の中の仮の値を置き換える。置き換えが起きたら（循環があったら）、obj の中の構造体を後で確かめる
-        var changed = false;
-        var structs: std.ArrayList(Value) = .empty;
-        defer structs.deinit(b.rt.gpa);
-        try patch(b.rt, obj, ph, obj, &changed, &structs);
+        // obj の中の仮の値を置き換える。置き換えた場所と、通った構造体を覚えておく（後で、型の判定が変わりうる構造体を確かめる）
+        var info: PatchInfo = .{};
+        defer info.deinit(b.rt.gpa);
+        try patch(b.rt, obj, ph, obj, &info);
         const th = b.th orelse return obj;
         const f = if (b.rt.sys_check_structure == Value.nil) Value.nil else b.rt.symbolPtr(b.rt.sys_check_structure).function;
         // 型のエラーを通知する前に、ストリームの位置を読んだところまで進める（エラーの後、同じストリームの続きを読める。
@@ -371,8 +379,7 @@ pub const ValueBuilder = struct {
             const s = entry.cdr;
             // 検査待ちの構造体の中の仮の値も置き換える：reader macro が、読んだ構造体の代わりに複製や別の値を返すと、
             // 構造体は obj からたどれず、仮の値が残って確かめられないままになる（Codex のレビュー P26 5回目）
-            var ignored = false;
-            try patch(b.rt, s, ph, obj, &ignored, null);
+            try patch(b.rt, s, ph, obj, null);
             if (try containsPlaceholder(b.rt, s)) continue;
             entry.cdr = Value.nil;
             if (!f.isFunctionPointer()) continue;
@@ -380,15 +387,48 @@ pub const ValueBuilder = struct {
             if (th.call(f, &argv) == Value.unwind) return error.LispError;
             th.mv_count = 1;
         }
-        // 仮の値を置き換えたら、obj の中の構造体すべての型も確かめる（中に仮の値が残っているものは、外側のラベルが
-        // 解決したときに確かめる）。reader macro が、読んだ構造体の複製を返したり、元の構造体だけを書き換えたりすると、
-        // 検査待ちの表にない構造体に、型に合わない値が入る（Codex のレビュー P26 6回目 #1）。構築子と setf はいつも型を
-        // 検査するので、正しく作られた構造体を確かめ直してもエラーにならない。構造体は obj からたどれるので、
-        // 確かめている間も GC に回収されない
-        if (changed and f.isFunctionPointer() and structs.items.len != 0) {
-            const clean = !(try containsPlaceholder(b.rt, obj));
-            for (structs.items) |s| {
-                if (!clean and try containsPlaceholder(b.rt, s)) continue;
+        // 仮の値の置き換えで、スロットの型の判定が変わりうる構造体の型を確かめる：スロットの値そのものが置き換わった
+        // 構造体と、スロットの値から cons だけをたどって届く cons が置き換わった構造体（typep が値の中まで見るのは cons の
+        // 型だけなので、構造体・ベクタを越えた先の置き換えは、そのスロットの型の判定に影響しない）。reader macro が、
+        // 読んだ構造体の複製を返したり、元の構造体だけを書き換えたりすると、検査待ちの表にない構造体に、型に合わない値が
+        // 入る（Codex のレビュー P26 6回目 #1）。#n# と関係のない既存の構造体は確かめない（型を後から定義した構造体の
+        // 古い値を拒まない。7回目 #2）。スロットの先（cons だけ）にまだ仮の値がある構造体は、その仮の値のラベルが
+        // 解決したときに確かめる。構造体は obj からたどれるので、確かめている間も GC に回収されない
+        if (f.isFunctionPointer() and info.structs.items.len != 0 and (info.hit.count() != 0 or info.direct.count() != 0)) {
+            // 置き換えた cons に、cons だけをたどって届く cons の集合（info.hit を広げる）。obj の中の cons を 1 回集め、
+            // 後ろから調べる（リストは 1 巡で末尾から先頭へ伝わる。循環は変化がなくなるまで繰り返す。7回目 #3）
+            if (info.hit.count() != 0) {
+                var conses: std.ArrayList(Value) = .empty;
+                defer conses.deinit(b.rt.gpa);
+                try collectConses(b.rt, obj, &conses);
+                var grew = true;
+                while (grew) {
+                    grew = false;
+                    var i = conses.items.len;
+                    while (i > 0) {
+                        i -= 1;
+                        const c = conses.items[i];
+                        if (info.hit.contains(c.raw())) continue;
+                        const cell = Runtime.consPtr(c);
+                        if ((cell.car.isCons() and info.hit.contains(cell.car.raw())) or (cell.cdr.isCons() and info.hit.contains(cell.cdr.raw()))) {
+                            try info.hit.put(b.rt.gpa, c.raw(), {});
+                            grew = true;
+                        }
+                    }
+                }
+            }
+            const object = @import("../values/object.zig");
+            for (info.structs.items) |s| {
+                const st: *object.Structure = @ptrCast(@alignCast(s.pointer()));
+                var affected = info.direct.contains(s.raw());
+                if (!affected) for (st.slots()) |v| {
+                    if (v.isCons() and info.hit.contains(v.raw())) {
+                        affected = true;
+                        break;
+                    }
+                };
+                if (!affected) continue;
+                if (try slotsReachPlaceholder(b.rt, st)) continue;
                 var argv: [1]Value = .{s};
                 if (th.call(f, &argv) == Value.unwind) return error.LispError;
                 th.mv_count = 1;
@@ -574,8 +614,8 @@ fn isCharType(rt: *Runtime, t: Value) bool {
 }
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）の ph を val に置き換える。循環していてもよい
-/// （一度通ったものは見ない）。1 つでも置き換えたら changed を真にし、通った構造体を structs（あれば）に足す
-fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, changed: *bool, structs: ?*std.ArrayList(Value)) Error!void {
+/// （一度通ったものは見ない）。info があれば、置き換えた場所と通った構造体を覚える
+fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, info: ?*PatchInfo) Error!void {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);
@@ -588,30 +628,29 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, changed: *bool, struct
         if (g.found_existing) continue;
         if (x.isCons()) {
             const c = Runtime.consPtr(x);
+            var replaced = false;
             if (c.car == ph) {
                 c.car = val;
-                changed.* = true;
+                replaced = true;
             } else try stack.append(gpa, c.car);
             if (c.cdr == ph) {
                 c.cdr = val;
-                changed.* = true;
+                replaced = true;
             } else try stack.append(gpa, c.cdr);
+            if (replaced) if (info) |i| try i.hit.put(gpa, x.raw(), {});
         } else if (Runtime.kindOf(x) == .simple_vector) {
             for (Runtime.vectorPtr(x).items()) |*it| {
-                if (it.* == ph) {
-                    it.* = val;
-                    changed.* = true;
-                } else try stack.append(gpa, it.*);
+                if (it.* == ph) it.* = val else try stack.append(gpa, it.*);
             }
         } else if (Runtime.kindOf(x) == .structure) {
             // 構造体（Phase 26）：#1=#S(node :next #1#) のように、スロットに仮の値が入っている
             const object = @import("../values/object.zig");
             const s: *object.Structure = @ptrCast(@alignCast(x.pointer()));
-            if (structs) |list| try list.append(gpa, x);
+            if (info) |i| try i.structs.append(gpa, x);
             for (s.slots()) |*it| {
                 if (it.* == ph) {
                     it.* = val;
-                    changed.* = true;
+                    if (info) |i| try i.direct.put(gpa, x.raw(), {});
                 } else try stack.append(gpa, it.*);
             }
         } else {
@@ -620,6 +659,76 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, changed: *bool, struct
             if (Runtime.kindOf(a.data) == .simple_vector) try stack.append(gpa, a.data);
         }
     }
+}
+
+/// patch が覚えるもの：car か cdr を置き換えた cons（hit）、通った構造体（structs）、スロットを直接置き換えた構造体（direct）
+const PatchInfo = struct {
+    hit: std.AutoHashMapUnmanaged(u64, void) = .empty,
+    structs: std.ArrayList(Value) = .empty,
+    direct: std.AutoHashMapUnmanaged(u64, void) = .empty,
+
+    fn deinit(info: *PatchInfo, gpa: std.mem.Allocator) void {
+        info.hit.deinit(gpa);
+        info.structs.deinit(gpa);
+        info.direct.deinit(gpa);
+    }
+};
+
+/// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）の cons を、見つけた順に list に足す。循環していてもよい
+fn collectConses(rt: *Runtime, obj: Value, list: *std.ArrayList(Value)) Error!void {
+    const gpa = rt.gpa;
+    var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
+    defer seen.deinit(gpa);
+    var stack: std.ArrayList(Value) = .empty;
+    defer stack.deinit(gpa);
+    try stack.append(gpa, obj);
+    while (stack.pop()) |x| {
+        if (x.isCons()) {
+            const g = try seen.getOrPut(gpa, x.raw());
+            if (g.found_existing) continue;
+            try list.append(gpa, x);
+            const c = Runtime.consPtr(x);
+            // cdr を後に積む（先に取り出す）：リストの cons は先頭から順に並ぶ。後ろから調べると、末尾の置き換えが
+            // 1 巡で先頭へ伝わる
+            try stack.append(gpa, c.car);
+            try stack.append(gpa, c.cdr);
+            continue;
+        }
+        if (!x.isOther() or x == Value.nil) continue;
+        const kind = Runtime.kindOf(x) orelse continue;
+        if (kind != .simple_vector and kind != .array and kind != .structure) continue;
+        const g = try seen.getOrPut(gpa, x.raw());
+        if (g.found_existing) continue;
+        const object = @import("../values/object.zig");
+        switch (kind) {
+            .simple_vector => try stack.appendSlice(gpa, Runtime.vectorPtr(x).items()),
+            .structure => try stack.appendSlice(gpa, @as(*object.Structure, @ptrCast(@alignCast(x.pointer()))).slots()),
+            else => {
+                const a: *object.Array = @ptrCast(@alignCast(x.pointer()));
+                if (Runtime.kindOf(a.data) == .simple_vector) try stack.append(gpa, a.data);
+            },
+        }
+    }
+}
+
+/// 構造体のスロットの値に、cons だけをたどって届く範囲で、#n= の仮の値（car が unbound の cons）が残っているか
+fn slotsReachPlaceholder(rt: *Runtime, st: *@import("../values/object.zig").Structure) Error!bool {
+    const gpa = rt.gpa;
+    var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
+    defer seen.deinit(gpa);
+    var stack: std.ArrayList(Value) = .empty;
+    defer stack.deinit(gpa);
+    try stack.appendSlice(gpa, st.slots());
+    while (stack.pop()) |x| {
+        if (!x.isCons()) continue;
+        const c = Runtime.consPtr(x);
+        if (c.car == Value.unbound) return true;
+        const g = try seen.getOrPut(gpa, x.raw());
+        if (g.found_existing) continue;
+        try stack.append(gpa, c.car);
+        try stack.append(gpa, c.cdr);
+    }
+    return false;
 }
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）に、#n= の仮の値（car が unbound の cons。labelDefine）が

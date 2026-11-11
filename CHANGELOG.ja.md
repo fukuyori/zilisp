@@ -38,6 +38,9 @@
 - Codex の 6 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：`#n#` を置き換えたら、読んだ結果の中の
   構造体すべての型を確かめる（reader macro が複製を返して元だけを書き換えると、複製の検査が漏れた）、`#S` の型のエラーの後に
   同じストリームの続きを読める（位置が進まず、次の `read` が同じエラーを繰り返していた）
+- Codex の 7 回目のレビュー（P26）の 3 件を直した（6 回目の修正が原因）：`#S` の initform が同じストリームを読んだら、
+  外側の読み取りはその続きから読む（読んだ分をもう一度読んでいた）、`#n#` と関係のない既存の構造体を確かめ直して拒まない、
+  外側のラベルが残っているときに多くの構造体を読む時間が二乗に増えない
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

@@ -2182,6 +2182,20 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
         \\(with-input-from-string (s "#S(p26-rr :x bad) 42")
         \\  (list (handler-case (read s) (type-error () :type-error)) (file-position s) (read s)))
     , "(:TYPE-ERROR 17 42)");
+    // #n# と関係のない既存の構造体は、循環するラベルの中に入っても確かめ直さない：型を定義する前に作った構造体
+    // （p26-fwd の x は 5。上で p26-later を定義した後は、構築子では作れない値）を拒まない（Codex のレビュー P26 7回目 #2）
+    try expectValue(&e,
+        \\(progn (defstruct p26-fwd2 (x nil :type p26-later2))
+        \\  (defvar *p26-o* (make-p26-fwd2 :x 5))
+        \\  (defstruct p26-later2)
+        \\  (list (p26-fwd2-x (car (read-from-string "(#.*p26-o*)")))
+        \\        (p26-fwd2-x (car (read-from-string "#1=(#.*p26-o* . #1#)")))))
+    , "(5 5)");
+    // #S の initform が同じストリームを読んだら、外側の読み取りはその続きから読む（7回目 #1）
+    try expectValue(&e,
+        \\(progn (defvar *p26-s*) (defstruct p26-rd (x (read *p26-s*)))
+        \\  (with-input-from-string (*p26-s* "(#S(p26-rd) 11 22)") (let ((v (read *p26-s*))) (list (p26-rd-x (car v)) (cdr v)))))
+    , "(11 (22))");
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

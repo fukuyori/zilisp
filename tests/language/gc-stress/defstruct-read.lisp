@@ -136,3 +136,15 @@
   (try (block b (handler-bind ((type-error (lambda (c) (declare (ignore c)) (return-from b (list :in-handler (read s)))))) (read s)))))
 (with-input-from-string (s "#S(rr :bogus 1) 42")
   (try (handler-case (read s) (error () (list :after (read s))))))
+;; 7回目 #1：#S の initform が同じストリームを読んだら、外側の読み取りはその続きから読む
+(defvar *in-stream*)
+(defstruct rd (x (read *in-stream*)))
+(defstruct rd2 (x (read-char *in-stream*)) (y (read-line *in-stream*)))
+(with-input-from-string (*in-stream* "(#S(rd) 11 22)") (try (read *in-stream*)))
+(with-input-from-string (*in-stream* "#S(rd) 11 22") (try (list (read *in-stream*) (read *in-stream*))))
+(with-input-from-string (*in-stream* "(#S(rd :x 5) 11 22)") (try (read *in-stream*)))
+(with-input-from-string (*in-stream* (format nil "(#S(rd2)ab c~%11 22)")) (try (read *in-stream*)))
+(with-input-from-string (*in-stream* "#1=(#S(rd) 11 #1# 22)") (try (let ((v (read *in-stream*))) (list (rd-x (car v)) (eq v (cadr v)) (caddr v)))))
+;; 7回目 #2・#3：#n# と関係のない構造体は確かめ直さない。外側のラベルが残っていても、多くの構造体を読める
+(defvar *boxes* (loop repeat 200 collect (make-point :x (make-list 200))))
+(try (let ((v (read-from-string "#1=(#2=(#1# #2# #.*boxes*))"))) (list (eq v (car (car v))) (eq (car v) (cadr (car v))) (length (caddr (car v))))))

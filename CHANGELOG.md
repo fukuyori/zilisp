@@ -46,6 +46,10 @@
   of all structures inside what was read are checked (when a reader macro returned a copy and changed only the original, the
   copy escaped the check), and the rest of the same stream can be read after a type-error in `#S` (the position did not
   advance, so the next `read` signaled the same error again)
+- Fixed 3 issues from the seventh Codex review of Phase 26 (caused by the sixth-round fix): when an initform of a `#S` reads
+  from the same stream, the outer read continues after it (the same input was read twice), existing structures unrelated to
+  `#n#` are not checked again and rejected, and reading many structures while an enclosing label is pending no longer takes
+  quadratic time
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

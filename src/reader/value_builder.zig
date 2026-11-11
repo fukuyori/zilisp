@@ -175,17 +175,18 @@ pub const ValueBuilder = struct {
 
     /// #S(名前 スロット 値 …)：構造体の標準の構築子（キーワードの引数のもの）を呼んで作る（CLHS 2.4.8.13。Phase 26）。
     /// 形の検査と構築子の呼び出しは Lisp の zl-sys::%read-structure（boot.lisp）。値が構造体でなく数なら誤りの種類
-    pub fn structure(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, form: Value) Error!Value {
+    pub fn structure(b: *ValueBuilder, diag: *Diagnostic, loc: SourceLoc, src: *reader.Source, form: Value, bq_depth: usize) Error!Value {
         const rt = b.rt;
         const th = b.th orelse return fail(diag, loc, "ここでは #S を使えません（構造体のリテラルは、実行時に読むときだけ使えます）");
         const f = if (rt.sys_read_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_read_structure).function;
         if (!f.isFunctionPointer()) return fail(diag, loc, "ここでは #S を使えません");
-        // スロットの値の中（リスト・ベクタ・構造体の中も）に #n= の仮の値があれば、スロットの型を検査しない読み取り用の
-        // 構築子で作り（zl-sys::%read-structure の 2 つ目の引数）、仮の値がすべて置き換わってから確かめる（labelFinish）：
-        // #1=#S(node :next (#1#))。置き換える前の値で検査すると、正しい値を拒み、誤った値を通す。検査を省略するのは、
-        // この構造体のスロットだけ（initform の中の別の構築子・setf は、いつもどおり検査する。
-        // Codex のレビュー P26 1回目 #1・2回目 #1・3回目 #1・4回目）
-        const pending = try containsPlaceholder(rt, form);
+        // 解決していない #n= のラベルがある間は、スロットの型を検査しない読み取り用の構築子で作る（zl-sys::%read-structure の
+        // 2 つ目の引数）：スロットに #n# の仮の値が入りうる（#S の引数に書いてある場合も、initform の recursive な read が
+        // 読む場合もある）。仮の値のままで検査すると、正しい値を拒み（型が構造体のとき）、誤った値を通す（型が list のとき。
+        // 仮の値は cons）。できた構造体は、中に仮の値があれば検査待ちに置いて、すべて置き換わってから確かめ（labelFinish）、
+        // なければその場で確かめる。検査を省略するのは、この構造体のスロットだけ（initform の中の別の構築子・setf は、
+        // いつもどおり検査する。Codex のレビュー P26 1回目 #1・2回目 #1・3回目 #1・4回目・9回目 #1）
+        const pending = b.hasPendingLabel();
         var argv: [2]Value = .{ form, rt.boolean(pending) };
         // #. と同じく、構築子を呼ぶ前にストリームの位置を Source に合わせ、戻った後にバッファと位置を取り直す：
         // 構築子のエラー（スロットの型・知らないキーワード）の後、同じストリームの続きを読める（Codex のレビュー P26
@@ -195,10 +196,14 @@ pub const ValueBuilder = struct {
         if (stream != Value.nil) streams.setReadPosition(stream, b.toStreamPos(src, src.pos)) else b.syncPosition();
         // 構築子を呼んでいる間、recursive な read（initform の (read s t nil t)）がこの読み取りのラベルの表を使えるように、
         // 今の builder を知らせる（reader macro を呼ぶときと同じ。Codex のレビュー P26 8回目 #1）
+        // recursive な read は、外側の backquote の深さで読む（initform が `(#S(s) ,x) の ,x を読める。9回目 #2）
         const saved_builder = th.read_builder;
         th.read_builder = b;
+        const saved_bq = b.bq_depth;
+        b.bq_depth = bq_depth;
         th.mv_count = 1;
         const r = th.call(f, &argv);
+        b.bq_depth = saved_bq;
         th.read_builder = saved_builder;
         if (stream != Value.nil) {
             if (!b.latin1) if (streams.readBuffer(stream)) |buf| {
@@ -210,6 +215,18 @@ pub const ValueBuilder = struct {
         th.mv_count = 1;
         if (!r.isFixnum()) {
             if (pending and r.isOther() and Runtime.kindOf(r) == .structure) {
+                // 中に仮の値がないと分かれば、その場で型を確かめる。あるか、大きくて調べきれなければ、検査待ちに置く
+                // （labelFinish が、調べた結果を使い回しながら確かめる。#S のたびに大きな共有データをたどらない）
+                const has = try containsPlaceholderLimited(rt, r, 4096);
+                if (has != null and !has.?) {
+                    const cf = if (rt.sys_check_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_check_structure).function;
+                    if (cf.isFunctionPointer()) {
+                        var cargv: [1]Value = .{r};
+                        if (th.call(cf, &cargv) == Value.unwind) return error.LispError;
+                        th.mv_count = 1;
+                    }
+                    return r;
+                }
                 // 後で確かめる構造体は、ラベルの表の (unbound . 構造体のリスト) の項目に足す（recursive の read も同じ表を
                 // 使う。ラベルの番号の項目とは car で区別できる。項目は 1 つだけなので、#n# がラベルを探す時間は増えない）
                 const d = b.deferredEntry() orelse blk: {
@@ -349,6 +366,16 @@ pub const ValueBuilder = struct {
             if (Runtime.consPtr(e).car == Value.fromFixnum(@intCast(n))) return e;
         }
         return null;
+    }
+
+    /// 解決していない #n= のラベルがあるか（項目の値が、まだ仮の値のままのもの）
+    fn hasPendingLabel(b: *ValueBuilder) bool {
+        var x = b.labelsCell().*;
+        while (x.isCons()) : (x = Runtime.consPtr(x).cdr) {
+            const e = Runtime.consPtr(Runtime.consPtr(x).car);
+            if (e.car.isFixnum() and e.cdr.isCons() and Runtime.consPtr(e.cdr).car == Value.unbound) return true;
+        }
+        return false;
     }
 
     /// ラベルの表の中の、検査待ちの構造体の項目 (unbound . 構造体のリスト)。なければ null
@@ -634,7 +661,8 @@ fn patch(rt: *Runtime, obj: Value, ph: Value, val: Value, seen: *std.AutoHashMap
 
 /// obj の中（cons・単純ベクタ・配列の要素・構造体のスロット）に、#n= の仮の値（car が unbound の cons。labelDefine）が
 /// あるか。循環していてもよい
-fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
+/// limit 個より多くのオブジェクトを通ったら、調べきれないとして null を返す
+fn containsPlaceholderLimited(rt: *Runtime, obj: Value, limit: usize) Error!?bool {
     const gpa = rt.gpa;
     var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
     defer seen.deinit(gpa);
@@ -647,6 +675,7 @@ fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
             if (c.car == Value.unbound) return true;
             const g = try seen.getOrPut(gpa, x.raw());
             if (g.found_existing) continue;
+            if (seen.count() > limit) return null;
             try stack.append(gpa, c.car);
             try stack.append(gpa, c.cdr);
             continue;
@@ -656,6 +685,7 @@ fn containsPlaceholder(rt: *Runtime, obj: Value) Error!bool {
         if (kind != .simple_vector and kind != .array and kind != .structure) continue;
         const g = try seen.getOrPut(gpa, x.raw());
         if (g.found_existing) continue;
+        if (seen.count() > limit) return null;
         const object = @import("../values/object.zig");
         switch (kind) {
             .simple_vector => try stack.appendSlice(gpa, Runtime.vectorPtr(x).items()),

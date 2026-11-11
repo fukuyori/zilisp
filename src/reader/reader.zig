@@ -563,7 +563,7 @@ pub fn Reader(comptime Builder: type) type {
                     const form = try self.readRequired(loc, "#S の後");
                     if (self.suppress) return try self.builder.nil(loc);
                     if (comptime !@hasDecl(Builder, "structure")) return self.fail(loc, "#S はここでは使えません");
-                    return try self.builder.structure(&self.diagnostic, loc, self.src, form);
+                    return try self.builder.structure(&self.diagnostic, loc, self.src, form, self.bq_depth);
                 },
                 .sharp_c => {
                     if (self.suppress) {

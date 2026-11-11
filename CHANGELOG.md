@@ -55,6 +55,10 @@
   structures a reader macro makes or changes are the reader macro's responsibility; the wider check kept rejecting unrelated
   structures and slowing down); and reading an input where many `#S` refer to the same label no longer takes quadratic
   time (5.1 seconds became 24 ms with ReleaseFast for 6,400 of them)
+- Fixed 2 issues from the ninth Codex review of Phase 26 (both checked against SBCL 2.6.7): when a recursive `read` in an
+  initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
+  checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
+  read a comma inside the enclosing backquote
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

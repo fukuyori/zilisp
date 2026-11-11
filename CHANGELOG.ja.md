@@ -45,6 +45,9 @@
   参照できる。reader が型を確かめるのは、reader が `#S` で作った構造体だけにした（reader macro が作った・書き換えた構造体の
   型は reader macro の責任。関係のない構造体を拒む・遅くなる問題が続いたため）。多くの `#S` が同じラベルを指す入力の
   読み取りが二乗の時間にならない（6,400 個で、ReleaseFast の 5.1 秒が 24 ms に）
+- Codex の 9 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：`#S` の initform の recursive な `read` が
+  `#n#` を取り込んでも、置き換えた後の値でスロットの型を確かめる（仮の値のまま検査して、正しい値を拒み、誤った値を通して
+  いた）、initform の recursive な `read` が外側の backquote の中のコンマを読める
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

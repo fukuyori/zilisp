@@ -560,10 +560,19 @@ pub fn Reader(comptime Builder: type) type {
                 },
                 .sharp_s => {
                     // #S(名前 スロット 値 …)：構造体（CLHS 2.4.8.13。Phase 26）
-                    const form = try self.readRequired(loc, "#S の後");
+                    // 本体は backquote の外として読む：`#S(s :x ,y) のコンマは reader-error（SBCL 2.6.7 と同じ。構造体は
+                    // backquote の鋳型にならない）。本体の中で新しく始めた backquote は読める。構築子には外側の深さを渡す
+                    // （initform の recursive な read が、#S の後ろのコンマを読める。Codex のレビュー P26 9回目 #2・10回目 #5）
+                    const outer_bq = self.bq_depth;
+                    self.bq_depth = 0;
+                    const form = self.readRequired(loc, "#S の後") catch |err| {
+                        self.bq_depth = outer_bq;
+                        return err;
+                    };
+                    self.bq_depth = outer_bq;
                     if (self.suppress) return try self.builder.nil(loc);
                     if (comptime !@hasDecl(Builder, "structure")) return self.fail(loc, "#S はここでは使えません");
-                    return try self.builder.structure(&self.diagnostic, loc, self.src, form, self.bq_depth);
+                    return try self.builder.structure(&self.diagnostic, loc, self.src, form, outer_bq);
                 },
                 .sharp_c => {
                     if (self.suppress) {

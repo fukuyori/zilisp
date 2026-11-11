@@ -2209,6 +2209,13 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
         \\(progn (defvar *p26-s*) (defstruct p26-rd (x (read *p26-s*)))
         \\  (with-input-from-string (*p26-s* "(#S(p26-rd) 11 22)") (let ((v (read *p26-s*))) (list (p26-rd-x (car v)) (cdr v)))))
     , "(11 (22))");
+    // 未解決のラベルの中で付けた別名（#2=#1#）を後ろで参照すると、解決した値になる（SBCL 2.6.7 は内部の印が残り、
+    // eq にならない。Codex のレビュー P26 10回目 #2。構造体がなくても同じ）
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1#) #2#)\"))) (list (eq (car v) (caar v)) (eq (car v) (cadr v))))", "(T T)");
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1# b) (#2# c))\"))) (list (eq (car v) (caar v)) (eq (car v) (car (cadr v)))))", "(T T)");
+    // 別名を #S の型のあるスロットに入れたら、解決した値で型を確かめる（仮の値を残さない）
+    try expectError(&e, "(read-from-string \"(#1=(#2=#1#) #S(p26-rr :x #2#))\")", .type_error);
+    try expectValue(&e, "(let ((v (read-from-string \"(#1=(#2=#1#) #S(p26-any :x #2#))\"))) (eq (car v) (p26-any-x (cadr v))))", "T");
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

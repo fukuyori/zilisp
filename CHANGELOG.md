@@ -59,6 +59,11 @@
   initform of a `#S` takes in `#n#`, the slot types are checked with the value after the replacement (the placeholder was
   checked as it was, rejecting correct values and letting wrong ones through), and a recursive `read` in an initform can
   read a comma inside the enclosing backquote
+- Fixed 2 issues from the tenth Codex review of Phase 26: an alias made inside an unresolved label (`#2` in `#1=(#2=#1#)`)
+  gives the resolved value when referred to later (a placeholder was left in the result), and a comma inside the body of a
+  `#S` is a reader-error even inside a backquote (the same as SBCL 2.6.7). Limitations left as decided: the types when a
+  reader macro later puts `#n#` into a structure, the delayed type-error of a large `#S` inside a label, and a recursive
+  `read` in an error handler not seeing the enclosing labels
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

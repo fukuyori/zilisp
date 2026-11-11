@@ -202,7 +202,26 @@ pub const ValueBuilder = struct {
         const saved_bq = b.bq_depth;
         b.bq_depth = bq_depth;
         th.mv_count = 1;
-        const r = th.call(f, &argv);
+        var r = th.call(f, &argv);
+        // 読み取り用の構築子で作った構造体は、中に仮の値がないと分かれば、その場で型を確かめる。あるか、大きくて
+        // 調べきれなければ（4,096 個より多くのオブジェクト）、検査待ちに置く（labelFinish が、調べた結果を使い回しながら
+        // 確かめる。#S のたびに大きな共有データをたどらない。その場合、型のエラーの通知はラベルの終わりまで遅れる）。
+        // その場の検査も、構築子と同じ読み取りの環境（builder・backquote の深さ・ストリームの位置）で行う。ただし、
+        // エラーの handler の中の recursive な read は、外側のラベルを参照できない（#. の中のエラーでも同じ。handler には
+        // 読み取りの途中の状態を引き継がない：src/runtime/thread.zig の callSignalHook。Codex のレビュー P26 10回目 #3 は、
+        // Phase 26 より前からの制限として別に扱う）
+        var defer_check = false;
+        if (r != Value.unwind and pending and r.isOther() and Runtime.kindOf(r) == .structure) {
+            th.mv_count = 1;
+            const has = containsPlaceholderLimited(rt, r, 4096) catch null;
+            if (has != null and !has.?) {
+                const cf = if (rt.sys_check_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_check_structure).function;
+                if (cf.isFunctionPointer()) {
+                    var cargv: [1]Value = .{r};
+                    if (th.call(cf, &cargv) == Value.unwind) r = Value.unwind;
+                }
+            } else defer_check = true;
+        }
         b.bq_depth = saved_bq;
         th.read_builder = saved_builder;
         if (stream != Value.nil) {
@@ -214,19 +233,7 @@ pub const ValueBuilder = struct {
         if (r == Value.unwind) return error.LispError;
         th.mv_count = 1;
         if (!r.isFixnum()) {
-            if (pending and r.isOther() and Runtime.kindOf(r) == .structure) {
-                // 中に仮の値がないと分かれば、その場で型を確かめる。あるか、大きくて調べきれなければ、検査待ちに置く
-                // （labelFinish が、調べた結果を使い回しながら確かめる。#S のたびに大きな共有データをたどらない）
-                const has = try containsPlaceholderLimited(rt, r, 4096);
-                if (has != null and !has.?) {
-                    const cf = if (rt.sys_check_structure == Value.nil) Value.nil else rt.symbolPtr(rt.sys_check_structure).function;
-                    if (cf.isFunctionPointer()) {
-                        var cargv: [1]Value = .{r};
-                        if (th.call(cf, &cargv) == Value.unwind) return error.LispError;
-                        th.mv_count = 1;
-                    }
-                    return r;
-                }
+            if (defer_check) {
                 // 後で確かめる構造体は、ラベルの表の (unbound . 構造体のリスト) の項目に足す（recursive の read も同じ表を
                 // 使う。ラベルの番号の項目とは car で区別できる。項目は 1 つだけなので、#n# がラベルを探す時間は増えない）
                 const d = b.deferredEntry() orelse blk: {
@@ -407,6 +414,15 @@ pub const ValueBuilder = struct {
         if (obj == ph) return fail(diag, loc, "#n= の直後に同じ #n# は置けません");
         const e = b.labelEntry(n).?;
         Runtime.consPtr(e).cdr = obj;
+        // このラベルの仮の値を値として持つ、ほかのラベル（別名。#1=(#2=#1#) の #2）も、解決した値にする。しないと、
+        // 後ろの #2# が仮の値を返し、読んだ結果に残る（SBCL 2.6.7 も内部の印が残る。Codex のレビュー P26 10回目 #2）
+        {
+            var l = b.labelsCell().*;
+            while (l.isCons()) : (l = Runtime.consPtr(l).cdr) {
+                const other = Runtime.consPtr(Runtime.consPtr(l).car);
+                if (other.car.isFixnum() and other.cdr == ph) other.cdr = obj;
+            }
+        }
         // seen は、この解決の間に置き換えのために通ったもの（検査待ちの構造体が obj の中にあっても、たどり直さない）
         var seen: std.AutoHashMapUnmanaged(u64, void) = .empty;
         defer seen.deinit(b.rt.gpa);

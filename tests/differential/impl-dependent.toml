@@ -354,6 +354,30 @@ clhs = "2.4.8.13 Sharpsign S・2.4.8.15 Sharpsign Equal-Sign（reader macro が�
 since = "Phase 26"
 
 [[items]]
+id = "sharp-equal-alias-of-pending-label"
+description = "未解決の #n= のラベルの中で付けた別名を、後ろで参照したときの値（(#1=(#2=#1#) #2#) の #2#）"
+sbcl = "#1 のオブジェクトにならない（内部の印が残る。(eq (car v) (cadr v)) は偽）"
+zilisp = "#1 のオブジェクトになる（#1 が解決したとき、同じ仮の値を持つ別名の項目も解決した値にする。Phase 26）"
+clhs = "2.4.8.15 Sharpsign Equal-Sign・2.4.8.16 Sharpsign Sharpsign（#n# は #n= が付いたオブジェクトを指す。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
+id = "sharp-s-large-in-pending-label"
+description = "未解決の #n= のラベルの中の #S が 4,096 個より多くのオブジェクトを持つときの、スロットの型のエラーの時期"
+sbcl = "#S を読んだその場で type-error"
+zilisp = "ラベルを読み終えた時点で type-error（必ず通知する。その間に後ろの #. が評価されることがある。仮の値があるかを調べきれないので、検査を後に回す。Phase 26。2026-11-11 の決定）"
+clhs = "2.4.8.13 Sharpsign S（型を検査する時期は規定されていない。※原文は未確認）"
+since = "Phase 26"
+
+[[items]]
+id = "recursive-read-in-handler"
+description = "読み取りの途中のエラーの handler の中の recursive な read（(read s t nil t)）が、外側の #n= のラベルを参照できるか"
+sbcl = "参照できる"
+zilisp = "参照できない（reader-error。handler には読み取りの途中の状態を引き継がない。#S の型のエラーでも #. の中のエラーでも同じ。Phase 25 からの制限）"
+clhs = "read（recursive-p の意味。handler の中での扱いは規定されていない。※原文は未確認）"
+since = "Phase 25"
+
+[[items]]
 id = "defstruct-include-bare-slot-name"
 description = ":include のスロットの書き換えに、裸のシンボルを書いた形（(:include base x)）"
 sbcl = "エラー（リストを求める）"

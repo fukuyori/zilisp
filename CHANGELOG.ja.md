@@ -48,6 +48,10 @@
 - Codex の 9 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：`#S` の initform の recursive な `read` が
   `#n#` を取り込んでも、置き換えた後の値でスロットの型を確かめる（仮の値のまま検査して、正しい値を拒み、誤った値を通して
   いた）、initform の recursive な `read` が外側の backquote の中のコンマを読める
+- Codex の 10 回目のレビュー（P26）の 2 件を直した：未解決のラベルの中で付けた別名（`#1=(#2=#1#)` の `#2`）を後ろで参照すると、
+  解決した値になる（仮の値が結果に残っていた）、backquote の中でも `#S` の本体の中のコンマは reader-error（SBCL 2.6.7 と同じ）。
+  直さないと決めた制限：reader macro が構造体に後から `#n#` を入れた場合の型、ラベルの中の大きな `#S` の型のエラーの通知の
+  遅れ、エラーの handler の中の recursive な `read` が外側のラベルを参照できないこと
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

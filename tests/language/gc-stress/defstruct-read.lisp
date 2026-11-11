@@ -176,3 +176,11 @@
 (with-input-from-string (*in-stream* "(#S(rdr) ,x)") (try (re (read *in-stream*))))
 (with-input-from-string (*in-stream* "``(#S(rdr) ,,x)") (try (re (read *in-stream*))))
 (with-input-from-string (*in-stream* "`(#S(rdr) ,,x)") (try (re (read *in-stream*))))
+;; 10回目 #5：backquote の中でも、#S の本体の中のコンマは reader-error。本体の中で新しく始めた backquote は読める
+(try (re (read-from-string "`#S(point :x ,y)")))
+(try (re (read-from-string "``#S(point :x ,,y)")))
+(try (re (read-from-string "`(#S(point :x ,y))")))
+(try (re (read-from-string "`(#S(point :x `(a ,b)))")))
+(try (re (read-from-string "`(#S(point :x 1) ,y)")))
+(try (re (read-from-string "#S(point :x ,y)")))
+(try (point-x (cadr (read-from-string "`#S(point :x (a b))"))))

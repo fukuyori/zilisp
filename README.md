@@ -60,6 +60,9 @@ Added in 0.3.0:
   `read-from-string`, ...), binary I/O, and pathnames (`#P`, `merge-pathnames`, `probe-file`, `directory`, ...)
 - Printing and reading: `format` with all its directives, the printer variables (`*print-base*`, `*print-circle*`, ...),
   readtables and user reader macros, and the pretty printer (`pprint`, `pprint-logical-block`, `set-pprint-dispatch`)
+
+Added after 0.3.0 (planned for 0.4):
+
 - Conditions: `define-condition`, `error`, `warn`, `signal`,
   `handler-case`, `handler-bind`, `ignore-errors`, `restart-case`, `invoke-restart`, `with-simple-restart`,
   `check-type`, `assert`, `typecase`/`ecase`, and `typep`; the report texts of the standard conditions follow SBCL 2.6.7

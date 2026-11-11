@@ -54,10 +54,12 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `read-from-string` など）、バイナリの入出力、パス名（`#P`・`merge-pathnames`・`probe-file`・`directory` など）
 - 印字と読み取り：すべての指示子の `format`、印字の変数（`*print-base*`・`*print-circle*` など）、readtable と
   ユーザー定義の reader macro、pretty printer（`pprint`・`pprint-logical-block`・`set-pprint-dispatch`）
+
+0.3.0 の後に実装したもの（0.4 に入る予定）
+
 - condition：`define-condition`・`error`・`warn`・`signal`・`handler-case`・`handler-bind`・
   `ignore-errors`・`restart-case`・`invoke-restart`・`with-simple-restart`・`check-type`・`assert`・`typecase`・`ecase`、`typep`。
   標準の condition の report の文面は SBCL 2.6.7 と同じ
-
 - 構造体：`defstruct`（`:include`・`:constructor`・`:conc-name`・`:print-function` など）、`copy-structure`、`#S(…)` の印字と
   読み取り。印字は SBCL 2.6.7 と同じ形
 - 時刻：`get-universal-time`・`get-decoded-time`・`decode-universal-time`・`encode-universal-time`

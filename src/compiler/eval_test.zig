@@ -2170,6 +2170,18 @@ test "defstruct: options not implemented, literals, redefinition (Phase 26)" {
     , "(A NIL T)");
     try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-ok :x #1#))\"))", .type_error);
     try expectError(&e, "(let ((*readtable* *p26-rt*)) (read-from-string \"#1=(a $#S(p26-rr :x #1#))\"))", .type_error);
+    // reader macro が、読んだ構造体を複製して元だけを書き換えても、返った複製の型を確かめる（Codex のレビュー P26 6回目 #1）
+    try expectError(&e,
+        \\(let ((*readtable* (copy-readtable nil)))
+        \\  (set-macro-character #\! (lambda (s c) (declare (ignore c))
+        \\                             (let* ((o (read s t nil t)) (c2 (copy-structure o))) (setf (p26-rr-x o) 0) c2)))
+        \\  (read-from-string "#1=!#S(p26-rr :x #1#)"))
+    , .type_error);
+    // #S の型のエラーの後、同じストリームの続きを読める（6回目 #2）
+    try expectValue(&e,
+        \\(with-input-from-string (s "#S(p26-rr :x bad) 42")
+        \\  (list (handler-case (read s) (type-error () :type-error)) (file-position s) (read s)))
+    , "(:TYPE-ERROR 17 42)");
     // GC stress：構築・複製・equalp のハッシュ表
     e.rt.heap.stress = true;
     defer e.rt.heap.stress = false;

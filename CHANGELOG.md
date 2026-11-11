@@ -42,6 +42,10 @@
 - Fixed 1 issue from the fifth Codex review of Phase 26 (checked against SBCL 2.6.7): when a reader macro returned a copy or
   another value instead of the `#S` structure it read, the original structure kept the `#n#` placeholder and its types were
   never checked. Placeholders inside the structures waiting to be checked are replaced too
+- Fixed 2 issues from the sixth Codex review of Phase 26 (both checked against SBCL 2.6.7): after `#n#` is replaced, the types
+  of all structures inside what was read are checked (when a reader macro returned a copy and changed only the original, the
+  copy escaped the check), and the rest of the same stream can be read after a type-error in `#S` (the position did not
+  advance, so the next `read` signaled the same error again)
 - Phase 25: conditions, handlers and restarts (CLHS chapter 9). `define-condition` (`:initarg`, `:initform`, `:reader`,
   `:writer`, `:accessor`, `:report`, `:default-initargs`) and `make-condition`, the hierarchy of the standard condition types,
   `signal`, `error`, `cerror`, `warn`, `invoke-debugger` and `*debugger-hook*`, `handler-bind`, `handler-case` (with

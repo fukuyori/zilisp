@@ -35,6 +35,9 @@
   いる構造体のスロットだけにした（型を検査しない読み取り用の構築子を使う）
 - Codex の 5 回目のレビュー（P26）の 1 件を直した（SBCL 2.6.7 と照合した）：reader macro が、読んだ `#S` の構造体の代わりに
   複製や別の値を返すと、元の構造体に `#n#` の仮の値が残り、型の検査が行われなかった。検査待ちの構造体の中も置き換える
+- Codex の 6 回目のレビュー（P26）の 2 件を直した（どれも SBCL 2.6.7 と照合した）：`#n#` を置き換えたら、読んだ結果の中の
+  構造体すべての型を確かめる（reader macro が複製を返して元だけを書き換えると、複製の検査が漏れた）、`#S` の型のエラーの後に
+  同じストリームの続きを読める（位置が進まず、次の `read` が同じエラーを繰り返していた）
 - Phase 25：condition・handler・restart（CLHS 9 章）。`define-condition`（`:initarg`・`:initform`・`:reader`・`:writer`・
   `:accessor`・`:report`・`:default-initargs`）・`make-condition`、標準の condition 型の階層、`signal`・`error`・`cerror`・
   `warn`・`invoke-debugger`・`*debugger-hook*`、`handler-bind`・`handler-case`（`:no-error` も）・`ignore-errors`、`restart-bind`・

@@ -9,7 +9,7 @@ const reader = @import("../reader/reader.zig");
 const vb = @import("../reader/value_builder.zig");
 const eval_mod = @import("eval.zig");
 
-pub const source = @embedFile("../lisp/boot.lisp") ++ "\n" ++ @embedFile("../lisp/clos.lisp") ++ "\n" ++ @embedFile("../lisp/generic.lisp");
+pub const source = @embedFile("../lisp/boot.lisp") ++ "\n" ++ @embedFile("../lisp/clos.lisp") ++ "\n" ++ @embedFile("../lisp/generic.lisp") ++ "\n" ++ @embedFile("../lisp/clos-update.lisp");
 
 pub fn load(th: *Thread) error{OutOfMemory}!void {
     const rt = th.rt;

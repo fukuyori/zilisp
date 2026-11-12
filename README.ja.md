@@ -67,9 +67,11 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   `slot-value` の読み書き・未束縛化・存在判定
 - 総称関数：primaryメソッド、多重・クラス・EQLディスパッチ、引数優先順位、次メソッド呼び出し、
   総称アクセサ、メソッド管理、`print-object`・`print-unreadable-object`
+- CLOSのライフサイクル：standardのaround/before/afterメソッド、初期化フック、クラス再定義、
+  遅延インスタンス更新、`change-class`、上位クラスの前方参照、クラス名の登録・解除
 
 未実装（後の版で実装する予定）：
-複素数、CLOSのメソッド修飾子・初期化フック・クラス再定義。
+複素数、独自のCLOSメタクラス・メソッド結合、`with-slots`・`with-accessors`。
 
 ## インストール
 

@@ -1494,8 +1494,9 @@
 ;; (define-condition 名前 (上位 …) (スロット …) オプション …)：スロットのオプションは :initarg・:initform・:reader・
 ;; :writer・:accessor（:type・:documentation・:allocation は受け付けて使わない）。オプションは :report・:default-initargs・
 ;; :documentation
+(defun zl-sys::%condition-reader-type (name) name)
 (defmacro define-condition (name parent-types slot-specs &rest options)
-  (let ((slots nil) (functions nil) (report nil) (defaults nil))
+  (let ((slots nil) (functions nil) (report nil) (defaults nil) (guard (gensym)))
     (dolist (spec slot-specs)
       (let ((sname (if (consp spec) (car spec) spec))
             (initargs nil) (initform nil) (has-initform nil))
@@ -1505,12 +1506,12 @@
             (cond ((eq key :initarg) (push val initargs))
                   ((eq key :initform) (setq initform val has-initform t))
                   ((eq key :reader)
-                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ',name)) functions))
+                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ,guard)) functions))
                   ((eq key :writer)
-                   (push `(defun ,val (value condition) (zl-sys::%set-condition-slot value condition ',sname ',name)) functions))
+                   (push `(defun ,val (value condition) (zl-sys::%set-condition-slot value condition ',sname ,guard)) functions))
                   ((eq key :accessor)
-                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ',name)) functions)
-                   (push `(defun (setf ,val) (value condition) (zl-sys::%set-condition-slot value condition ',sname ',name))
+                   (push `(defun ,val (condition) (zl-sys::%condition-slot condition ',sname ,guard)) functions)
+                   (push `(defun (setf ,val) (value condition) (zl-sys::%set-condition-slot value condition ',sname ,guard))
                          functions))
                   ((member key '(:type :documentation :allocation)))
                   (t (zl-sys::%macro-form-error "DEFINE-CONDITION のスロットのオプションが正しくありません" spec)))))
@@ -1534,7 +1535,7 @@
             (t (zl-sys::%macro-form-error "DEFINE-CONDITION のオプションが正しくありません" o))))
     `(progn
        (zl-sys::%define-condition-class ',name ',parent-types (list ,@(reverse slots)) ,report (list ,@defaults))
-       ,@(reverse functions)
+       (let ((,guard (zl-sys::%condition-reader-type ',name))) ,@(reverse functions))
        ',name)))
 
 ;;; 標準の condition 型（CLHS 9.2）。report の文面は SBCL 2.6.7 と同じ

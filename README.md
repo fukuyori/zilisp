@@ -73,8 +73,10 @@ Added after 0.3.0 (planned for 0.4):
   shared slots, and slot reading, writing, unbinding and existence checks.
 - Generic functions: primary methods, multiple/class/EQL dispatch, argument precedence, next-method calls,
   generic accessors, method management, `print-object` and `print-unreadable-object`.
+- CLOS lifecycle: standard around/before/after methods, initialization hooks, class redefinition,
+  lazy instance updates, `change-class`, forward superclasses and class-name registration/removal.
 
-Not yet implemented (planned for later releases): complex numbers, CLOS method qualifiers, initialization hooks and class redefinition.
+Not yet implemented (planned for later releases): complex numbers, custom CLOS metaclasses/method combinations, and `with-slots`/`with-accessors`.
 
 Error messages are currently written in Japanese.
 

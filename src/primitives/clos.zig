@@ -49,6 +49,18 @@ pub fn sysInstanceClass(th: *Thread, args: []const Value) Value {
     th.mv_count = 1;
     return instance(args[0]).class;
 }
+pub fn sysInstanceStamp(th: *Thread, args: []const Value) Value {
+    if (!isKind(args[0], .instance)) return th.typeError(args[0], th.rt.t);
+    th.mv_count = 1;
+    return Value.fromFixnum(@intCast(rack(instance(args[0]).rack).stamp));
+}
+pub fn sysReplaceInstance(th: *Thread, args: []const Value) Value {
+    for (args) |v| if (!isKind(v, .instance) or instance(v).header.flags & 1 != 0) return th.typeError(v, th.rt.t);
+    instance(args[0]).class = instance(args[1]).class;
+    instance(args[0]).rack = instance(args[1]).rack;
+    th.mv_count = 1;
+    return args[0];
+}
 fn slotValues(th: *Thread, value: Value, index: Value) ?[]Value {
     if (!isKind(value, .instance)) {
         _ = th.typeError(value, th.rt.t);

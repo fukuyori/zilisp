@@ -64,6 +64,29 @@ pub fn recordTypep(v: Value, name: Value) bool {
     return false;
 }
 
+/// Standard classes compare object identity, independently of name aliases.
+fn standardClassTypep(v: Value, descriptor: Value) bool {
+    const target = Runtime.vectorPtr(descriptor).items()[9];
+    if (kindOf(v) != .instance) return false;
+    const desc = Runtime.vectorPtr(@import("clos.zig").instance(v).class).items();
+    if (desc.len < 16) return false;
+    const current = Runtime.vectorPtr(@import("clos.zig").class(desc[9]).descriptor).items();
+    var cpl = current[12];
+    while (cpl.isCons()) : (cpl = Runtime.consPtr(cpl).cdr) {
+        if (Runtime.consPtr(cpl).car == target) return true;
+    }
+    return false;
+}
+
+fn legacyClassTypep(th: *Thread, v: Value, descriptor: Value) Fail!bool {
+    if (th.rt.booting) return recordTypep(v, Runtime.vectorPtr(descriptor).items()[0]);
+    const sym = (th.rt.findSymbol(th.rt.sys, "%LEGACY-DESCRIPTION-TYPEP") orelse unreachable).symbol;
+    const args = [_]Value{ v, descriptor };
+    const result = th.call(th.rt.symbolPtr(sym).function, &args);
+    if (result == Value.unwind) return error.Lisp;
+    return result != Value.nil;
+}
+
 /// CLHS の標準の型の名前（Figure 4-2・4-3・4-4 の型・合成の型指定子の先頭）のうち、typep がまだ判定できないもの
 const unimplemented_type_names = [_][]const u8{
     "BIT-VECTOR",       "SIMPLE-BIT-VECTOR",         "EXTENDED-CHAR",       "RANDOM-STATE",    "STRUCTURE-OBJECT",
@@ -474,7 +497,13 @@ fn isSimpleArray(v: Value) bool {
 pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
     const rt = th.rt;
     if (kindOf(spec) == .class) {
-        const name = Runtime.vectorPtr(@import("clos.zig").class(spec).descriptor).items()[0];
+        const descriptor = @import("clos.zig").class(spec).descriptor;
+        const desc = Runtime.vectorPtr(descriptor).items();
+        const name = desc[0];
+        if (desc.len >= 16 and name != (rt.findSymbol(rt.cl, "STANDARD-OBJECT") orelse unreachable).symbol)
+            return standardClassTypep(v, descriptor);
+        if (@import("clos.zig").class(spec).header.aux == 2 or @import("clos.zig").class(spec).header.aux == 3)
+            return legacyClassTypep(th, v, descriptor);
         if (rt.symbolPtr(name).package == rt.sys.obj) {
             var b: [64]u8 = undefined;
             if (asciiName(rt, name, &b)) |n| if (std.mem.eql(u8, n, "CONDITION-CLASS"))
@@ -485,7 +514,19 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
     if (spec == rt.t) return true;
     if (spec == Value.nil) return false;
     if (isSymbol(spec)) {
-        if (classOf(rt, spec) != null) return recordTypep(v, spec);
+        if (classOf(rt, spec)) |descriptor| {
+            const desc = Runtime.vectorPtr(descriptor).items();
+            if (desc.len >= 16) {
+                if (desc[0] == (rt.findSymbol(rt.cl, "STANDARD-OBJECT") orelse unreachable).symbol)
+                    return typep(th, v, desc[0]);
+                return standardClassTypep(v, descriptor);
+            }
+            // Built-in names cannot be rebound. All record/structure aliases
+            // use identity snapshots instead of recursively resolving names.
+            if (rt.symbolPtr(desc[0]).package == rt.cl.obj and classOf(rt, desc[0]) == null)
+                return typep(th, v, desc[0]);
+            return legacyClassTypep(th, v, descriptor);
+        }
         if (rt.symbolPtr(spec).package != rt.cl.obj) return unknown(th, spec);
         var buf: [64]u8 = undefined;
         const name = asciiName(rt, spec, &buf) orelse return unknown(th, spec);

@@ -5,6 +5,10 @@
 ## Unreleased
 
 ### Added
+- Phase 29: standard method combination, initialization and reinitialization hooks, standard-class
+  redefinition with descendant layouts and selective stamp invalidation, lazy rack migration,
+  `change-class`, forward superclass references, and `(setf find-class)`.
+  Scope, curriculum adapters, SBCL comparisons and validation: `docs/clos-phase29-plan.md`.
 - Phase 28: callable generic functions, primary methods, multiple and EQL dispatch, argument precedence,
   next-method calls, method management, generic class accessors and `print-object`/`print-unreadable-object`.
   Dispatch and slot caches use unique stamps for standard, built-in, condition and structure classes.

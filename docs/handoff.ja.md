@@ -7,12 +7,16 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。この更新にP28の実装・試験・レビュー対応と文書更新を含む。直前のコミットは `878edf9`（P27）。現在のコミットと作業ツリーは `git log --oneline -3` と `git status -sb` で確認する。
+- ブランチ：`main`。直前のコミットは `56e2a90`（P28、push済み）。この更新にP29の実装・試験・レビュー対応・文書更新を含む。現在のコミットと作業ツリーは `git log --oneline -3` と `git status -sb` で確認する。
+- **P29（#321、子#534・#535）は受け入れ完了**。standardのaround/before/after、初期化・再初期化、標準クラス再定義と子孫のCPL/スロット再計算、選択的キャッシュ失効、遅延rack更新、change-class、前方参照、find-classの登録・解除を追加した。実装は `src/lisp/clos-update.lisp` と `generic.lisp`。範囲・結果は `docs/clos-phase29-plan.ja.md`、レビューは `docs/clos-phase29-claude-review.ja.md`（英語原文も保存）。
+  - Claude Codeは初回4件、限定再確認3件。別名とproper name、失敗時のplaceholderの後始末、legacyクラスの実体CPLを修正。SBCLの挙動予測が実測と違ったケースは記録し、実測と原文に基づいて扱った。初回1回・限定再確認1回で区切った。
+  - 教材Level21-B完成コードはDEFCOMMANDの名前付きblock欠落を補正して比較した（SBCLも元コードにコンパイルエラーを報告）。Level21-Aの修飾子・初期化も比較した。候補A955件は一致566・both-error362・出力差1・Zilispのみエラー26・SBCLのみエラー0・timeout0。P28からの変化8件はすべて改善。結果は `compatibility/eval-check-sbcl-2.6.10-p29.tsv`。Readerは1079/23/5/0で同じ。
+  - 確認済み：単体Debug・ReleaseSafe・ReleaseFast、言語91/91、ネイティブDebug重点2/2（通常・GC stress）、クロス5種、fmt。全49件のネイティブReleaseFastも通常・GC stressとも成功。ネイティブDebug全体・Windows/macOSの実機実行は未実施。
 - **P28（#320）は受け入れ完了**。primaryメソッド、多重・EQLディスパッチ、引数優先順位、次メソッド、メソッド管理、総称アクセサ、print-objectを追加。#536（全クラスの一意なstamp）はCLIで完了。範囲・結果は `docs/clos-phase28-plan.ja.md`、レビュー原文と対応は `docs/clos-phase28-claude-review.md`・`docs/clos-phase28-claude-review.ja.md`。
   - Claude Codeは初回5件・限定再確認1件。キーワード・印字・アクセサの事前検査・inlineメソッドの再宣言を修正。深い再帰で中間フレームを多く使う資源上限は #541に分離（40段成功、600段storage-condition。SBCLは600段成功）。スタック安全上限は維持した。
   - 最終検証：単体Debug・ReleaseSafe・ReleaseFast成功、言語83/83、ネイティブReleaseFast全45/45、Debug新規3/3（通常・GC stress）、クロス5種、fmt成功。全45件のネイティブDebug再実行とWindows/macOS実行は未実施。レビュー修正前に停止した試行は算入していない。
   - 教材955件は一致558・both-error 362・出力差1・Zilispのみエラー34。保存済みの比較との差13件はすべて一致への改善（P27も含む累積差、SBCLの版も異なる）。結果は `compatibility/eval-check-sbcl-2.6.10-p28.tsv`。Readerは1079/23/5/0で以前と同じ。eval-checkの生成MarkdownはSBCL 2.6.7と固定表示するが、今回の実行は2.6.10.168。
-  - 教材をcanonical commitから復元し `.work/samples` を再生成した。Level 21-Aの基本5ブロックを連続実行する `clos-level21.lisp` がSBCLと一致。修飾子・初期化フック・再定義はP29、with-slotsはP30。次は #321（P29）。
+  - 教材をcanonical commitから復元し `.work/samples` を再生成した。Level 21-Aの基本5ブロックを連続実行する `clos-level21.lisp` がSBCLと一致。修飾子・初期化フック・再定義はP29、with-slotsはP30。P29への基盤となる。
 - **P27の受け入れ範囲は完了**。tque CLIで #319を完了にした（2026-11-12）。#317（P25）・#318（P26）・#378（時刻）・#380（conditionの印字）も完了。P27完了時の0.4（#316）の表示進捗は43%だった。現在値はtque CLIで確認する。
 - P27の検証（Linux、Zig 0.17.1）：単体試験Debug・ReleaseSafe・ReleaseFast、lang-test 75/75、クロス5種が成功。ネイティブ全体は28本成功・13本コンパイル失敗の後、失敗分とCLOSの14本を固定ソースで再実行してすべて成功し、全41ケースをカバーした（通常・GC stress）。最終配置のCLOS試験はVM・ネイティブで個別確認済み。詳細と再試験の理由は `docs/clos-phase27-plan.ja.md`。教材の `.work/samples` がなく、reader-check・eval-checkは今回は未実施。Windows・macOSはクロスビルドのみ。
   - Claude Codeのレビュー6件を修正した。記録は `docs/clos-phase27-claude-review.ja.md`。修正後は単体Debug、言語77/77、影響するネイティブ4/4（通常・GC stress）、最後のRuntime再初期化修正はP27限定試験とclos-reviewのVM通常・GC stressで確認した。全42ネイティブケースの再実行はしていない。
@@ -74,10 +78,10 @@
 
 ## 3. 次の作業（tque）
 
-- P28（#320）とstampの#536はtque CLIで完了にした。**次は #321（P29：メソッド結合・初期化フック・再定義）**。P27（#319）は完了。
+- P28（#320）とstampの#536は完了。P29（#321・#534・#535）もtque CLIで完了にした。**次は #323（P30：標準ライブラリ統合・REPL診断）**。P27（#319）も完了。
   - P27ではrack方式を採用した。比較計測・受け入れ範囲・実装・検証結果は `docs/clos-phase27-plan.ja.md`（英語版 `docs/clos-phase27-plan.md`）。実装は `src/primitives/clos.zig` と `src/lisp/clos.lisp`。
-  - #536（P28の子）は完了：組み込み・condition・構造体も一意な正のstampを持つ。古いrackの更新はP29。#541は中間フレーム削減の独立した改善。
-  - #534・#535（P29の子）：上位クラスの前方参照、`(setf find-class)` によるクラス名の登録・解除。
+  - #536（P28の子）は完了：組み込み・condition・構造体も一意な正のstampを持つ。古いrackの更新もP29で実装した。#541は中間フレーム削減の独立した改善。
+  - #534・#535（P29の子）は上記に含む。P30では#341（macrolet・symbol-macrolet等）とwith-slots/with-accessorsの統合も扱う。
 - 0.4（#316）の下のほかの項目：
   - #344 P23 の受入の残り（Level 17 の text-tools を SBCL と比べる）。着手できる。
   - #349 印字の速さの改善（印字は SBCL の約 1.8 倍の時間）。

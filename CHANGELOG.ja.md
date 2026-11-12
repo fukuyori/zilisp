@@ -5,6 +5,9 @@
 ## Unreleased
 
 ### Added
+- Phase 29：standardメソッド結合、初期化・再初期化フック、標準クラス再定義と子孫のレイアウト再計算、
+  stampの選択的失効、遅延rack移行、`change-class`、上位クラスの前方参照、`(setf find-class)`を追加。
+  範囲・教材の補正・SBCL比較・検証は `docs/clos-phase29-plan.ja.md`。
 - Phase 28：呼び出し可能な総称関数、primaryメソッド、多重・EQLディスパッチ、引数優先順位、
   次メソッド呼び出し、メソッド管理、総称クラスアクセサ、`print-object`・`print-unreadable-object`を追加。
   標準・組み込み・condition・構造体クラスの一意なstampをディスパッチとスロットのキャッシュに使う。

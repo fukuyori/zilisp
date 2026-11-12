@@ -1306,8 +1306,10 @@ Scope, measurements, and acceptance cases are in `clos-phase27-plan.md`.
 P28 adds callable generic functions and primary methods; see `clos-phase28-plan.md`.
 Dispatch and accessor caches use unique class stamps, including built-in, condition and structure classes.
 The current cache stores ordered applicable methods; it does not yet compile effective method functions.
-P29 adds qualifiers, initialization hooks and redefinition/obsolete-rack handling.
-The selective invalidation and obsolete-instance procedures below describe that future P29 work.
+P29 implements standard qualifiers, initialization hooks, redefinition, forward superclasses and class-name registration.
+`src/lisp/clos-update.lisp` handles the identity-based class graph, selective cache invalidation and rack migration.
+Current scope, descriptor extensions, acceptance adapters and tests: `clos-phase29-plan.md`.
+Custom metaclasses/method combinations and weak reclamation of the class registry remain outside this implementation.
 
 ```zig
 pub const Class = struct {
@@ -1354,11 +1356,11 @@ instance                      rack
 - If the stamp of an instance's rack differs from the class's current number, the instance is obsolete. The obsolescence check is always performed on every dispatch and slot access, by the procedure of §10.4.
 - When an obsolete instance is accessed, it is updated by the **standard procedure**.
   1. Create a rack with the new layout.
-  2. Slots defined as local slots in both the old and the new class keep their values.
+  2. New local slots keep old local or shared values when the old class has a slot with the same name. Unbound values stay unbound.
   3. Compute the list of added local slots, and the discarded local slots (including those changed to shared slots) with a property list of their values.
   4. After replacing the rack, call `update-instance-for-redefined-class` with the instance, the added slots, the discarded slots, and the property list as arguments. Its default method is `shared-initialize`, which initializes the added slots with their initforms.
-- **`change-class`** (CLHS `change-class`, `update-instance-for-different-class`): make a copy of the original instance, replace the rack with one for the new class, carry over the values of local slots common to both, and call `update-instance-for-different-class` with the copy, the instance, and the initialization arguments as arguments.
-- If the user defines methods on these generic functions, those methods are called (supported in 1.0).
+- **`change-class`** (CLHS `change-class`, `update-instance-for-different-class`): make a copy of the original instance, replace the rack with one for the new class, carry over old local or shared values for matching new local slots, and call `update-instance-for-different-class` with the copy, the instance, and the initialization arguments as arguments.
+- If the user defines methods on these generic functions, those methods are called (implemented in P29).
 - Redefinitions not supported in 1.0 (such as changing the metaclass) **signal an error instead of executing with changed meaning** (basic design §3.1: never silently return a different result).
 
 ### 10.3 Generic functions and methods

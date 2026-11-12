@@ -416,3 +416,35 @@ sbcl = "2.6.10.168の既定設定では不明キーを受理する（明示GFと
 zilisp = "CLHS 7.6.5に従ってprogram-error。適用メソッドにも&keyがないときの任意のrest引数は受理する"
 clhs = "7.6.5 Keyword Arguments in Generic Functions and Methods（https://www.lispworks.com/documentation/HyperSpec/Body/07_fe.htm、2026-11-12確認）"
 since = "Phase 28"
+
+[[items]]
+id = "redefinition-common-unbound-slot"
+description = "再定義の新旧に同じlocalスロットがあり、旧インスタンスの値が未束縛の場合"
+sbcl = "2.6.10.168ではレイアウト更新時にadded-slotsにその名前も含め、新initformがあれば束縛する（実測）"
+zilisp = "CLHS 4.3.6.1に従い未束縛を保持し、共通スロット名をaddedには含めない。P29単体試験"
+clhs = "4.3.6.1 Modifying the Structure of Instances（https://www.lispworks.com/documentation/HyperSpec/Body/04_cfa.htm、2026-11-12確認）"
+since = "Phase 29"
+
+[[items]]
+id = "redefinition-external-accessor-replacement"
+description = "defclass生成アクセサを同じspecializerの外部defmethodで置換した後、クラスを再定義した場合"
+sbcl = "2.6.10.168は外部の置換メソッドもsignatureにより削除する（実測）"
+zilisp = "旧defclassが作ったmethod objectだけを削除し、外部の置換メソッドは保持する。P29単体試験"
+clhs = "4.3.6 Redefining Classes（https://www.lispworks.com/documentation/HyperSpec/Body/04_cf.htm、2026-11-12確認）"
+since = "Phase 29"
+
+[[items]]
+id = "condition-parent-with-unbound-proper-name"
+description = "親conditionの別名だけを残し、proper nameをfind-classから解除した後、その別名を親にしてdefine-conditionする場合"
+sbcl = "2.6.10.168ではNot a class or a legal superclass name: NILで失敗（実測）"
+zilisp = "解決済みの親クラス実体からCPLを構成し、継承reader・reportも維持する。P29単体試験"
+clhs = "define-conditionのparent-typeとfind-classの登録（https://www.lispworks.com/documentation/HyperSpec/Body/m_defi_5.htm と f_find_c.htm、2026-11-12確認）"
+since = "Phase 29"
+
+[[items]]
+id = "failed-class-forward-placeholder-cleanup"
+description = "新しいdefclassが循環エラーで失敗した後の、そこで作った未定義の親クラス名の状態"
+sbcl = "2.6.10.168では未定義親のforward-referenced-classを残す例がある（実測）"
+zilisp = "未公開の前方参照クラスを解除する。ただし成功した入れ子定義から参照されたplaceholderは保持する。P29単体試験"
+clhs = "定義エラー後の名前空間の状態を処理系差として記録"
+since = "Phase 29"

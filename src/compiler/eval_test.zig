@@ -31,6 +31,78 @@ const Env = struct {
     }
 };
 
+test "P29 selective cache invalidation, class identity and migration invariants" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    try expectValue(&e,
+        \\(defclass p29-cache-a () ((x :initform 1 :reader p29-cache-x)))
+        \\(defclass p29-cache-b () ())
+        \\(defmethod p29-cached ((x p29-cache-a)) :a)
+        \\(defmethod p29-cached ((x p29-cache-b)) :b)
+        \\(defvar *p29-a* (make-instance 'p29-cache-a))
+        \\(p29-cached *p29-a*) (p29-cached (make-instance 'p29-cache-b)) (p29-cache-x *p29-a*)
+        \\(defvar *p29-stamp* (zl-sys::%class-stamp (find-class 'p29-cache-a)))
+        \\(defclass p29-cache-a () ((pad :initform 9) (x :initform 0 :reader p29-cache-x)))
+        \\(list (hash-table-count (svref (zl-sys::%generic-data #'p29-cached) 4))
+        \\      (> (zl-sys::%class-stamp (find-class 'p29-cache-a)) *p29-stamp*)
+        \\      (p29-cache-x *p29-a*) (p29-cached *p29-a*))
+    , "(1 T 1 :A)");
+    try expectValue(&e,
+        \\(defclass p29-other () ())
+        \\(defvar *p29-original-class* (class-of *p29-a*))
+        \\(setf (find-class 'p29-cache-a) (find-class 'p29-other))
+        \\(list (eq (class-of *p29-a*) *p29-original-class*)
+        \\      (typep *p29-a* *p29-original-class*) (typep *p29-a* 'p29-cache-a) (p29-cached *p29-a*))
+    , "(T T NIL :A)");
+    try expectValue(&e,
+        \\(defclass p29-transaction () ((x :initform 3)))
+        \\(defvar *p29-transaction* (make-instance 'p29-transaction))
+        \\(list (handler-case (eval '(defclass p29-transaction (p29-transaction) ())) (error () :cycle))
+        \\      (slot-value *p29-transaction* 'x))
+    , "(:CYCLE 3)");
+    try expectValue(&e,
+        \\(list (handler-case (eval '(defclass p29-failed-new (p29-new-parent p29-failed-new) ())) (error () :cycle))
+        \\      (find-class 'p29-failed-new nil) (find-class 'p29-new-parent nil)
+        \\      (handler-case (eval '(defclass p29-failed-init () ((x :allocation :class :initform (error "init"))))) (error () :init))
+        \\      (find-class 'p29-failed-init nil))
+    , "(:CYCLE NIL NIL :INIT NIL)");
+    // SBCL 2.6.10.168 fails the parent alias after its proper name is removed.
+    // Freeze parent identities for definition, inherited readers and reports.
+    try expectValue(&e,
+        \\(define-condition p29-parent-alias (error) ((x :initarg :x :reader p29-parent-alias-x))
+        \\  (:report (lambda (c s) (format s "x=~D" (p29-parent-alias-x c)))))
+        \\(setf (find-class 'p29-only-alias) (find-class 'p29-parent-alias))
+        \\(setf (find-class 'p29-parent-alias) nil)
+        \\(define-condition p29-child-alias (p29-only-alias) ())
+        \\(let ((c (make-condition 'p29-child-alias :x 19)))
+        \\  (list (typep c 'p29-only-alias) (p29-parent-alias-x c) (princ-to-string c)))
+    , "(T 19 \"x=19\")");
+    // CLHS 4.3.6.1 retains existing unbound slots. SBCL includes these in
+    // its added-slot hook list, so the exact invariant is kept outside fixtures.
+    try expectValue(&e,
+        \\(defclass p29-unbound () (x))
+        \\(defvar *p29-unbound* (make-instance 'p29-unbound))
+        \\(defclass p29-unbound () ((x :initform 5) (added :initform 0)))
+        \\(slot-boundp *p29-unbound* 'x)
+    , "NIL");
+    // Remove only the generated method object, preserving an external replacement.
+    try expectValue(&e,
+        \\(defclass p29-accessor () ((x :reader p29-accessor-x)))
+        \\(defmethod p29-accessor-x ((x p29-accessor)) :external)
+        \\(defclass p29-accessor () ())
+        \\(p29-accessor-x (make-instance 'p29-accessor))
+    , ":EXTERNAL");
+    e.rt.heap.stress = true;
+    defer e.rt.heap.stress = false;
+    try expectValue(&e,
+        \\(defclass p29-shared-cycle () ((x :allocation :class :initform nil)))
+        \\(let ((v (list 1))) (setf (cdr v) v) (setf (slot-value (make-instance 'p29-shared-cycle) 'x) v))
+        \\(defclass p29-shared-child (p29-shared-cycle) ())
+        \\(let ((v (slot-value (make-instance 'p29-shared-child) 'x))) (eq v (cdr v)))
+    , "T");
+}
+
 test "P28 stamps cover all dispatch classes and changed next arguments are checked" {
     var e: Env = undefined;
     try e.init();

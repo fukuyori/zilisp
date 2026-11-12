@@ -1,17 +1,19 @@
-;;; P28 primary methods. Qualifiers and initialization hooks belong to P29.
+;;; Standard method combination and dispatch (P28/P29).
 ;;; GF descriptor: #(name lambda-list signature methods cache self order profile inline-methods).
-;;; Method descriptor: #(specializers function lambda-list owner signature).
+;;; Method descriptor: #(specializers function lambda-list owner signature qualifiers).
 
 (defun zl-sys::%gf-error (text &rest args)
   (error 'zl-sys::simple-program-error :format-control text :format-arguments args))
 
 (defun zl-sys::%cached-slot-location (cache object name)
+  (zl-sys::%ensure-current-instance object)
   (let ((stamp (zl-sys::%class-stamp (class-of object))))
     (multiple-value-bind (location foundp) (gethash stamp cache)
       (if foundp location
           (let* ((s (zl-sys::%clos-slot object name))
                  (location (if (eq (fourth s) :class) (fifth s)
                                (zl-sys::%slot-index (zl-sys::%instance-class object) name))))
+            (zl-sys::%register-class-cache (class-of object) cache :accessor)
             (setf (gethash stamp cache) location))))))
 (defun zl-sys::%cached-slot-read (cache object name)
   (let* ((location (zl-sys::%cached-slot-location cache object name))
@@ -186,7 +188,8 @@
   (let* ((d (zl-sys::%generic-data gf)) (m (zl-sys::%method-data method)))
     (when (and (svref m 3) (not (eq (svref m 3) gf))) (zl-sys::%gf-error "Method belongs to another generic function."))
     (zl-sys::%gf-congruent (svref d 2) (svref m 4))
-    (let ((old (find-if (lambda (other) (zl-sys::%gf-same-specializers (svref m 0) (svref (zl-sys::%method-data other) 0))) (svref d 3))))
+    (let ((old (find-if (lambda (other) (and (equal (svref m 5) (method-qualifiers other))
+                                               (zl-sys::%gf-same-specializers (svref m 0) (svref (zl-sys::%method-data other) 0)))) (svref d 3))))
       (when old
         (setf (svref (zl-sys::%method-data old) 3) nil)
         (setf (svref d 3) (remove old (svref d 3)))))
@@ -204,11 +207,11 @@
 
 (defun find-method (gf qualifiers specializers &optional (errorp t))
   (let* ((d (zl-sys::%generic-data gf))
-         (m (unless qualifiers
-              (find-if (lambda (method) (zl-sys::%gf-same-specializers specializers (svref (zl-sys::%method-data method) 0))) (svref d 3)))))
+         (m (find-if (lambda (method) (and (equal qualifiers (method-qualifiers method))
+                                          (zl-sys::%gf-same-specializers specializers (svref (zl-sys::%method-data method) 0)))) (svref d 3))))
     (cond (m m) (errorp (error "No matching method.")) (t nil))))
 
-(defun method-qualifiers (method) (zl-sys::%method-data method) nil)
+(defun method-qualifiers (method) (copy-list (svref (zl-sys::%method-data method) 5)))
 
 (defun zl-sys::%gf-count (d args)
   (let* ((sig (svref d 2)) (n (length args)) (required (length (car sig))))
@@ -221,8 +224,8 @@
 
 (defun zl-sys::%gf-rank (s arg)
   (if (consp s) -1
-      (let* ((name (class-name s)) (cpl (svref (zl-sys::%class-descriptor (class-of arg)) 1)))
-        (if (eq name t) (1+ (length cpl)) (or (position name cpl) (length cpl))))))
+      (let ((cpl (zl-sys::%class-cpl-objects (class-of arg))))
+        (if (eq (class-name s) t) (1+ (length cpl)) (or (position s cpl) (length cpl))))))
 
 (defun zl-sys::%gf-more-specific (a b args order)
   (let ((sa (svref (zl-sys::%method-data a) 0)) (sb (svref (zl-sys::%method-data b) 0)))
@@ -255,9 +258,24 @@
 
 (defun zl-sys::%gf-invoke (gf methods args all)
   (if methods
-      (let* ((m (car methods)) (data (zl-sys::%method-data m)))
-        (apply (svref data 1) (append (list (cdr methods) args all gf m) args)))
+      (let ((m (car methods)))
+        (if (eq m :core) (zl-sys::%gf-core gf args all)
+            (apply (svref (zl-sys::%method-data m) 1) (append (list (cdr methods) args all gf m) args))))
       (apply #'no-applicable-method gf args)))
+
+(defun zl-sys::%gf-with-qualifier (methods qualifier)
+  (remove-if-not (lambda (m) (equal (method-qualifiers m) qualifier)) methods))
+(defun zl-sys::%gf-core (gf args all)
+  (dolist (m (zl-sys::%gf-with-qualifier all '(:before)))
+    (zl-sys::%gf-invoke gf (list m) args all))
+  (multiple-value-prog1
+      (zl-sys::%gf-invoke gf (zl-sys::%gf-with-qualifier all nil) args all)
+    (dolist (m (reverse (zl-sys::%gf-with-qualifier all '(:after))))
+      (zl-sys::%gf-invoke gf (list m) args all))))
+(defun zl-sys::%gf-effective (gf methods args)
+  (cond ((null methods) (apply #'no-applicable-method gf args))
+        ((null (zl-sys::%gf-with-qualifier methods nil)) (error "No applicable primary method."))
+        (t (zl-sys::%gf-invoke gf (append (zl-sys::%gf-with-qualifier methods '(:around)) (list :core)) args methods))))
 
 (defun zl-sys::%gf-next (gf current next original all newargs)
   (let ((args (if newargs newargs original)))
@@ -268,6 +286,7 @@
 
 (defun zl-sys::%gf-dispatch (d args)
   (zl-sys::%gf-count d args)
+  (dolist (arg args) (zl-sys::%ensure-current-instance arg))
   (let ((key (mapcar (lambda (p)
                        (let ((arg (nth (car p) args)))
                          (cons (zl-sys::%class-stamp (class-of arg))
@@ -276,20 +295,25 @@
     (multiple-value-bind (methods foundp) (gethash key (svref d 4))
       (unless foundp
         (setq methods (compute-applicable-methods (svref d 5) args))
-        (setf (gethash key (svref d 4)) methods))
+        (setf (gethash key (svref d 4)) methods)
+        (dolist (p (svref d 7))
+          (zl-sys::%register-class-cache (class-of (nth (car p) args)) (svref d 4) :dispatch)))
       (zl-sys::%gf-keywords d methods args)
-      (zl-sys::%gf-invoke (svref d 5) methods args methods))))
+      (zl-sys::%gf-effective (svref d 5) methods args))))
 
-(defun zl-sys::%install-method (name ll specializers function)
+(defun zl-sys::%install-method (name ll specializers function &optional qualifiers)
   (let* ((gf (if (fboundp name) (fdefinition name) (zl-sys::%ensure-generic name (zl-sys::%gf-normalize-ll ll) nil)))
-         (method (zl-sys::%make-method (vector specializers function ll nil (zl-sys::%gf-signature ll)))))
+         (method (zl-sys::%make-method (vector specializers function ll nil (zl-sys::%gf-signature ll) qualifiers))))
     (unless (typep gf 'generic-function) (zl-sys::%gf-error "An ordinary function already has this name."))
     (add-method gf method)
     method))
 
 (defmacro defmethod (name &rest definition)
-  (unless (and definition (listp (car definition)))
-    (error 'zilisp:unimplemented :format-control "Method qualifiers (P29)"))
+  (let ((qualifiers nil))
+    (loop while (and definition (not (listp (car definition)))) do (push (pop definition) qualifiers))
+    (setq qualifiers (nreverse qualifiers))
+    (unless (and definition (member qualifiers '(nil (:around) (:before) (:after)) :test 'equal))
+      (zl-sys::%macro-form-error "Invalid standard method qualifiers" qualifiers))
   (let ((plain nil) (specializers nil) (state :required) (body (cdr definition))
         (next (gensym)) (args (gensym)) (all (gensym)) (gf (gensym)) (self (gensym)) (decls nil))
     (dolist (p (car definition))
@@ -310,9 +334,12 @@
     `(zl-sys::%install-method ',name ',plain (list ,@specializers)
        (function (lambda (,next ,args ,all ,gf ,self ,@(zl-sys::%gf-method-ll plain))
                    ,@(nreverse decls)
-                   (flet ((call-next-method (&rest newargs) (zl-sys::%gf-next ,gf ,self ,next ,args ,all newargs))
-                          (next-method-p () (if ,next t nil)))
-                     (block ,(if (consp name) (cadr name) name) ,@body)))))))
+                   ,(if (member (car qualifiers) '(:before :after))
+                        `(block ,(if (consp name) (cadr name) name) ,@body)
+                        `(flet ((call-next-method (&rest newargs) (zl-sys::%gf-next ,gf ,self ,next ,args ,all newargs))
+                                (next-method-p () (if ,next t nil)))
+                           (block ,(if (consp name) (cadr name) name) ,@body)))))
+       ',qualifiers))))
 
 (defgeneric no-applicable-method (generic-function &rest args))
 (defmethod no-applicable-method (generic-function &rest args)

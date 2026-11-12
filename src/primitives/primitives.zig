@@ -510,6 +510,8 @@ pub const sys_table = [_]Entry{
     .{ .name = "%MAKE-INSTANCE", .impl = clos.sysMakeInstance, .min = 2, .max = 2 },
     .{ .name = "%INSTANCE-P", .impl = clos.sysInstanceP, .min = 1, .max = 1 },
     .{ .name = "%INSTANCE-CLASS", .impl = clos.sysInstanceClass, .min = 1, .max = 1 },
+    .{ .name = "%INSTANCE-STAMP", .impl = clos.sysInstanceStamp, .min = 1, .max = 1 },
+    .{ .name = "%REPLACE-INSTANCE", .impl = clos.sysReplaceInstance, .min = 2, .max = 2 },
     .{ .name = "%INSTANCE-REF", .impl = clos.sysInstanceRef, .min = 2, .max = 2 },
     .{ .name = "%INSTANCE-SET", .impl = clos.sysInstanceSet, .min = 3, .max = 3 },
     .{ .name = "%MAKE-CLASS", .impl = clos.sysMakeClass, .min = 3, .max = 3 },

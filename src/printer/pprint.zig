@@ -49,6 +49,7 @@ fn compoundObject(v: Value) bool {
         .simple_vector, .array => !arrays.isStringLike(v),
         // 構造体（SBCL の compound-object-p も instance を含む。Phase 26）
         .structure => true,
+        .instance => @import("../primitives/clos.zig").instance(v).header.flags & 1 == 0,
         else => false,
     };
     return false;
@@ -217,8 +218,9 @@ fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
         else => {},
     };
     // condition・restart・構造体：Lisp の印字の関数（zl-sys::%print-record。boot.lisp）で書く（Phase 25・26）
-    if (v.isOther() and (Runtime.kindOf(v) == .record or Runtime.kindOf(v) == .structure or
-        (Runtime.kindOf(v) == .instance and @import("../primitives/clos.zig").instance(v).header.flags & 1 != 0)))
+    if (@import("../primitives/generic.zig").isGeneric(v) or
+        (v.isOther() and (Runtime.kindOf(v) == .record or Runtime.kindOf(v) == .structure or
+            Runtime.kindOf(v) == .instance or Runtime.kindOf(v) == .class or Runtime.kindOf(v) == .method)))
     {
         const f = th.rt.symbolPtr(th.rt.sys_print_record).function;
         if (f.isFunctionPointer()) {

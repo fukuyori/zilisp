@@ -1144,7 +1144,11 @@ pub const Package = struct {
 `src/lisp/clos.lisp` がCPLとスロットを計算し、`src/primitives/clos.zig` が低水準操作を担当する。
 condition・restartもinstanceとrackに移行した。この2種のrackは互換性のためスロットベクタへの参照を保持し、標準インスタンスのrackはスロットを直接並べる。
 構造体本体の直接配置は保ち、公開クラスへの対応を追加した。
-範囲・比較計測・受け入れ例は `clos-phase27-plan.ja.md`。P28の総称関数とP29の再定義は未実装。
+範囲・比較計測・受け入れ例は `clos-phase27-plan.ja.md`。
+P28で呼び出し可能な総称関数とprimaryメソッドを追加した（`clos-phase28-plan.ja.md`）。
+組み込み・condition・構造体を含む一意なクラスstampをディスパッチとアクセサのキャッシュに使う。
+現在のキャッシュは適用可能なメソッドの順序つき列を保持し、有効メソッド関数のコンパイルは行わない。
+修飾子・初期化フック・再定義と旧rack更新はP29。以下の選択的失効と旧インスタンスの手順はP29の設計である。
 
 ```zig
 pub const Class = struct {

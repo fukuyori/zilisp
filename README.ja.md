@@ -64,10 +64,12 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
   読み取り。印字は SBCL 2.6.7 と同じ形
 - 時刻：`get-universal-time`・`get-decoded-time`・`decode-universal-time`・`encode-universal-time`
 - CLOSの基本：`defclass`・`find-class`・`class-of`・`make-instance`、多重継承、共有スロット、
-  `slot-value` の読み書き・未束縛化・存在判定。総称アクセサは後のPhaseで実装する
+  `slot-value` の読み書き・未束縛化・存在判定
+- 総称関数：primaryメソッド、多重・クラス・EQLディスパッチ、引数優先順位、次メソッド呼び出し、
+  総称アクセサ、メソッド管理、`print-object`・`print-unreadable-object`
 
 未実装（後の版で実装する予定）：
-複素数、CLOSの総称関数・メソッド・クラス再定義。
+複素数、CLOSのメソッド修飾子・初期化フック・クラス再定義。
 
 ## インストール
 

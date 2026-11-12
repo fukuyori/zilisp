@@ -5,6 +5,10 @@
 ## Unreleased
 
 ### Added
+- Phase 28: callable generic functions, primary methods, multiple and EQL dispatch, argument precedence,
+  next-method calls, method management, generic class accessors and `print-object`/`print-unreadable-object`.
+  Dispatch and slot caches use unique stamps for standard, built-in, condition and structure classes.
+  Scope and validation: `docs/clos-phase28-plan.md`; qualifiers and initialization hooks follow in P29.
 - Fixed six P27 Claude Code review findings: duplicate/LIST slot names, non-simple vector/string class lookup,
   accepting `:type` declarations, cross-kind class guards and cache refresh, `slot-exists-p` for arbitrary objects
   and structures, and restart's metaclass. Guards preserve repeated initialization of the same Runtime.

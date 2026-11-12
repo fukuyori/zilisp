@@ -1303,7 +1303,11 @@ properties register names and cache public classes, without a separate `Runtime.
 Conditions and restarts now use instances and racks. Their racks retain a slot-vector reference for compatibility; standard racks hold inline slots.
 Structures retain direct storage and gain a mapping to public classes.
 Scope, measurements, and acceptance cases are in `clos-phase27-plan.md`.
-P28 generic functions and P29 redefinition remain unimplemented.
+P28 adds callable generic functions and primary methods; see `clos-phase28-plan.md`.
+Dispatch and accessor caches use unique class stamps, including built-in, condition and structure classes.
+The current cache stores ordered applicable methods; it does not yet compile effective method functions.
+P29 adds qualifiers, initialization hooks and redefinition/obsolete-rack handling.
+The selective invalidation and obsolete-instance procedures below describe that future P29 work.
 
 ```zig
 pub const Class = struct {

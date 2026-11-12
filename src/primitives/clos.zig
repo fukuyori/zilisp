@@ -4,6 +4,7 @@ const object = @import("../values/object.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const Thread = @import("../runtime/thread.zig").Thread;
 const arrays = @import("arrays.zig");
+const function = @import("../runtime/function.zig");
 
 pub fn isKind(v: Value, k: object.ObjKind) bool {
     return v.isOther() and Runtime.kindOf(v) == k;
@@ -76,8 +77,9 @@ pub fn sysMakeClass(th: *Thread, args: []const Value) Value {
     if (!isKind(args[0], .simple_vector) or !args[1].isFixnum()) return th.typeError(args[0], th.rt.syms.@"simple-vector");
     if (Runtime.vectorPtr(args[0]).items().len < 2 or args[1].asFixnum() < 0 or args[1].asFixnum() > 3)
         return th.typeError(args[0], th.rt.syms.@"simple-vector");
+    if (!args[2].isFixnum() or args[2].asFixnum() <= 0) return th.typeError(args[2], th.rt.t);
     const c = th.rt.heap.create(object.Class, 0) catch return th.outOfMemory();
-    c.* = .{ .header = .{ .kind = .class, .aux = @intCast(args[1].asFixnum()) }, .descriptor = args[0] };
+    c.* = .{ .header = .{ .kind = .class, .aux = @intCast(args[1].asFixnum()) }, .descriptor = args[0], .stamp = @intCast(args[2].asFixnum()) };
     th.mv_count = 1;
     return Value.fromPointer(c, .other);
 }
@@ -93,13 +95,21 @@ pub fn sysClassDescriptor(th: *Thread, args: []const Value) Value {
 pub fn sysRefreshClass(th: *Thread, args: []const Value) Value {
     if (!isKind(args[0], .class) or !isKind(args[1], .simple_vector) or Runtime.vectorPtr(args[1]).items().len < 2)
         return th.typeError(args[0], (th.rt.findSymbol(th.rt.cl, "CLASS") orelse unreachable).symbol);
+    if (!args[2].isFixnum() or args[2].asFixnum() <= 0) return th.typeError(args[2], th.rt.t);
     class(args[0]).descriptor = args[1];
+    class(args[0]).stamp = @intCast(args[2].asFixnum());
     th.mv_count = 1;
     return args[0];
 }
+pub fn sysClassStamp(th: *Thread, args: []const Value) Value {
+    if (!isKind(args[0], .class)) return th.typeError(args[0], th.rt.t);
+    th.mv_count = 1;
+    return Value.fromFixnum(@intCast(class(args[0]).stamp));
+}
 pub fn sysBuiltinName(th: *Thread, args: []const Value) Value {
     const v = args[0];
-    const name: []const u8 = if (v == Value.nil) "NULL" else if (v.isFixnum()) "FIXNUM" else if (v.isCons()) "CONS" else if (v.isChar()) "CHARACTER" else if (v.isSingleFloat()) "SINGLE-FLOAT" else if (v.isFunctionPointer()) "FUNCTION" else switch (Runtime.kindOf(v) orelse return th.typeError(v, th.rt.t)) {
+    const name: []const u8 = if (v == Value.nil) "NULL" else if (v.isFixnum()) "FIXNUM" else if (v.isCons()) "CONS" else if (v.isChar()) "CHARACTER" else if (v.isSingleFloat()) "SINGLE-FLOAT" else if (v.isFunctionPointer()) (if (function.kindOfFunction(v) == .generic_function) "STANDARD-GENERIC-FUNCTION" else "FUNCTION") else switch (Runtime.kindOf(v) orelse return th.typeError(v, th.rt.t)) {
+        .method => "STANDARD-METHOD",
         .symbol => "SYMBOL",
         .string => "SIMPLE-STRING",
         .simple_vector => "SIMPLE-VECTOR",

@@ -28,6 +28,22 @@ pub const FunctionHeader = extern struct {
     entry: Entry,
 };
 
+pub const GenericFunction = extern struct {
+    header: ObjHeader,
+    entry: Entry,
+    name: Value,
+    dispatcher: Value,
+    descriptor: Value,
+};
+
+pub fn genericPtr(v: Value) *GenericFunction {
+    return @ptrCast(@alignCast(v.pointer()));
+}
+
+pub fn genericEntry(th: *Thread, self: Value, args: [*]const Value, nargs: u32) callconv(.c) Value {
+    return th.call(genericPtr(self).dispatcher, args[0..nargs]);
+}
+
 /// バイトコードと定数表。header.len はバイトコードのバイト数
 pub const Code = extern struct {
     header: ObjHeader,
@@ -93,6 +109,7 @@ pub const NativeFunction = extern struct {
 };
 
 comptime {
+    std.debug.assert(@offsetOf(GenericFunction, "entry") == @offsetOf(FunctionHeader, "entry"));
     std.debug.assert(@offsetOf(Closure, "entry") == @offsetOf(FunctionHeader, "entry"));
     std.debug.assert(@offsetOf(NativeFunction, "entry") == @offsetOf(FunctionHeader, "entry"));
 }

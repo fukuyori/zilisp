@@ -1,0 +1,30 @@
+
+("a" "b" 8 T) 
+("c" 9) 
+(:CHILD :BASE :T NIL) 
+(T T T) 
+(:Y :X) 
+(:TWO :INTEGER :TWO :INTEGER) 
+:NEW 
+(T T NIL 2) 
+:NO-METHOD 
+:NEW 
+(11 2 3) 
+:NO-NEXT 
+(2 3 (:BASE 2)) 
+:BAD-KEY 
+NIL 
+:BAD-KEY 
+((1 9) (1 2)) 
+:RETURNED 
+("#<G-BASE named>" "(#<G-BASE nested>)") 
+(:SPECIAL :OTHER :SPECIAL) 
+("base" "mixed" "base" 42) 
+:UNBOUND 
+(:CAPTURED) 
+(:CONDITION :STRUCTURE :CLASS :METHOD :GENERIC :VECTOR :STRING :OTHER :VECTOR
+ :STRING) 
+("custom" "structure") 
+:INVALID-ORDER 
+:Y 
+:INCONGRUENT 

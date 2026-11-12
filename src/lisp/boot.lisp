@@ -2303,6 +2303,8 @@
 
 (defun zl-sys::%set-structure-printer (name function)
   (setf (svref (zl-sys::%structure-class name) 5) function)
+  (when (fboundp 'zl-sys::%register-structure-printer-method)
+    (zl-sys::%register-structure-printer-method name))
   name)
 
 (defun zl-sys::%set-structure-reader (name function)

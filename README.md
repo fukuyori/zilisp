@@ -70,9 +70,11 @@ Added after 0.3.0 (planned for 0.4):
   and reading `#S(...)`; printing has the same form as SBCL 2.6.7
 - Time: `get-universal-time`, `get-decoded-time`, `decode-universal-time` and `encode-universal-time`
 - CLOS basics: `defclass`, `find-class`, `class-of`, `make-instance`, multiple inheritance,
-  shared slots, and slot reading, writing, unbinding and existence checks. Generic accessors follow in a later phase.
+  shared slots, and slot reading, writing, unbinding and existence checks.
+- Generic functions: primary methods, multiple/class/EQL dispatch, argument precedence, next-method calls,
+  generic accessors, method management, `print-object` and `print-unreadable-object`.
 
-Not yet implemented (planned for later releases): complex numbers, CLOS generic functions, methods and class redefinition.
+Not yet implemented (planned for later releases): complex numbers, CLOS method qualifiers, initialization hooks and class redefinition.
 
 Error messages are currently written in Japanese.
 

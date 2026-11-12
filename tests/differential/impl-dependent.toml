@@ -400,3 +400,19 @@ sbcl = "コンマは専用のオブジェクト（ふつうのリストとは別
 zilisp = "コンマはふつうのリスト (zl-sys:unquote x)・(zl-sys:unquote-splicing x)・(zl-sys:unquote-nsplicing x)。これらのシンボルを直接書いたリストは、コンマを書いたのと同じに扱う：backquote の中では展開され（`(a (zl-sys:unquote b)) は `(a ,b) と同じ）、ドットのすぐ後の (zl-sys:unquote-splicing x)・(zl-sys:unquote-nsplicing x) は `(a . ,@x) と同じく reader-error（Phase 26。Codex のレビュー 15 回目。直さないと決めた）"
 clhs = "2.4.6 Backquote（backquote の読み取りの結果の表し方は処理系依存。※原文は未確認）"
 since = "Phase 26"
+
+[[items]]
+id = "generic-recursion-resource-limit"
+description = "Lispディスパッチャを介する総称関数の再帰で消費するVM・ネイティブのフレーム数"
+sbcl = "(defmethod g-deep ((n integer)) (if (= n 0) 0 (1+ (g-deep (1- n))))) の600段が成功（2.6.10.168で実測）"
+zilisp = "40段は成功、600段はstorage-conditionでトップレベルに戻る。通常のdefunより中間フレームが多い。上限は緩めず、VM再入・中間フレームの削減はtque #541。スタック枯渇時にhandlerを動かさない既存の制限も適用される"
+clhs = "資源上限の実測記録。特定の再帰段数が保証されるという主張ではない"
+since = "Phase 28"
+
+[[items]]
+id = "generic-rest-method-key-check"
+description = "総称関数が&restだけ、適用メソッドが&keyを持つ場合の不明キー検査"
+sbcl = "2.6.10.168の既定設定では不明キーを受理する（明示GFと、&restメソッドを先に定義する暗黙GFで実測）"
+zilisp = "CLHS 7.6.5に従ってprogram-error。適用メソッドにも&keyがないときの任意のrest引数は受理する"
+clhs = "7.6.5 Keyword Arguments in Generic Functions and Methods（https://www.lispworks.com/documentation/HyperSpec/Body/07_fe.htm、2026-11-12確認）"
+since = "Phase 28"

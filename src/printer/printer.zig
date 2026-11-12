@@ -341,6 +341,11 @@ const P = struct {
                 if (p.s.readably) return p.notReadable(v);
                 return w.print("#<PPRINT-DISPATCH-TABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
             },
+            .generic_function => return w.writeAll("#<GENERIC-FUNCTION>"),
+            .method => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.print("#<STANDARD-METHOD {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
             .rack => {
                 if (p.s.readably) return p.notReadable(v);
                 return w.writeAll("#<RACK>");
@@ -762,6 +767,11 @@ fn writeCased(w: *Writer, name: []const u8, case: Case, rt_case: reader.Case) Wr
 fn printFunction(rt: *Runtime, w: *Writer, v: Value) Writer.Error!void {
     const function = @import("../runtime/function.zig");
     switch (function.kindOfFunction(v)) {
+        .generic_function => {
+            try w.writeAll("#<STANDARD-GENERIC-FUNCTION ");
+            try prin1(rt, w, function.genericPtr(v).name);
+            return w.writeByte('>');
+        },
         .native_function => {
             try w.writeAll("#<FUNCTION ");
             try prin1(rt, w, function.nativePtr(v).name);

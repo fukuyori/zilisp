@@ -797,7 +797,10 @@ pub const Resolver = struct {
             if (s.hasFlag(SymbolFlags.special_operator))
                 return r.fail(.program_error, "特殊演算子の名前は局所関数の名前にできません", name);
             // CL パッケージのシンボルは局所関数の名前にできない（CLHS 11.1.2.1.2。SBCL 2.6.7 ではパッケージのロックのエラー）
-            if (s.package == r.rt.cl.obj)
+            // CLOS の次メソッド関数は、DEFMETHOD が局所的に束縛する。
+            if (s.package == r.rt.cl.obj and
+                name != (r.rt.findSymbol(r.rt.cl, "CALL-NEXT-METHOD") orelse unreachable).symbol and
+                name != (r.rt.findSymbol(r.rt.cl, "NEXT-METHOD-P") orelse unreachable).symbol)
                 return r.fail(.program_error, "COMMON-LISP パッケージのシンボルは局所関数の名前にできません", name);
             names[i] = name;
             bodies[i] = parts[1..];

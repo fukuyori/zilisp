@@ -45,6 +45,8 @@ pub const ObjKind = enum(u8) {
     class,
     instance,
     rack,
+    generic_function,
+    method,
     _,
 };
 
@@ -255,7 +257,8 @@ pub const Record = extern struct {
     slots: Value,
 };
 
-pub const Class = extern struct { header: ObjHeader, descriptor: Value };
+pub const Class = extern struct { header: ObjHeader, descriptor: Value, stamp: u64 };
+pub const Method = extern struct { header: ObjHeader, descriptor: Value };
 pub const Instance = extern struct { header: ObjHeader, class: Value, rack: Value };
 pub const Rack = extern struct {
     header: ObjHeader,

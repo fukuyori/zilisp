@@ -94,6 +94,16 @@ const Marker = struct {
                     const f: *function.NativeFunction = @ptrFromInt(e);
                     m.markValue(f.name);
                 },
+                .generic_function => {
+                    const f: *function.GenericFunction = @ptrFromInt(e);
+                    m.markValue(f.name);
+                    m.markValue(f.dispatcher);
+                    m.markValue(f.descriptor);
+                },
+                .method => {
+                    const method: *object.Method = @ptrFromInt(e);
+                    m.markValue(method.descriptor);
+                },
                 .value_cell => {
                     const c: *object.ValueCell = @ptrFromInt(e);
                     m.markValue(c.value);

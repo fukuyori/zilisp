@@ -31,6 +31,53 @@ const Env = struct {
     }
 };
 
+test "P28 stamps cover all dispatch classes and changed next arguments are checked" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    try expectValue(&e,
+        \\(defclass p28-stamp () ())
+        \\(defstruct p28-structure)
+        \\(let* ((classes (mapcar #'find-class '(p28-stamp p28-structure integer string condition class generic-function method)))
+        \\       (stamps (mapcar #'zl-sys::%class-stamp classes)))
+        \\  (list (every #'plusp stamps) (= (length stamps) (length (remove-duplicates stamps)))
+        \\        (equal stamps (mapcar #'zl-sys::%class-stamp classes))))
+    , "(T T T)");
+    // CL requires the applicable ordered method set to remain unchanged when
+    // CALL-NEXT-METHOD receives replacement arguments. SBCL's default policy
+    // does not diagnose every violation, so this belongs in unit tests.
+    try expectValue(&e,
+        \\(defmethod p28-next ((x t)) :base)
+        \\(defmethod p28-next ((x integer)) (call-next-method "changed"))
+        \\(handler-case (p28-next 1) (program-error () :changed-methods))
+    , ":CHANGED-METHODS");
+    try expectValue(&e,
+        \\(defmethod p28-depth ((n integer)) (if (= n 0) 0 (1+ (p28-depth (1- n)))))
+        \\(p28-depth 40)
+    , "40");
+    // #541: the Lisp dispatcher uses more VM/native frames per logical call.
+    // Preserve bounded failure instead of loosening the stack safety limit.
+    try expectError(&e, "(p28-depth 600)", .storage_condition);
+    try expectValue(&e,
+        \\(list (handler-case (eval '(defclass p28-conflict () ((x :reader p28-same :writer p28-same))))
+        \\        (program-error () :conflict))
+        \\      (find-class 'p28-conflict nil))
+    , "(:CONFLICT NIL)");
+    // CLHS 7.6.5 requires keyword checking even if only an applicable method
+    // has &KEY. SBCL 2.6.10.168 does not diagnose these cases by default.
+    try expectValue(&e,
+        \\(defgeneric p28-rest (x &rest args))
+        \\(defmethod p28-rest ((x integer) &key a) a)
+        \\(defmethod p28-reversed ((x integer) &rest args) args)
+        \\(defmethod p28-reversed ((x string) &key a) a)
+        \\(list (handler-case (p28-rest 1 :unknown 2) (program-error () :unknown))
+        \\      (handler-case (p28-reversed "s" :unknown 2) (program-error () :unknown))
+        \\      (handler-case (p28-rest 1 :a) (program-error () :odd))
+        \\      (p28-rest 1 :unknown 2 :allow-other-keys t)
+        \\      (p28-reversed 1 :arbitrary 2))
+    , "(:UNKNOWN :UNKNOWN :ODD NIL (:ARBITRARY 2))");
+}
+
 test "P27 preserves public class identity and rejects cross-kind definitions" {
     var e: Env = undefined;
     try e.init();

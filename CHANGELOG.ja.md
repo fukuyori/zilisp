@@ -5,6 +5,10 @@
 ## Unreleased
 
 ### Added
+- Phase 28：呼び出し可能な総称関数、primaryメソッド、多重・EQLディスパッチ、引数優先順位、
+  次メソッド呼び出し、メソッド管理、総称クラスアクセサ、`print-object`・`print-unreadable-object`を追加。
+  標準・組み込み・condition・構造体クラスの一意なstampをディスパッチとスロットのキャッシュに使う。
+  範囲と検証は `docs/clos-phase28-plan.ja.md`。修飾子と初期化フックはP29。
 - P27のClaude Codeレビュー6件を修正：重複スロットとLISTスロット、非単純ベクタ・文字列のクラス判定、
   `:type`宣言の受理、クラス種別の変更防止とキャッシュ更新、任意オブジェクト・構造体の`slot-exists-p`、restartのメタクラス。
   再定義ガードは同じRuntimeの再初期化も維持する。回帰試験と記録は `docs/clos-phase27-claude-review.ja.md`。

@@ -29,6 +29,7 @@ const conditions = @import("conditions.zig");
 const time_mod = @import("time.zig");
 const structures = @import("structures.zig");
 const clos = @import("clos.zig");
+const generic = @import("generic.zig");
 
 const any = function.any_args;
 
@@ -511,10 +512,16 @@ pub const sys_table = [_]Entry{
     .{ .name = "%INSTANCE-CLASS", .impl = clos.sysInstanceClass, .min = 1, .max = 1 },
     .{ .name = "%INSTANCE-REF", .impl = clos.sysInstanceRef, .min = 2, .max = 2 },
     .{ .name = "%INSTANCE-SET", .impl = clos.sysInstanceSet, .min = 3, .max = 3 },
-    .{ .name = "%MAKE-CLASS", .impl = clos.sysMakeClass, .min = 2, .max = 2 },
+    .{ .name = "%MAKE-CLASS", .impl = clos.sysMakeClass, .min = 3, .max = 3 },
+    .{ .name = "%CLASS-STAMP", .impl = clos.sysClassStamp, .min = 1, .max = 1 },
+    .{ .name = "%MAKE-GENERIC", .impl = generic.makeGeneric, .min = 3, .max = 3 },
+    .{ .name = "%BUILTIN-PRINT-OBJECT", .impl = streams.builtinPrintObject, .min = 2, .max = 2 },
+    .{ .name = "%GENERIC-DATA", .impl = generic.genericData, .min = 1, .max = 1 },
+    .{ .name = "%MAKE-METHOD", .impl = generic.makeMethod, .min = 1, .max = 1 },
+    .{ .name = "%METHOD-DATA", .impl = generic.methodData, .min = 1, .max = 1 },
     .{ .name = "%CLASS-P", .impl = clos.sysClassP, .min = 1, .max = 1 },
     .{ .name = "%CLASS-DESCRIPTOR", .impl = clos.sysClassDescriptor, .min = 1, .max = 1 },
-    .{ .name = "%REFRESH-CLASS", .impl = clos.sysRefreshClass, .min = 2, .max = 2 },
+    .{ .name = "%REFRESH-CLASS", .impl = clos.sysRefreshClass, .min = 3, .max = 3 },
     .{ .name = "%BUILTIN-CLASS-NAME", .impl = clos.sysBuiltinName, .min = 1, .max = 1 },
     .{ .name = "%RECORD-P", .impl = conditions.sysRecordP, .min = 1, .max = 1 },
     .{ .name = "%RECORD-CLASS", .impl = conditions.sysRecordClass, .min = 1, .max = 1 },

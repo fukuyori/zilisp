@@ -576,10 +576,11 @@ fn scanLispPrinted(v: Value, budget: *usize, depth: usize) bool {
             x = c.cdr;
             continue;
         }
+        if (@import("generic.zig").isGeneric(x)) return true;
         if (!x.isOther() or x == Value.nil) return false;
         switch (Runtime.kindOf(x) orelse return false) {
             .record, .structure => return true,
-            .instance => return @import("clos.zig").instance(x).header.flags & 1 != 0,
+            .instance, .class, .method => return true,
             .simple_vector => {
                 if (depth > 1000) return true;
                 for (Runtime.vectorPtr(x).items()) |e| {
@@ -638,6 +639,22 @@ pub fn printTo(th: *Thread, w: *Io.Writer, v: Value, escape: ?bool) bool {
         },
     };
     return true;
+}
+
+/// Leaf fallback for PRINT-OBJECT on metaobjects. Bypass Lisp dispatch to
+/// avoid invoking PRINT-OBJECT again on the same object.
+pub fn builtinPrintObject(th: *Thread, args: []const Value) Value {
+    const s = outputDesignator(th, args[1]) orelse return Value.unwind;
+    var buf: Io.Writer.Allocating = .init(th.rt.gpa);
+    defer buf.deinit();
+    var bad: Value = Value.nil;
+    printer.writeObject(th.rt, &buf.writer, args[0], printer.Settings.current(th.rt, null), &bad) catch |err| switch (err) {
+        error.NotReadable => return th.signal(.print_not_readable, "読み戻せる形で印字できません", bad, Value.unbound),
+        error.WriteFailed => return th.outOfMemory(),
+    };
+    if (!emit(th, s, buf.written())) return Value.unwind;
+    th.mv_count = 1;
+    return args[0];
 }
 
 /// write・write-to-string のキーワードと、束縛する印字の変数

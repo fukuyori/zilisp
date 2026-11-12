@@ -307,7 +307,7 @@ fn validate(th: *Thread, spec: Value) Validity {
         if (classOf(rt, spec) != null) return .ok;
         if (rt.symbolPtr(spec).package != rt.cl.obj) return .invalid;
         const name = asciiName(rt, spec, &buf) orelse return .invalid;
-        if (inNames(name, &atomic_type_names) or inNames(name, &.{ "CLASS", "STANDARD-CLASS", "BUILT-IN-CLASS", "STRUCTURE-CLASS", "STANDARD-OBJECT" })) return .ok;
+        if (inNames(name, &atomic_type_names) or inNames(name, &.{ "CLASS", "STANDARD-CLASS", "BUILT-IN-CLASS", "STRUCTURE-CLASS", "STANDARD-OBJECT", "GENERIC-FUNCTION", "STANDARD-GENERIC-FUNCTION", "METHOD", "STANDARD-METHOD" })) return .ok;
         if (inNames(name, &unimplemented_type_names)) return .unimplemented;
         return .invalid;
     }
@@ -489,7 +489,9 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
         if (rt.symbolPtr(spec).package != rt.cl.obj) return unknown(th, spec);
         var buf: [64]u8 = undefined;
         const name = asciiName(rt, spec, &buf) orelse return unknown(th, spec);
-        if (std.mem.eql(u8, name, "STANDARD-OBJECT")) return (kindOf(v) == .instance and @import("clos.zig").instance(v).header.flags & 1 == 0) or kindOf(v) == .class;
+        if (std.mem.eql(u8, name, "GENERIC-FUNCTION") or std.mem.eql(u8, name, "STANDARD-GENERIC-FUNCTION")) return @import("generic.zig").isGeneric(v);
+        if (std.mem.eql(u8, name, "METHOD") or std.mem.eql(u8, name, "STANDARD-METHOD")) return kindOf(v) == .method;
+        if (std.mem.eql(u8, name, "STANDARD-OBJECT")) return (kindOf(v) == .instance and @import("clos.zig").instance(v).header.flags & 1 == 0) or kindOf(v) == .class or kindOf(v) == .method or @import("generic.zig").isGeneric(v);
         if (std.mem.eql(u8, name, "CLASS")) return kindOf(v) == .class;
         if (std.mem.eql(u8, name, "STANDARD-CLASS")) return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 0;
         if (std.mem.eql(u8, name, "BUILT-IN-CLASS")) return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 1;

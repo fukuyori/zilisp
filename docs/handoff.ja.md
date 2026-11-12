@@ -7,7 +7,7 @@
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。直前のコミットは `56e2a90`（P28、push済み）。この更新にP29の実装・試験・レビュー対応・文書更新を含む。現在のコミットと作業ツリーは `git log --oneline -3` と `git status -sb` で確認する。
+- ブランチ：`main`。実装の最新は `cbecfe1`（P29）、その前は `56e2a90`（P28）・`878edf9`（P27）。すべて `origin/main` にpush済み。今回の文書更新に処理系の変更はない。現在の状態は `git log --oneline -3` と `git status -sb` で再確認する。
 - **P29（#321、子#534・#535）は受け入れ完了**。standardのaround/before/after、初期化・再初期化、標準クラス再定義と子孫のCPL/スロット再計算、選択的キャッシュ失効、遅延rack更新、change-class、前方参照、find-classの登録・解除を追加した。実装は `src/lisp/clos-update.lisp` と `generic.lisp`。範囲・結果は `docs/clos-phase29-plan.ja.md`、レビューは `docs/clos-phase29-claude-review.ja.md`（英語原文も保存）。
   - Claude Codeは初回4件、限定再確認3件。別名とproper name、失敗時のplaceholderの後始末、legacyクラスの実体CPLを修正。SBCLの挙動予測が実測と違ったケースは記録し、実測と原文に基づいて扱った。初回1回・限定再確認1回で区切った。
   - 教材Level21-B完成コードはDEFCOMMANDの名前付きblock欠落を補正して比較した（SBCLも元コードにコンパイルエラーを報告）。Level21-Aの修飾子・初期化も比較した。候補A955件は一致566・both-error362・出力差1・Zilispのみエラー26・SBCLのみエラー0・timeout0。P28からの変化8件はすべて改善。結果は `compatibility/eval-check-sbcl-2.6.10-p29.tsv`。Readerは1079/23/5/0で同じ。
@@ -77,6 +77,24 @@
 - reader macro が持ち出した仮の値そのものを、利用者のコードが構造体以外の場所に入れた場合は、置き換わらずに残る（読んだ結果の外はたどれない。SBCL も内部の印が残る）。
 
 ## 3. 次の作業（tque）
+
+### 次のセッションで最初に行うこと
+
+1. Git・リリース・tqueをCLIで再確認する。完了タスクは既定の一覧で非表示になるため、#321に「対象なし」と出ても未登録とは限らない。タスクの保存ファイルを直接読まない。
+2. #323（P30）の範囲と受け入れを具体化する。子#341のmacrolet・symbol-macrolet・define-symbol-macro・環境オブジェクト・compiler-macroを調べ、with-slots/with-accessorsとREPL診断の統合順を決める。
+3. `compatibility/eval-check-sbcl-2.6.10-p29.tsv` の残るZilispのみエラー26件をLevel 1–21とそれ以降に分け、P30の対象だけを受け入れ一覧にする。教材の元コードの不備と未実装機能を区別する。
+4. P29の設計とレビュー対応を読んでから着手する。新しいPhaseの実装・受け入れ試験をそろえてレビューを依頼し、修正をまとめた後に固定ソースで重いネイティブ全体試験を行う。
+
+### P29を変更する際の実装上の注意
+
+- 標準クラス記述は16要素。9=self、10=直接のdefault-initargs、11=上位クラス実体、12=CPL実体、13=利用キャッシュ、14=予約、15=生成アクセサメソッド。名前でクラス同一性を判定しない。
+- 再定義では候補となる子孫の記述を検証してから公開し、旧stampのキャッシュだけを失効する。rackを先に交換してから更新フックを呼ぶ。共有→localの値と未束縛状態も保持する。
+- standard defclassを別名で実行した場合は新規クラス。同種のcondition/structureの別名定義は、SBCL実測に合わせて実体を更新しproper nameを保持する。ここを同じ処理にまとめない。
+- conditionのreaderはクラス実体を捕捉し、reportとlegacy CPLも実体で参照する。元名の解除後に名前で再解決すると不具合が再発する。
+- クラスレジストリは強参照。独自メタクラス・独自メソッド結合・弱参照回収は未実装。深い総称関数再帰の改善は#541。
+- 主な回帰試験：`clos-lifecycle.lisp`、`clos-lifecycle-review.lisp`、`clos-methods-level21.lisp`、`clos-castle.lisp`と同名のGC stress版。内部の選択的失効・rollback・SBCLとの差は `src/compiler/eval_test.zig` のP29試験。
+- 教材と実行ログの一時ファイルは `/tmp/zilisp-p28-curriculum`・`/tmp/zilisp-p29-review`。消える可能性があるため、根拠はリポジトリ内の計画・レビュー文書・比較TSVを優先する。
+
 
 - P28（#320）とstampの#536は完了。P29（#321・#534・#535）もtque CLIで完了にした。**次は #323（P30：標準ライブラリ統合・REPL診断）**。P27（#319）も完了。
   - P27ではrack方式を採用した。比較計測・受け入れ範囲・実装・検証結果は `docs/clos-phase27-plan.ja.md`（英語版 `docs/clos-phase27-plan.md`）。実装は `src/primitives/clos.zig` と `src/lisp/clos.lisp`。

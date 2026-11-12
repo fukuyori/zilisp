@@ -579,6 +579,7 @@ fn scanLispPrinted(v: Value, budget: *usize, depth: usize) bool {
         if (!x.isOther() or x == Value.nil) return false;
         switch (Runtime.kindOf(x) orelse return false) {
             .record, .structure => return true,
+            .instance => return @import("clos.zig").instance(x).header.flags & 1 != 0,
             .simple_vector => {
                 if (depth > 1000) return true;
                 for (Runtime.vectorPtr(x).items()) |e| {

@@ -31,6 +31,39 @@ const Env = struct {
     }
 };
 
+test "P27 preserves public class identity and rejects cross-kind definitions" {
+    var e: Env = undefined;
+    try e.init();
+    defer e.deinit();
+    try expectValue(&e,
+        \\(defclass cr-guard () ((x :initform 5)))
+        \\(defvar *cr-class* (find-class 'cr-guard))
+        \\(list (handler-case (eval '(define-condition cr-guard (error) ())) (error () :error))
+        \\      (handler-case (eval '(defstruct cr-guard x)) (error () :error))
+        \\      (handler-case (eval '(define-condition cr-bad-parent (cr-guard) ())) (error () :error))
+        \\      (handler-case (eval '(define-condition restart (error) ())) (error () :error))
+        \\      (slot-value (make-instance *cr-class*) 'x))
+    , "(:ERROR :ERROR :ERROR :ERROR 5)");
+    try expectValue(&e,
+        \\(define-condition cr-cache (error) ())
+        \\(defvar *cr-cache* (find-class 'cr-cache))
+        \\(define-condition cr-cache (error) ((x :initarg :x)))
+        \\(list (eq *cr-cache* (find-class 'cr-cache))
+        \\      (eq (zl-sys::%class-descriptor *cr-cache*) (get 'cr-cache 'zl-sys::%class)))
+    , "(T T)");
+}
+
+test "P27 class guards allow Runtime reuse across Threads" {
+    const rt = try Runtime.create(testing.allocator);
+    defer rt.destroy();
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    const first = try Thread.create(rt, &out.writer, .{});
+    first.destroy();
+    const second = try Thread.create(rt, &out.writer, .{});
+    defer second.destroy();
+}
+
 /// テキストのフォームを順に評価し、最後の値を返す（エラーなら Value.unwind）
 fn evalText(e: *Env, text: []const u8) !Value {
     var src = reader.Source.init(text, 0);

@@ -63,9 +63,11 @@ ANSI Common Lisp の完全な準拠は目指さず、範囲を決めた実用的
 - 構造体：`defstruct`（`:include`・`:constructor`・`:conc-name`・`:print-function` など）、`copy-structure`、`#S(…)` の印字と
   読み取り。印字は SBCL 2.6.7 と同じ形
 - 時刻：`get-universal-time`・`get-decoded-time`・`decode-universal-time`・`encode-universal-time`
+- CLOSの基本：`defclass`・`find-class`・`class-of`・`make-instance`、多重継承、共有スロット、
+  `slot-value` の読み書き・未束縛化・存在判定。総称アクセサは後のPhaseで実装する
 
 未実装（後の版で実装する予定）：
-複素数・CLOS。
+複素数、CLOSの総称関数・メソッド・クラス再定義。
 
 ## インストール
 

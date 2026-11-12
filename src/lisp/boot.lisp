@@ -1423,9 +1423,16 @@
 
 ;; クラスを定義する（define-condition の展開先）。direct-slots は (名前 initarg のリスト initform の関数か NIL) のリスト
 (defun zl-sys::%define-condition-class (name parents direct-slots report default-initargs)
+  (let ((old (get name 'zl-sys::%class)))
+    (when (or (get name 'zl-sys::%builtin-class)
+              (and old (not (member 'condition (svref old 1)))
+                   (not (and (eq name 'restart) (null parents)))))
+      (error "Cannot change the kind of class ~S." name)))
   (let* ((supers (cond (parents parents) ((member name '(condition restart)) nil) (t '(condition))))
          (class (vector name nil supers nil report default-initargs direct-slots)))
-    (dolist (s supers) (zl-sys::%find-class s))
+    (dolist (s supers)
+      (unless (member 'condition (svref (zl-sys::%find-class s) 1))
+        (error "Not a condition superclass: ~S." s)))
     (setf (get name 'zl-sys::%class) class)
     (setf (svref class 1) (zl-sys::%compute-cpl name supers))
     (setf (svref class 3) (zl-sys::%effective-slots (svref class 1)))
@@ -2281,6 +2288,10 @@
 ;; 構造体を定義する（defstruct の展開先。コンパイル時にも実行する：後ろの defstruct の :include が読む）。
 ;; 印字の関数は :include した構造体のものを引き継ぐ（:print-function・:print-object があれば、後で置き換える）
 (defun zl-sys::%define-structure (name include slots constructor)
+  (let ((old (get name 'zl-sys::%class)))
+    (when (or (get name 'zl-sys::%builtin-class)
+              (and old (not (member 'structure-object (svref old 1)))))
+      (error "Cannot change the kind of class ~S." name)))
   (let ((parent (if include (zl-sys::%structure-class include) nil)))
     (setf (get name 'zl-sys::%class)
           (vector name

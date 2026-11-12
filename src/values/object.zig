@@ -42,6 +42,9 @@ pub const ObjKind = enum(u8) {
     record,
     /// 構造体（Phase 26。src/primitives/structures.zig）。スロットは本体に直接並べる
     structure,
+    class,
+    instance,
+    rack,
     _,
 };
 
@@ -250,6 +253,22 @@ pub const Record = extern struct {
     header: ObjHeader,
     class: Value,
     slots: Value,
+};
+
+pub const Class = extern struct { header: ObjHeader, descriptor: Value };
+pub const Instance = extern struct { header: ObjHeader, class: Value, rack: Value };
+pub const Rack = extern struct {
+    header: ObjHeader,
+    stamp: u64,
+    layout: Value,
+    /// Legacy condition racks (flags & 1) reference a vector; standard racks
+    /// store their first slot here and the remaining slots immediately after it.
+    slots: Value,
+
+    pub fn values(r: *Rack) []Value {
+        const p: [*]Value = @ptrCast(&r.slots);
+        return p[0..r.header.len];
+    }
 };
 
 /// 構造体（Phase 26。defstruct）。class はクラスの記述（Lisp で作る simple-vector。位置 0 が名前、位置 1 が自身を含む

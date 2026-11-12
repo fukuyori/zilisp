@@ -1296,6 +1296,15 @@ pub const Package = struct {
 
 ### 10.1 Classes
 
+**P27 implementation (2026-11-12)**: the structure below is the logical design.
+The implementation uses `ObjKind.class` wrapping a Lisp descriptor vector; symbol
+properties register names and cache public classes, without a separate `Runtime.classes` table.
+`src/lisp/clos.lisp` computes CPLs and slots; `src/primitives/clos.zig` provides low-level operations.
+Conditions and restarts now use instances and racks. Their racks retain a slot-vector reference for compatibility; standard racks hold inline slots.
+Structures retain direct storage and gain a mapping to public classes.
+Scope, measurements, and acceptance cases are in `clos-phase27-plan.md`.
+P28 generic functions and P29 redefinition remain unimplemented.
+
 ```zig
 pub const Class = struct {
     header: ObjHeader,

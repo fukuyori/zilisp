@@ -69,8 +69,10 @@ Added after 0.3.0 (planned for 0.4):
 - Structures: `defstruct` (`:include`, `:constructor`, `:conc-name`, `:print-function`, ...), `copy-structure`, and printing
   and reading `#S(...)`; printing has the same form as SBCL 2.6.7
 - Time: `get-universal-time`, `get-decoded-time`, `decode-universal-time` and `encode-universal-time`
+- CLOS basics: `defclass`, `find-class`, `class-of`, `make-instance`, multiple inheritance,
+  shared slots, and slot reading, writing, unbinding and existence checks. Generic accessors follow in a later phase.
 
-Not yet implemented (planned for later releases): complex numbers and CLOS.
+Not yet implemented (planned for later releases): complex numbers, CLOS generic functions, methods and class redefinition.
 
 Error messages are currently written in Japanese.
 

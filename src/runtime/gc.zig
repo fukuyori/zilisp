@@ -130,6 +130,20 @@ const Marker = struct {
                     m.markValue(t.other);
                     m.markValue(t.dispatch);
                 },
+                .class => {
+                    const c: *object.Class = @ptrFromInt(e);
+                    m.markValue(c.descriptor);
+                },
+                .instance => {
+                    const i: *object.Instance = @ptrFromInt(e);
+                    m.markValue(i.class);
+                    m.markValue(i.rack);
+                },
+                .rack => {
+                    const r: *object.Rack = @ptrFromInt(e);
+                    m.markValue(r.layout);
+                    if (r.header.flags & 1 != 0) m.markValue(r.slots) else for (r.values()) |v| m.markValue(v);
+                },
                 .record => {
                     const r: *object.Record = @ptrFromInt(e);
                     m.markValue(r.class);

@@ -217,7 +217,9 @@ fn outputUgly(th: *Thread, stream: Value, v: Value) Fail!void {
         else => {},
     };
     // condition・restart・構造体：Lisp の印字の関数（zl-sys::%print-record。boot.lisp）で書く（Phase 25・26）
-    if (v.isOther() and (Runtime.kindOf(v) == .record or Runtime.kindOf(v) == .structure)) {
+    if (v.isOther() and (Runtime.kindOf(v) == .record or Runtime.kindOf(v) == .structure or
+        (Runtime.kindOf(v) == .instance and @import("../primitives/clos.zig").instance(v).header.flags & 1 != 0)))
+    {
         const f = th.rt.symbolPtr(th.rt.sys_print_record).function;
         if (f.isFunctionPointer()) {
             var argv: [2]Value = .{ v, stream };

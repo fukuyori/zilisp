@@ -1,15 +1,17 @@
-# Zilisp 引き継ぎ（2026-11-11）
+# Zilisp 引き継ぎ（2026-11-12）
 
-リポジトリ：`D:\home\source\zig\zilisp`（github fukuyori/zilisp）。この文書（`docs/handoff.ja.md`）の状態は、2026-11-11 の更新時にコマンドで確かめたもの。
+リポジトリ：`/home/fuk/source/zig/zilisp`（github fukuyori/zilisp）。2026-11-12にLinux環境で状態を確認した。Windows環境の以前の検証結果には、その日付を残してある。
 作業を引き継いだら、この文書を最新の状態に書き直すこと（古い状態を残さない）。
 次のセッションでは、報告の前に必ず `git status -sb`・`git log --oneline -3`・`gh release list`・`git ls-remote --tags origin`・`tque ls` で確かめ直すこと。
 
 ## 1. 今の状態
 
 - リリース：この文書には書かない。`gh release list` と `git ls-remote --tags origin` で確かめること。
-- ブランチ：`main`。2026-11-11 の更新時は `## main...origin/main` で、最後のコミットは `38dbfee`（README の見出しを分けた変更）。この文書の書き直しは、その次のコミットに入れる（コミットしたかは `git status -sb` と `git log --oneline -3` で確かめること）。
-- **Phase 26（defstruct）と時刻の関数は終わった**。tque の #318（P26）・#378（時刻）・#380（リストの中の condition の印字）は完了（2026-11-11、レモンの指示）。#317（P25）も完了。今は 0.4（#316。進み具合は 35%）の途中で、次のタスクは #319（P27 CLOS の class・instance・slot）。
-- 全体の検証（`verify_p215.ps1`）が最後に通ったのは `6d2cde7`（2026-11-11）。その後の `38dbfee` は文書だけの変更で、処理系のコードと試験は `6d2cde7` と同じ。
+- ブランチ：`main`。この更新にP27の実装・試験・設計メモ、Claude Codeのレビュー修正、SBCLの比較記録を含める。直前のコミットは `75ec814`（開発手順の改善）。現在のコミットと作業ツリーは `git log --oneline -3` と `git status -sb` で確認する。
+- **P27の受け入れ範囲は完了**。tque CLIで #319を完了にした（2026-11-12）。#317（P25）・#318（P26）・#378（時刻）・#380（conditionの印字）も完了。0.4（#316）の表示進捗は43%、次は #320（P28 総称関数・メソッド）。
+- P27の検証（Linux、Zig 0.17.1）：単体試験Debug・ReleaseSafe・ReleaseFast、lang-test 75/75、クロス5種が成功。ネイティブ全体は28本成功・13本コンパイル失敗の後、失敗分とCLOSの14本を固定ソースで再実行してすべて成功し、全41ケースをカバーした（通常・GC stress）。最終配置のCLOS試験はVM・ネイティブで個別確認済み。詳細と再試験の理由は `docs/clos-phase27-plan.ja.md`。教材の `.work/samples` がなく、reader-check・eval-checkは今回は未実施。Windows・macOSはクロスビルドのみ。
+  - Claude Codeのレビュー6件を修正した。記録は `docs/clos-phase27-claude-review.ja.md`。修正後は単体Debug、言語77/77、影響するネイティブ4/4（通常・GC stress）、最後のRuntime再初期化修正はP27限定試験とclos-reviewのVM通常・GC stressで確認した。全42ネイティブケースの再実行はしていない。
+- 以前のWindows環境での全体検証（`verify_p215.ps1`）が最後に通ったのは `6d2cde7`（2026-11-11）。以下はP27より前の結果。
   - 結果：test 3 モード、lang-test 73/73、native-test 40/40（Debug・ReleaseFast、通常と GC stress）、クロス 5 種、WSL の試験 126 passed・1 skipped・0 failed、reader-check・fmt、eval-check 一致 545・both-error 362・output-diff 1（Level 13 L455 のファイルのエラーの文面。処理系依存）・zilisp-error 47、起動時間の中央値 13.91 ms（ReleaseFast。最小 13.09 ms）。
   - 所要時間は 1,119 秒（約 19 分。ほかのビルドや試験と並行しないとき）。
   - reader-check の数（`zig build reader-check -- .work/samples`）：both-ok 1079、both-error 23、zilisp-only-error 5、sbcl-only-error 0。
@@ -67,14 +69,17 @@
 
 ## 3. 次の作業（tque）
 
-- **次のタスクは #319（P27 CLOS の class・instance・slot、rack 方式と直接配置の比較計測。受入：最小 CLOS サンプル）**。condition の `record` と構造体を CLOS のクラスにまとめるのもここ。新しい大きな機能なので、設計の検討から始める（§5 の「新しい Phase の始め方」）。その後は #320（P28）・#321（P29）。
+- **次は #320（P28 generic function・method・継承、受入：Level 21の基本動作）**。その後は #321（P29）。P27（#319）は完了。
+  - P27ではrack方式を採用した。比較計測・受け入れ範囲・実装・検証結果は `docs/clos-phase27-plan.ja.md`（英語版 `docs/clos-phase27-plan.md`）。実装は `src/primitives/clos.zig` と `src/lisp/clos.lisp`。
+  - #536（P28の子）：ディスパッチに使う組み込み・condition・構造体クラスのstamp割り当て。P27でstampを使うのは標準クラスで、古いrackの更新はP29。
+  - #534・#535（P29の子）：上位クラスの前方参照、`(setf find-class)` によるクラス名の登録・解除。
 - 0.4（#316）の下のほかの項目：
   - #344 P23 の受入の残り（Level 17 の text-tools を SBCL と比べる）。着手できる。
   - #349 印字の速さの改善（印字は SBCL の約 1.8 倍の時間）。
   - #350 exit・quit（`*exit-hooks*` を入れるかは未決定）。
   - #351 デバッガ：要件は `docs/debugger-requirements.ja.md`（英語版 `debugger-requirements.md`。v1.1、`b615282`）。外部のツール（GUI を含む）とエージェントとの連携を同じ重みで優先し、REPL のデバッガは後。0.4 に入れるのは段階 1（#356：中核の基本、`break`・`*break-on-signals*`、JSON の出力、MCP の最小）。調査の記録は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\dbg\survey\`。
     - 次にするのは要件の文書の v1.2（英日）。段階 1 に `assert` の場所の問い合わせを加える：`y-or-n-p`・`yes-or-no-p`（いまは未定義）を足し、`continue` の restart の `:interactive` で場所ごとに SBCL と同じ「The old value of X is 1.」「Do you want to supply a new value?  (y or n)」を出す（CLHS は `continue` の前に場所を変える機会を求める）。`*break-on-signals*`（Codex P25 1 回目 #7）も段階 1。
-- 親のないタスク：
+- 関連する残作業：
   - #377 印字の中の再帰でスタックが溢れるとプロセスが落ちる（重大度は高）。report の中で自分の condition を `~A` で印字する・`~/名前/` の中で同じ `~/名前/` を使う・`pprint-logical-block` の再帰・pprint-dispatch の関数の中で同じ型を印字すると、終了コード -1073741819 と `Stack overflow (no address available)` で落ちる（ふつうの関数の再帰は storage-condition になる）。`*print-circle*` なしで循環リストを印字しても落ちる（2026-11-11 に `(print (read-from-string "#1=(#2=#1# #2#)"))` で起きた）。構造体の `:print-function` の中で自分を印字する場合と、自分を指す構造体の `equalp` も同じ種類と推測される（※推測です。試していない）。Zig の関数を挟んだ入れ子の上限（`max_native_depth = 1000`。`src/runtime/thread.zig`）に届く前に Zig のスタックが溢れると推測される（※推測です。zilisp.exe のスタックの大きさは未確認）。直し方の案：生成した実行ファイルと同じ残りのスタックの検査（`src/native/rt.zig` の `stack_limit`）を `th.call` にも入れる。直す前にスタックの大きさと 1 段の使用量を測る。
   - #379 `type-of`・`subtypep`・`deftype`（`deftype` は呼ぶと `zilisp:unimplemented`）。
   - #533 backquote のコンマを専用のオブジェクトで表す（Codex P26 15 回目。backquote の展開・印字・ネイティブの定数の読み込みに及ぶ見込みで、範囲は未調査。設計の検討から始める）。
@@ -98,6 +103,7 @@
   3. 指摘は Zilisp と SBCL 2.6.7 で再現を確かめ、関連する修正と試験をまとめて行う。誤った入力を拒む修正では、拒むべき入力だけでなく「拒んではいけない形」も SBCL で確かめて試験に入れる（P26 の 13〜15 回目で、追加した検査が正しい入力まで拒む問題が続いた）。
   4. 再レビューは通常1回とし、修正箇所とその回帰に絞る。未解決の受け入れ条件、重大な正しさの問題、または試験失敗がある場合は、解消するまで追加レビューを行う。対象外の指摘や合意済みの制限は別タスクまたは処理系依存の項目に記録し、それだけを理由に現在の Phase を広げない。
   5. ソースを変更していないコミットにはレビューを依頼しない。関連する修正をまとめた後に fmt・`zig build test`・lang-test・native-test（Debug）・reader-check・eval-check を実行し、Phase の受け入れ時に ReleaseSafe・ReleaseFast・クロス・WSL を含む全体検証を行う。各 Phase のレビュー回数と、着手から受け入れまでの日数も記録し、見積もりを更新する。
+  - `native-test` は実行中もケースごとにランタイムをコンパイルする。検証対象のソースは終了まで固定し、並行して修正する場合は別のworktreeを使う。P27では実行中に編集したため13本がコンパイル段階で失敗し、失敗分の再実行が必要になった。
 - 新しい Phase の始め方（P26）：教材の使い方・設計書・既存のコードを調べ、決めること（表し方・範囲など）を案と推奨つきで短く示してから、受け入れ条件と対象外を決めて実装する。
 - 全体の検証のスクリプト：`C:\Users\n_fuk\AppData\Local\Temp\claude\D--home-source-zig-zilisp\e5761a66-3281-40a8-9ff1-762483b07fc1\scratchpad\verify_p215.ps1`（PowerShell でバックグラウンドで実行。約 19 分（native-test を並列にする前は約 70 分、lang-test・eval-check を並列にする前は 22〜28 分）。出力は最後にまとめて出る。要約は `Select-String '^== |passed|failed|eval-check:|startup|error:'`）。走っている間は作業ツリーのソースと試験を変えない（`zig-out` も作り直される）。変えるときは git worktree（例 `D:/tmp/zl_fixNN`）で作業し、検証が終わってから写す。
   - worktree で PowerShell の `Set-Location` を使っても、`[IO.File]::WriteAllText` などの .NET の関数の相対パスは元のディレクトリを指す（2026-11-06 に、メインのリポジトリのファイルに書いてしまい、すぐ戻した）。.NET の関数には絶対パスを渡す。
@@ -107,7 +113,7 @@
   - native-test は試験を並列に実行する（2026-11-11 から。`tools/native_test/main.zig`。並列の数は環境変数 `ZILISP_NATIVE_TEST_JOBS`、既定は論理プロセッサの数の半分で 1〜8。結果はすべて終わってから名前の順に出る）。38 ファイルの Debug は、順に実行すると約 37 分、8 並列で約 7 分（この機械は 8 コア 16 スレッド）。
 - Codex レビュー：`Get-Content <依頼.md> -Raw | codex exec -C 'D:\home\source\zig\zilisp' --skip-git-repo-check -s read-only --ephemeral --color never -o <結果.md> - *> <ログ>`。Codex には `zig-out` ではなく、コピーした実行ファイル（`...\scratchpad\codex\bin\zilisp.exe`）を使わせる（検証が `zig-out` を作り直すため。コミットの前のソースなら `zig build -p <scratchpad の別の場所>` で作ってコピーする）。依頼には「書けなければ `zilisp.exe --eval` で試す」と、直さないと決めたものの一覧を書く。Codex の指摘は、必ず Zilisp と SBCL で再現を確かめてから報告する。P25 の依頼と結果は `C:\Users\n_fuk\AppData\Local\Temp\claude\2b38cd32e55d8954\9f49964b-3593-43ef-814e-feeb4feff29d\scratchpad\codex\`。
 - 期待値の作り方：`sbcl --script <ファイル> 2>$null` の標準出力だけを、改行を LF にして BOM なしの UTF-8 で書く。`tests/language/eval/` の `.lisp` と `.expected` は `tests/language/gc-stress/` にも写す（`.args` も置く）。比べるときは、SBCL・Zilisp・`--gc-stress` の 3 つを比べる。
-- SBCL のソースは `D:\home\source\lisp\sbcl` にある（2026-11-10 にレモンが教えた。`git describe` は `sbcl-2.6.10-151-g5974545c3` で、比較に使う実行ファイルの 2.6.7 より新しい。読むだけ）。印字の形（`src/code/target-defstruct.lisp`）や時刻（`src/code/time.lisp`・`src/runtime/time.c`）の確認に使った。
+- このLinux環境のSBCLソースは `/home/fuk/source/lisp/sbcl`（読むだけ）。ソースと実行ファイルの版、および既存の2.6.7基準との比較結果は§6に記録した。以前のWindows環境では `D:\home\source\lisp\sbcl` を参照していた。
 - 文書の追記：設計書・CHANGELOG・この文書への追記は、scratchpad に Python のスクリプトを Write のツールで書いて実行した（置き換える文字列が 1 回だけ現れることを `assert` で確かめ、改行コードを元のファイルに合わせる。例：`...\scratchpad\doc14.py`）。言語試験への追記は `append.py 追加分のファイル 目印`。
 - tque：題名は 200 文字まで（超えると `InvalidInput`）。`tque add <題名> [--parent ID] [--dep ID]`、`tque done <ID>`、`tque ls --root 316`。
 - コミットのメッセージは scratchpad のファイル（BOM なしの UTF-8、改行は LF）に書いて `git commit -F <ファイル>` で渡す（PowerShell の here-string を `-F -` に流すと失敗した）。
@@ -129,6 +135,10 @@
 
 ## 6. 気づいたこと・未確認のこと
 
+- SBCL の版による動作差（2026-11-12 に確認）：この環境の `/usr/local/bin/sbcl` は `SBCL 2.6.10.168-29d0bbc7f`。ソースは `/home/fuk/source/lisp/sbcl`（`sbcl-2.6.10-168-g29d0bbc7f`、commit `29d0bbc7fc949ba7ede32740d45bf9881049692f`）。`tests/language/eval/*.lisp` 40 本を一時コピー上で `sbcl --script` により実行し、2.6.7 から作った `.expected` と照合したところ、38 本は一致し、`unicode.lisp` と `conditions.lisp` に差があった。期待値と互換性記録は変更していない。
+  - `unicode.lisp`：Unicode 15.0.0 基準の期待値に対し、2.6.10 では `ǅ` の行が `(453 NIL T T T)`・`(NIL NIL NIL 453)` から `(452 T T T T)`・`(T T T 454)` に変わり、印字も `ǅ` から `|ǅ|` になった。SBCL 2.6.10 のソースには Unicode 18.0.0 への更新がある。現在の差は `tests/differential/impl-dependent.toml` の `char-case-titlecase`・`reader-symbol-normalization` と関係する。
+  - `conditions.lisp`：2.6.10 では定数の `x = 3` を `check-type` で検査する例で、コンパイラが挿入した型検査の `SIMPLE-TYPE-ERROR` が出る。106行目のhandler-caseの例は `Value of X in X is 3, not a STRING.` を出力し、109行目からのstore-valueによる回復例では終了コード1で途中終了する。一方、`x` を `(read-from-string "3")` から取得する動的な例は、同じ2.6.10でも従来の `The value of X is 3, which is not of type STRING.` を出す。一般のcheck-typeの文面が一律に変わったという意味ではない。ソース履歴には `c48b71254`（`check-type` 展開の変更）がある。
+  - 以上は2.6.7基準の試験40本での照合であり、SBCL 全体の網羅比較ではない。既存の基準値は維持し、2.6.10 の結果は追加の比較対象として扱う。
 - リポジトリの直下に、空のディレクトリ `pathnames/pathnames/` と `x/sub/x/sub/` がある（2026-11-06 に存在を確認。2026-11-11 にも `pathnames`・`x` があることを確認。git は空のディレクトリを追跡しないので `git status` には出ない）。Phase 23 のパス名の試験で作られたもの（※推測です）。消すかどうかはレモンが判断する。
 - `#.` の中で標準入力を読み足す件の単体テストは、修正前のコードで失敗することを確かめていない。
 - 処理系依存の一覧（`tests/differential/impl-dependent.toml`）に、Phase 24 で 3 項目、Phase 25 で 5 項目、Phase 26 で 12 項目を足し（うち 1 項目は Phase 25 からの制限）、Phase 25 の「リストの中の condition の印字」を外した。2026-11-11 の時点で全体は 50 項目。

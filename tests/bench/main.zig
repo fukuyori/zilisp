@@ -22,13 +22,15 @@ const alloc = @import("alloc.zig");
 const gc = @import("gc.zig");
 const vm = @import("vm.zig");
 const nonlocal = @import("nonlocal.zig");
+const clos_layout = @import("clos_layout.zig");
 
 const benchmarks = [_]Benchmark{
     .{ .name = "baseline/empty-loop", .run = emptyLoop, .iterations = 100_000_000 },
     .{ .name = "prototype/tagged-fixnum-add", .run = taggedFixnumAdd, .iterations = 100_000_000 },
 } ++ group(nil_repr.benchmarks, 200_000_000) ++ group(alloc.benchmarks, 10_000_000) ++
     group(gc.collect_benchmarks, 20) ++ group(gc.churn_benchmarks, 50_000_000) ++
-    group(vm.benchmarks, 20) ++ group(nonlocal.benchmarks, 10_000_000) ++ group(nonlocal.deep_benchmarks, 200_000);
+    group(vm.benchmarks, 20) ++ group(nonlocal.benchmarks, 10_000_000) ++ group(nonlocal.deep_benchmarks, 200_000) ++
+    group(clos_layout.benchmarks, 10_000_000);
 
 fn group(comptime list: anytype, comptime iterations: u64) [list.len]Benchmark {
     var out: [list.len]Benchmark = undefined;

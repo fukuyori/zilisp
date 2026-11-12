@@ -1139,6 +1139,13 @@ pub const Package = struct {
 
 ### 10.1 クラス
 
+**P27の実装（2026-11-12）**：以下の構造は論理設計。実装では `ObjKind.class` がLispのクラス記述ベクタを保持し、
+シンボルの属性で名前を登録・公開クラスをキャッシュする（`Runtime.classes` の専用表は使わない）。
+`src/lisp/clos.lisp` がCPLとスロットを計算し、`src/primitives/clos.zig` が低水準操作を担当する。
+condition・restartもinstanceとrackに移行した。この2種のrackは互換性のためスロットベクタへの参照を保持し、標準インスタンスのrackはスロットを直接並べる。
+構造体本体の直接配置は保ち、公開クラスへの対応を追加した。
+範囲・比較計測・受け入れ例は `clos-phase27-plan.ja.md`。P28の総称関数とP29の再定義は未実装。
+
 ```zig
 pub const Class = struct {
     header: ObjHeader,

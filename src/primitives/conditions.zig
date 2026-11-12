@@ -1,5 +1,5 @@
 //! condition と restart の Zig の側（詳細設計 §9。Phase 25）。
-//! condition・restart は record（クラスの記述とスロットのベクタ）として表す。クラスの階層、handler・restart の通知、
+//! P27からcondition・restartはinstanceとrackで表す（%RECORD-*の入口は互換のため維持する）。クラスの階層、handler・restart の通知、
 //! report などは src/lisp/boot.lisp に Lisp で書く。ここには、record を作る・調べる基本の操作と、handler が受け止めなかった
 //! condition をトップレベルへ戻す操作を置く。
 
@@ -8,9 +8,10 @@ const Value = @import("../values/value.zig").Value;
 const object = @import("../values/object.zig");
 const Runtime = @import("../runtime/runtime.zig").Runtime;
 const Thread = @import("../runtime/thread.zig").Thread;
+const clos = @import("clos.zig");
 
 fn isRecord(v: Value) bool {
-    return v.isOther() and Runtime.kindOf(v) == .record;
+    return v.isOther() and (Runtime.kindOf(v) == .record or (Runtime.kindOf(v) == .instance and clos.instance(v).header.flags & 1 != 0));
 }
 
 fn recordPtr(v: Value) *object.Record {
@@ -26,10 +27,7 @@ pub fn sysMakeRecord(th: *Thread, args: []const Value) Value {
     if (!isSimpleVector(args[0]) or Runtime.vectorPtr(args[0]).items().len <= object.record_class_cpl)
         return th.typeError(args[0], th.rt.syms.@"simple-vector");
     if (!isSimpleVector(args[1])) return th.typeError(args[1], th.rt.syms.@"simple-vector");
-    const r = th.rt.heap.create(object.Record, 0) catch return th.outOfMemory();
-    r.* = .{ .header = .{ .kind = .record }, .class = args[0], .slots = args[1] };
-    th.mv_count = 1;
-    return Value.fromPointer(r, .other);
+    return clos.makeInstance(th, args[0], args[1], true);
 }
 
 /// ZILISP-SYSTEM::%RECORD-P 値
@@ -49,7 +47,7 @@ pub fn sysRecordClass(th: *Thread, args: []const Value) Value {
 pub fn sysRecordSlots(th: *Thread, args: []const Value) Value {
     if (!isRecord(args[0])) return th.typeError(args[0], sym(th, "CONDITION"));
     th.mv_count = 1;
-    return recordPtr(args[0]).slots;
+    return if (clos.isKind(args[0], .instance)) clos.rack(clos.instance(args[0]).rack).slots else recordPtr(args[0]).slots;
 }
 
 /// ZILISP-SYSTEM::%OBJECT-ADDRESS 値：オブジェクトのアドレス（#<… {アドレス}> の印字に使う。即値は 0）

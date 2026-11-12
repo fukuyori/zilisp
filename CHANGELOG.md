@@ -5,6 +5,15 @@
 ## Unreleased
 
 ### Added
+- Fixed six P27 Claude Code review findings: duplicate/LIST slot names, non-simple vector/string class lookup,
+  accepting `:type` declarations, cross-kind class guards and cache refresh, `slot-exists-p` for arbitrary objects
+  and structures, and restart's metaclass. Guards preserve repeated initialization of the same Runtime.
+  Regression coverage and reports are recorded in `docs/clos-phase27-claude-review.ja.md`.
+- Phase 27: rack-based standard instances, `defclass`, `find-class`, `class-name`, `class-of`, `make-instance`,
+  CLHS CPL computation, slot access/unbinding/existence checks, shared slots, and default initargs.
+  Conditions and restarts now use racks; structures participate in public class lookup.
+  Generic accessors follow in P28, redefinition and initialization hooks in P29.
+  Measurements and scope are in `docs/clos-phase27-plan.md`. New language-test expectations use SBCL 2.6.10.168.
 - Phase 26: `defstruct` (CLHS defstruct). The options `:conc-name`, `:constructor` (the keyword one and the ones with an
   argument list (BOA); several allowed), `:copier`, `:predicate`, `:include` (overriding the default, type and read-only of
   slots), `:print-function` and `:print-object`; the slot options `:type` (checked by constructors and `setf`, a type-error on

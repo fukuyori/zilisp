@@ -341,7 +341,18 @@ const P = struct {
                 if (p.s.readably) return p.notReadable(v);
                 return w.print("#<PPRINT-DISPATCH-TABLE {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
             },
-            .record => {
+            .rack => {
+                if (p.s.readably) return p.notReadable(v);
+                return w.writeAll("#<RACK>");
+            },
+            .class => {
+                if (p.s.readably) return p.notReadable(v);
+                const clos = @import("../primitives/clos.zig");
+                try w.writeAll("#<CLASS ");
+                try p.symbol(Runtime.vectorPtr(clos.class(v).descriptor).items()[0]);
+                return w.print(" {{{X}}}>", .{v.raw() & ~@as(u64, 7)});
+            },
+            .instance, .record => {
                 // condition と restart（Phase 25）。Lisp の印字の関数（streams・pprint の入口から zl-sys::%print-record）を
                 // 通らない場合（エラーの報告、pretty でない印字のリストの要素など）の形：#<クラスの名前 {アドレス}>
                 if (p.s.readably) return p.notReadable(v);

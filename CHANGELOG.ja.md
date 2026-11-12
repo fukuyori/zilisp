@@ -5,6 +5,13 @@
 ## Unreleased
 
 ### Added
+- P27のClaude Codeレビュー6件を修正：重複スロットとLISTスロット、非単純ベクタ・文字列のクラス判定、
+  `:type`宣言の受理、クラス種別の変更防止とキャッシュ更新、任意オブジェクト・構造体の`slot-exists-p`、restartのメタクラス。
+  再定義ガードは同じRuntimeの再初期化も維持する。回帰試験と記録は `docs/clos-phase27-claude-review.ja.md`。
+- Phase 27：rack方式の標準インスタンス、`defclass`・`find-class`・`class-name`・`class-of`・`make-instance`、
+  CLHSのCPL計算、スロットの読み書き・未束縛化・存在判定、共有スロット、既定の初期化引数を追加。
+  condition・restartをrackへ移し、構造体を公開のクラスに統合した。総称アクセサはP28、再定義と初期化フックはP29。
+  比較計測と範囲は `docs/clos-phase27-plan.ja.md`。新しい言語試験の期待値はSBCL 2.6.10.168との比較による。
 - Phase 26：`defstruct`（CLHS defstruct）。オプション `:conc-name`・`:constructor`（キーワードの引数のものと、引数の並びを
   指定するもの（BOA）。複数可）・`:copier`・`:predicate`・`:include`（スロットの既定値・型・read-only の書き換え）・
   `:print-function`・`:print-object`、スロットの `:type`（構築子と `setf` で検査し、合わなければ type-error）・`:read-only`、

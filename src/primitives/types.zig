@@ -54,6 +54,7 @@ pub fn classOf(rt: *Runtime, name: Value) ?Value {
 /// record（condition・restart）か構造体（Phase 26）が、型 name のクラスか、その下位のクラスか
 pub fn recordTypep(v: Value, name: Value) bool {
     const class = switch (kindOf(v) orelse return false) {
+        .instance => @as(*object.Instance, @ptrCast(@alignCast(v.pointer()))).class,
         .record => @as(*object.Record, @ptrCast(@alignCast(v.pointer()))).class,
         .structure => @as(*object.Structure, @ptrCast(@alignCast(v.pointer()))).class,
         else => return false,
@@ -299,13 +300,14 @@ fn validComplexPart(th: *Thread, spec: Value) Validity {
 /// 型指定子 spec の正しさ。値は判定せず、形だけを見る（Codex のレビュー P25 5回目 #3〜#5）
 fn validate(th: *Thread, spec: Value) Validity {
     const rt = th.rt;
+    if (kindOf(spec) == .class) return .ok;
     if (spec == rt.t or spec == Value.nil) return .ok;
     var buf: [64]u8 = undefined;
     if (isSymbol(spec)) {
         if (classOf(rt, spec) != null) return .ok;
         if (rt.symbolPtr(spec).package != rt.cl.obj) return .invalid;
         const name = asciiName(rt, spec, &buf) orelse return .invalid;
-        if (inNames(name, &atomic_type_names)) return .ok;
+        if (inNames(name, &atomic_type_names) or inNames(name, &.{ "CLASS", "STANDARD-CLASS", "BUILT-IN-CLASS", "STRUCTURE-CLASS", "STANDARD-OBJECT" })) return .ok;
         if (inNames(name, &unimplemented_type_names)) return .unimplemented;
         return .invalid;
     }
@@ -471,6 +473,15 @@ fn isSimpleArray(v: Value) bool {
 /// v が型 spec か。判定できない型指定子はエラー（error.Lisp。th にエラーを記録済み）
 pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
     const rt = th.rt;
+    if (kindOf(spec) == .class) {
+        const name = Runtime.vectorPtr(@import("clos.zig").class(spec).descriptor).items()[0];
+        if (rt.symbolPtr(name).package == rt.sys.obj) {
+            var b: [64]u8 = undefined;
+            if (asciiName(rt, name, &b)) |n| if (std.mem.eql(u8, n, "CONDITION-CLASS"))
+                return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 3;
+        }
+        return typep(th, v, name);
+    }
     if (spec == rt.t) return true;
     if (spec == Value.nil) return false;
     if (isSymbol(spec)) {
@@ -478,6 +489,11 @@ pub fn typep(th: *Thread, v: Value, spec: Value) Fail!bool {
         if (rt.symbolPtr(spec).package != rt.cl.obj) return unknown(th, spec);
         var buf: [64]u8 = undefined;
         const name = asciiName(rt, spec, &buf) orelse return unknown(th, spec);
+        if (std.mem.eql(u8, name, "STANDARD-OBJECT")) return (kindOf(v) == .instance and @import("clos.zig").instance(v).header.flags & 1 == 0) or kindOf(v) == .class;
+        if (std.mem.eql(u8, name, "CLASS")) return kindOf(v) == .class;
+        if (std.mem.eql(u8, name, "STANDARD-CLASS")) return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 0;
+        if (std.mem.eql(u8, name, "BUILT-IN-CLASS")) return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 1;
+        if (std.mem.eql(u8, name, "STRUCTURE-CLASS")) return kindOf(v) == .class and @import("clos.zig").class(v).header.aux == 2;
         const kind = kindOf(v);
         const Is = struct {
             fn eq(n: []const u8, s: []const u8) bool {
